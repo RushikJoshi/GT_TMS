@@ -71,14 +71,21 @@ export async function listCompanies() {
   // lightweight counts (can be optimized with aggregation later)
   const uMap = new Map();
   const pMap = new Map();
+  const { User, Project } = getTenantModels();
+
   await Promise.all(companies.map(async (c) => {
-    const { User, Project } = getTenantModels();
-    const [uc, pc] = await Promise.all([
-      User.countDocuments({ tenantId: c._id }),
-      Project.countDocuments({ tenantId: c._id }),
-    ]);
-    uMap.set(c.id, uc);
-    pMap.set(c.id, pc);
+    try {
+      const [uc, pc] = await Promise.all([
+        User.countDocuments({ tenantId: c._id }),
+        Project.countDocuments({ tenantId: c._id }),
+      ]);
+      uMap.set(c._id.toString(), uc);
+      pMap.set(c._id.toString(), pc);
+    } catch (e) {
+      console.error(`Error fetching counts for company ${c._id}:`, e);
+      uMap.set(c._id.toString(), 0);
+      pMap.set(c._id.toString(), 0);
+    }
   }));
 
   return companies.map((c) => ({
