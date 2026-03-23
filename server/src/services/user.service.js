@@ -3,6 +3,35 @@ import { getTenantModels } from '../config/tenantDb.js';
 import { hashPassword, verifyPassword } from '../utils/password.js';
 import { assertPasswordAllowed } from './settings.service.js';
 
+function asDate(value) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function monthKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function monthLabel(key) {
+  const [year, month] = key.split('-').map(Number);
+  return new Date(year, month - 1, 1).toLocaleString('en-US', { month: 'short', year: 'numeric' });
+}
+
+function normalizeEmployeeIdConfig(config) {
+  return {
+    prefix: String(config?.prefix ?? 'EMP').trim().slice(0, 20),
+    separator: String(config?.separator ?? '-').slice(0, 3),
+    digits: Math.max(1, Math.min(8, Number(config?.digits ?? 4) || 4)),
+    nextSequence: Math.max(1, Number(config?.nextSequence ?? 1) || 1),
+  };
+}
+
+function formatEmployeeId(config, sequence) {
+  const normalized = normalizeEmployeeIdConfig(config);
+  return `${normalized.prefix}${normalized.separator}${String(sequence).padStart(normalized.digits, '0')}`;
+}
+
 export async function getMe({ companyId, userId }) {
   const tenantId = companyId;
   const { User } = getTenantModels();
@@ -27,6 +56,135 @@ export async function getUser({ companyId, id }) {
   const { User } = getTenantModels();
   const user = await User.findOne({ _id: id, tenantId });
   return user;
+}
+
+export async function getUserPerformance({ companyId, workspaceId, targetUserId }) {
+  const tenantId = companyId;
+  const { User, Task, QuickTask, Project } = getTenantModels();
+  const user = await User.findOne({ _id: targetUserId, tenantId }).lean();
+  if (!user) return null;
+
+  const [projectTasks, quickTasks, projects] = await Promise.all([
+    Task.find({
+      tenantId,
+      workspaceId,
+      assigneeIds: targetUserId,
+      $or: [{ parentTaskId: null }, { parentTaskId: { $exists: false } }],
+    }).lean(),
+    QuickTask.find({ tenantId, workspaceId, assigneeIds: targetUserId }).lean(),
+    Project.find({ tenantId, workspaceId, members: targetUserId }).select('_id name status').lean(),
+  ]);
+
+  const allAssigned = [
+    ...projectTasks.map((task) => ({ ...task, kind: 'project_task' })),
+    ...quickTasks.map((task) => ({ ...task, kind: 'quick_task' })),
+  ];
+
+  const completed = allAssigned.filter((task) => task.status === 'done');
+  const approved = completed.filter((task) => task.completionReview?.reviewStatus === 'approved');
+  const pendingReview = completed.filter((task) => task.completionReview?.reviewStatus === 'pending');
+  const changesRequested = allAssigned.filter((task) => task.completionReview?.reviewStatus === 'changes_requested');
+  const rated = approved.filter((task) => typeof task.completionReview?.rating === 'number');
+  const overdueOpen = allAssigned.filter((task) => {
+    const due = asDate(task.dueDate);
+    return due && due < new Date() && task.status !== 'done';
+  });
+  const onTimeCompleted = completed.filter((task) => {
+    const completedAt = asDate(task.completionReview?.completedAt);
+    const due = asDate(task.dueDate);
+    if (!completedAt || !due) return false;
+    return completedAt <= due;
+  });
+
+  const ratingDistribution = [1, 2, 3, 4, 5].map((value) => ({
+    rating: value,
+    count: rated.filter((task) => task.completionReview.rating === value).length,
+  }));
+
+  const monthlyMap = new Map();
+  for (let offset = 5; offset >= 0; offset -= 1) {
+    const date = new Date();
+    date.setDate(1);
+    date.setMonth(date.getMonth() - offset);
+    const key = monthKey(date);
+    monthlyMap.set(key, { month: monthLabel(key), completed: 0, approved: 0, averageRating: 0, ratingsCount: 0 });
+  }
+
+  for (const task of completed) {
+    const completedAt = asDate(task.completionReview?.completedAt) || asDate(task.updatedAt) || asDate(task.createdAt);
+    if (!completedAt) continue;
+    const key = monthKey(completedAt);
+    if (!monthlyMap.has(key)) continue;
+    const bucket = monthlyMap.get(key);
+    bucket.completed += 1;
+    if (task.completionReview?.reviewStatus === 'approved') bucket.approved += 1;
+    if (typeof task.completionReview?.rating === 'number') {
+      bucket.averageRating += task.completionReview.rating;
+      bucket.ratingsCount += 1;
+    }
+  }
+
+  const monthlyTrend = Array.from(monthlyMap.values()).map((bucket) => ({
+    month: bucket.month,
+    completed: bucket.completed,
+    approved: bucket.approved,
+    averageRating: bucket.ratingsCount ? Number((bucket.averageRating / bucket.ratingsCount).toFixed(1)) : 0,
+  }));
+
+  const recentEvaluations = approved
+    .filter((task) => task.completionReview?.reviewedAt)
+    .sort((a, b) => new Date(b.completionReview.reviewedAt).getTime() - new Date(a.completionReview.reviewedAt).getTime())
+    .slice(0, 8)
+    .map((task) => ({
+      id: String(task._id),
+      type: task.kind,
+      title: task.title,
+      projectId: task.projectId ? String(task.projectId) : undefined,
+      rating: task.completionReview?.rating,
+      reviewRemark: task.completionReview?.reviewRemark || '',
+      reviewedAt: asDate(task.completionReview?.reviewedAt)?.toISOString(),
+      completedAt: asDate(task.completionReview?.completedAt)?.toISOString(),
+    }));
+
+  const averageRating = rated.length
+    ? Number((rated.reduce((sum, task) => sum + task.completionReview.rating, 0) / rated.length).toFixed(1))
+    : 0;
+  const completionRate = allAssigned.length ? Math.round((completed.length / allAssigned.length) * 100) : 0;
+  const approvalRate = completed.length ? Math.round((approved.length / completed.length) * 100) : 0;
+  const onTimeRate = completed.length ? Math.round((onTimeCompleted.length / completed.length) * 100) : 0;
+  const performanceScore = Math.max(
+    0,
+    Math.min(
+      100,
+      Math.round((completionRate * 0.35) + (approvalRate * 0.25) + (onTimeRate * 0.2) + ((averageRating / 5) * 100 * 0.2))
+    )
+  );
+
+  return {
+    userId: String(user._id),
+    summary: {
+      assignedTasks: allAssigned.length,
+      completedTasks: completed.length,
+      approvedTasks: approved.length,
+      pendingReviewTasks: pendingReview.length,
+      changesRequestedTasks: changesRequested.length,
+      overdueOpenTasks: overdueOpen.length,
+      averageRating,
+      completionRate,
+      approvalRate,
+      onTimeRate,
+      performanceScore,
+      activeProjects: projects.length,
+    },
+    ratingDistribution,
+    monthlyTrend,
+    activeProjects: projects.map((project) => ({
+      id: String(project._id),
+      name: project.name,
+      status: project.status,
+    })),
+    recentEvaluations,
+  };
 }
 
 export async function createUser({ companyId, workspaceId, actorRole, input }) {
@@ -83,11 +241,28 @@ export async function createUser({ companyId, workspaceId, actorRole, input }) {
 
   await assertPasswordAllowed(input.password);
 
+  const workspace = await Workspace.findOne({ _id: targetWorkspaceId, tenantId });
+  if (!workspace) {
+    const err = new Error('Workspace not found');
+    err.statusCode = 400;
+    err.code = 'WORKSPACE_NOT_FOUND';
+    throw err;
+  }
+
+  const employeeIdConfig = normalizeEmployeeIdConfig(workspace.settings?.employeeIdConfig);
+  let nextSequence = employeeIdConfig.nextSequence;
+  let employeeId = formatEmployeeId(employeeIdConfig, nextSequence);
+  while (await User.exists({ tenantId, employeeId })) {
+    nextSequence += 1;
+    employeeId = formatEmployeeId(employeeIdConfig, nextSequence);
+  }
+
   const passwordHash = await hashPassword(input.password);
   const user = await User.create({
     tenantId,
     name: input.name.trim(),
     email,
+    employeeId,
     passwordHash,
     role: input.role,
     jobTitle: input.jobTitle?.trim() || '',
@@ -95,6 +270,15 @@ export async function createUser({ companyId, workspaceId, actorRole, input }) {
     isActive: true,
     color: input.color?.trim() || '#3366ff',
   });
+
+  workspace.settings = {
+    ...(workspace.settings?.toObject?.() || workspace.settings || {}),
+    employeeIdConfig: {
+      ...employeeIdConfig,
+      nextSequence: nextSequence + 1,
+    },
+  };
+  await workspace.save();
 
   await AuthLookup.updateOne(
     { email },

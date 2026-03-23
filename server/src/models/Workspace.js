@@ -15,6 +15,12 @@ const workspaceSchema = new mongoose.Schema(
       timezone: { type: String, default: 'UTC+0 (GMT)' },
       dateFormat: { type: String, default: 'MM/DD/YYYY' },
       weekStartsOn: { type: String, default: 'Monday' },
+      employeeIdConfig: {
+        prefix: { type: String, default: 'EMP' },
+        separator: { type: String, default: '-' },
+        digits: { type: Number, default: 4 },
+        nextSequence: { type: Number, default: 1 },
+      },
       permissions: { type: permissionMatrixSchema, default: {} },
     },
   },

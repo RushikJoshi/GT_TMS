@@ -173,7 +173,7 @@ export const ReportsPage: React.FC = () => {
   const [companies, setCompanies] = useState<CompanyRow[]>([]);
   const [loadingCompanies, setLoadingCompanies] = useState(false);
   const { user } = useAuthStore();
-  const { projects, tasks, users } = useAppStore();
+  const { projects, tasks, quickTasks, users } = useAppStore();
 
   const isSuperAdmin = user?.role === 'super_admin';
 
@@ -205,6 +205,15 @@ export const ReportsPage: React.FC = () => {
 
   const superAdminData = useMemo(() => {
     const sourceCompanies = companies;
+    const scopedQuickTasks = quickTasks.filter((task) => {
+      const created = parseDate(task.createdAt);
+      const updated = parseDate(task.updatedAt);
+      const due = parseDate(task.dueDate);
+      return (created && isWithinInterval(created, { start: range.start, end: range.end }))
+        || (updated && isWithinInterval(updated, { start: range.start, end: range.end }))
+        || (due && isWithinInterval(due, { start: range.start, end: range.end }));
+    });
+
     const periods = range.granularity === 'day'
       ? eachDayOfInterval({ start: range.start, end: range.end })
       : eachMonthOfInterval({ start: range.start, end: range.end });
@@ -290,6 +299,15 @@ export const ReportsPage: React.FC = () => {
         || (due && isWithinInterval(due, { start: range.start, end: range.end }));
     });
 
+    const scopedQuickTasks = quickTasks.filter((task) => {
+      const created = parseDate(task.createdAt);
+      const updated = parseDate(task.updatedAt);
+      const due = parseDate(task.dueDate);
+      return (created && isWithinInterval(created, { start: range.start, end: range.end }))
+        || (updated && isWithinInterval(updated, { start: range.start, end: range.end }))
+        || (due && isWithinInterval(due, { start: range.start, end: range.end }));
+    });
+
     const periods = range.granularity === 'day'
       ? eachDayOfInterval({ start: range.start, end: range.end })
       : eachMonthOfInterval({ start: range.start, end: range.end });
@@ -333,20 +351,34 @@ export const ReportsPage: React.FC = () => {
 
     const assigneeStats = users.map((member) => {
       const assignedTasks = scopedTasks.filter((task) => task.assigneeIds?.includes(member.id));
+      const assignedQuickTasks = scopedQuickTasks.filter((task) => task.assigneeIds?.includes(member.id));
+      const allAssignedWork = [...assignedTasks, ...assignedQuickTasks];
       const completedTasks = assignedTasks.filter((task) => task.status === 'done').length;
+      const completedQuickTasks = assignedQuickTasks.filter((task) => task.status === 'done').length;
       const overdueTasks = assignedTasks.filter((task) => {
+        const dueDate = parseDate(task.dueDate);
+        return dueDate && dueDate < new Date() && task.status !== 'done';
+      }).length + assignedQuickTasks.filter((task) => {
         const dueDate = parseDate(task.dueDate);
         return dueDate && dueDate < new Date() && task.status !== 'done';
       }).length;
 
-      const scoreBase = assignedTasks.length === 0 ? 0 : Math.round((completedTasks / assignedTasks.length) * 100);
-      const score = Math.max(0, Math.min(100, scoreBase - overdueTasks * 5));
+      const approvedRatings = allAssignedWork
+        .filter((task) => task.completionReview?.reviewStatus === 'approved' && typeof task.completionReview?.rating === 'number')
+        .map((task) => task.completionReview!.rating as number);
+
+      const scoreBase = allAssignedWork.length === 0 ? 0 : Math.round((((completedTasks + completedQuickTasks) / allAssignedWork.length) * 100));
+      const ratingBoost = approvedRatings.length ? Math.round((approvedRatings.reduce((sum, value) => sum + value, 0) / approvedRatings.length) * 4) : 0;
+      const score = Math.max(0, Math.min(100, scoreBase + ratingBoost - overdueTasks * 5));
 
       return {
         id: member.id,
         name: member.name,
-        assigned: assignedTasks.length,
-        completed: completedTasks,
+        assigned: allAssignedWork.length,
+        completed: completedTasks + completedQuickTasks,
+        averageRating: approvedRatings.length
+          ? Number((approvedRatings.reduce((sum, value) => sum + value, 0) / approvedRatings.length).toFixed(1))
+          : 0,
         score,
       };
     })
@@ -354,11 +386,19 @@ export const ReportsPage: React.FC = () => {
       .sort((a, b) => b.score - a.score)
       .slice(0, 5);
 
-    const completedThisPeriod = scopedTasks.filter((task) => task.status === 'done').length;
+    const completedThisPeriod =
+      scopedTasks.filter((task) => task.status === 'done').length +
+      scopedQuickTasks.filter((task) => task.status === 'done').length;
     const overdueOpenTasks = scopedTasks.filter((task) => {
       const dueDate = parseDate(task.dueDate);
       return dueDate && dueDate < new Date() && task.status !== 'done';
+    }).length + scopedQuickTasks.filter((task) => {
+      const dueDate = parseDate(task.dueDate);
+      return dueDate && dueDate < new Date() && task.status !== 'done';
     }).length;
+    const approvedRatings = [...scopedTasks, ...scopedQuickTasks]
+      .filter((task) => task.completionReview?.reviewStatus === 'approved' && typeof task.completionReview?.rating === 'number')
+      .map((task) => task.completionReview!.rating as number);
 
     return {
       progressData: progressData.length ? progressData : [{ name: emptyChartLabel(period), progress: 0 }],
@@ -372,9 +412,12 @@ export const ReportsPage: React.FC = () => {
           : 0,
         completedTasks: completedThisPeriod,
         overdueTasks: overdueOpenTasks,
+        averageRating: approvedRatings.length
+          ? Number((approvedRatings.reduce((sum, value) => sum + value, 0) / approvedRatings.length).toFixed(1))
+          : 0,
       },
     };
-  }, [projects, tasks, users, period, range]);
+  }, [projects, tasks, quickTasks, users, period, range]);
 
   const exportPdf = () => {
     const periodLabel = PERIOD_OPTIONS.find((item) => item.key === period)?.label || period;
@@ -948,18 +991,18 @@ export const ReportsPage: React.FC = () => {
               accent="#10b981"
             />
             <ReportCard
-              title="Completed Tasks"
+              title="Completed Work"
               value={workspaceData.metrics.completedTasks}
-              sub="Done tasks in the selected scope"
+              sub="Done project and quick tasks in the selected scope"
               icon={<CheckCircle2 size={20} />}
               accent="#7c3aed"
             />
             <ReportCard
-              title="Overdue Tasks"
-              value={workspaceData.metrics.overdueTasks}
-              sub="Open tasks past due date"
-              icon={<AlertTriangle size={20} />}
-              accent="#ef4444"
+              title="Average Rating"
+              value={`${workspaceData.metrics.averageRating}/5`}
+              sub="Reviewer rating across approved task completions"
+              icon={<Users size={20} />}
+              accent="#f59e0b"
             />
           </div>
 
@@ -1067,7 +1110,7 @@ export const ReportsPage: React.FC = () => {
                     </div>
                     <div className="mt-2 flex items-center justify-between text-[11px] text-surface-400">
                       <span>{member.completed}/{member.assigned} completed</span>
-                      <span>{differenceInCalendarDays(new Date(), range.start) + 1} day window</span>
+                      <span>{member.averageRating ? `${member.averageRating}/5 rating` : `${differenceInCalendarDays(new Date(), range.start) + 1} day window`}</span>
                     </div>
                   </div>
                 )) : (

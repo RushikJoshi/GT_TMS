@@ -76,6 +76,7 @@ const moveStatusSchema = z.object({
 
 const reviewTaskSchema = z.object({
   action: z.enum(['approve', 'changes_requested']),
+  rating: z.number().min(1).max(5).optional(),
   reviewRemark: z.string().trim().max(5000).optional(),
 });
 

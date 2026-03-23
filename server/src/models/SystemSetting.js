@@ -34,6 +34,14 @@ const systemSettingSchema = new mongoose.Schema(
       lastBackupAt: { type: Date, default: null },
       storageLimitMb: { type: Number, default: 512000 },
     },
+    idGeneration: {
+      company: {
+        prefix: { type: String, default: 'ORG' },
+        separator: { type: String, default: '-' },
+        digits: { type: Number, default: 4 },
+        nextSequence: { type: Number, default: 1 },
+      },
+    },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true }

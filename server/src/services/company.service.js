@@ -1,8 +1,43 @@
 import Company from '../models/Company.js';
 import AuthLookup from '../models/AuthLookup.js';
+import SystemSetting from '../models/SystemSetting.js';
 import { getTenantModels } from '../config/tenantDb.js';
 import { hashPassword } from '../utils/password.js';
-import { assertPasswordAllowed } from './settings.service.js';
+import { assertPasswordAllowed, formatGeneratedId, getCompanyIdConfig } from './settings.service.js';
+
+async function reserveOrganizationId() {
+  const config = await getCompanyIdConfig();
+  let nextSequence = config.nextSequence;
+  let organizationId = formatGeneratedId(config, nextSequence);
+
+  while (await Company.exists({ organizationId })) {
+    nextSequence += 1;
+    organizationId = formatGeneratedId(config, nextSequence);
+  }
+
+  return {
+    organizationId,
+    nextSequenceUsed: nextSequence,
+  };
+}
+
+function getDefaultEmployeeIdConfig() {
+  return {
+    prefix: 'EMP',
+    separator: '-',
+    digits: 4,
+    nextSequence: 1,
+  };
+}
+
+function formatEmployeeId(config, sequence) {
+  const normalized = {
+    prefix: String(config?.prefix ?? 'EMP').trim(),
+    separator: String(config?.separator ?? '-'),
+    digits: Math.max(1, Math.min(8, Number(config?.digits ?? 4) || 4)),
+  };
+  return `${normalized.prefix}${normalized.separator}${String(sequence).padStart(normalized.digits, '0')}`;
+}
 
 async function getCompanyCounts(companyId) {
   const { User, Project } = getTenantModels();
@@ -19,6 +54,7 @@ async function serializeCompany(company) {
 
   return {
     id: company.id,
+    organizationId: company.organizationId,
     name: company.name,
     email: company.email,
     usersCount,
@@ -52,19 +88,17 @@ export async function listCompanies() {
     }
   }));
 
-  return companies.map((c) => {
-    const cid = c._id.toString();
-    return {
-      id: cid,
-      name: c.name || 'Unknown',
-      email: c.email || '',
-      usersCount: uMap.get(cid) || 0,
-      projectsCount: pMap.get(cid) || 0,
-      status: c.status || 'active',
-      createdAt: c.createdAt ? (c.createdAt.toISOString ? c.createdAt.toISOString() : new Date(c.createdAt).toISOString()) : new Date().toISOString(),
-      color: c.color || '#3366ff',
-    };
-  });
+  return companies.map((c) => ({
+    id: c.id,
+    organizationId: c.organizationId,
+    name: c.name,
+    email: c.email,
+    usersCount: uMap.get(c.id) || 0,
+    projectsCount: pMap.get(c.id) || 0,
+    status: c.status,
+    createdAt: c.createdAt.toISOString(),
+    color: c.color || '#3366ff',
+  }));
 }
 
 export async function createCompanyWithAdmin({ name, adminName, adminEmail, adminPassword, initialUserLimit, status }) {
@@ -78,7 +112,9 @@ export async function createCompanyWithAdmin({ name, adminName, adminEmail, admi
 
   await assertPasswordAllowed(adminPassword);
 
+  const { organizationId, nextSequenceUsed } = await reserveOrganizationId();
   const company = await Company.create({
+    organizationId,
     name,
     email: adminEmail.toLowerCase(),
     status,
@@ -92,12 +128,15 @@ export async function createCompanyWithAdmin({ name, adminName, adminEmail, admi
   );
 
   const { User, Workspace, Membership } = getTenantModels();
+  const employeeIdConfig = getDefaultEmployeeIdConfig();
+  const adminEmployeeId = formatEmployeeId(employeeIdConfig, employeeIdConfig.nextSequence);
 
   const passwordHash = await hashPassword(adminPassword);
   const admin = await User.create({
     tenantId: company._id,
     name: adminName,
     email: adminEmail.toLowerCase(),
+    employeeId: adminEmployeeId,
     passwordHash,
     role: 'admin',
     isActive: true,
@@ -110,6 +149,12 @@ export async function createCompanyWithAdmin({ name, adminName, adminEmail, admi
     slug,
     plan: 'pro',
     ownerId: admin._id,
+    settings: {
+      employeeIdConfig: {
+        ...employeeIdConfig,
+        nextSequence: employeeIdConfig.nextSequence + 1,
+      },
+    },
   });
 
   await Membership.create({
@@ -120,8 +165,14 @@ export async function createCompanyWithAdmin({ name, adminName, adminEmail, admi
     status: 'active',
   });
 
+  await SystemSetting.updateOne(
+    { key: 'system' },
+    { $set: { 'idGeneration.company.nextSequence': nextSequenceUsed + 1 } }
+  );
+
   return {
     id: company.id,
+    organizationId: company.organizationId,
     name: company.name,
     email: company.email,
     usersCount: 1,
@@ -131,6 +182,7 @@ export async function createCompanyWithAdmin({ name, adminName, adminEmail, admi
     color: company.color || '#3366ff',
     initialUserLimit: initialUserLimit ?? 50,
     adminUserId: admin.id,
+    adminEmployeeId: admin.employeeId,
     workspaceId: workspace.id,
   };
 }

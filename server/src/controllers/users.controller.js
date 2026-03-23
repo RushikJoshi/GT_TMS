@@ -21,12 +21,33 @@ export async function list(req, res, next) {
   }
 }
 
+export async function mePerformance(req, res, next) {
+  try {
+    const { sub: userId, companyId, workspaceId } = req.auth;
+    const performance = await UserService.getUserPerformance({ companyId, workspaceId, targetUserId: userId });
+    return res.status(200).json({ success: true, data: performance });
+  } catch (e) {
+    return next(e);
+  }
+}
+
 export async function get(req, res, next) {
   try {
     const { companyId } = req.auth;
     const user = await UserService.getUser({ companyId, id: req.params.id });
     if (!user) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found' } });
     return res.status(200).json({ success: true, data: user });
+  } catch (e) {
+    return next(e);
+  }
+}
+
+export async function performance(req, res, next) {
+  try {
+    const { companyId, workspaceId } = req.auth;
+    const performance = await UserService.getUserPerformance({ companyId, workspaceId, targetUserId: req.params.id });
+    if (!performance) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found' } });
+    return res.status(200).json({ success: true, data: performance });
   } catch (e) {
     return next(e);
   }
