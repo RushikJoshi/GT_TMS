@@ -22,7 +22,7 @@ const workspaceSchema = new mongoose.Schema(
         nextSequence: { type: Number, default: 1 },
       },
       security: {
-        strongPasswords: { type: Boolean, default: true },
+        strongPasswords: { type: Boolean, default: false },
       },
       permissions: { type: permissionMatrixSchema, default: {} },
     },

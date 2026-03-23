@@ -14,7 +14,7 @@ const systemSettingSchema = new mongoose.Schema(
       openRegistration: { type: Boolean, default: true },
       confirmEmail: { type: Boolean, default: true },
       extraLoginSecurity: { type: Boolean, default: false },
-      strongPasswords: { type: Boolean, default: true },
+      strongPasswords: { type: Boolean, default: false },
     },
     email: {
       smtpHost: { type: String, default: 'smtp.sendgrid.net' },

@@ -30,7 +30,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ✅ FRONTEND BUILD PATH (FINAL)
-const clientBuildDir = path.join(__dirname, 'public');
+const clientBuildDir = path.join(__dirname, '../client/dist');
 const clientIndexFile = path.join(clientBuildDir, 'index.html');
 
 // ✅ BASIC SETTINGS

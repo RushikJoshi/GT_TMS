@@ -119,7 +119,7 @@ export const SettingsPage: React.FC = () => {
   const [workspaceName, setWorkspaceName] = useState('');
   const [workspaceSlug, setWorkspaceSlug] = useState('');
   const [employeeIdSettings, setEmployeeIdSettings] = useState<EmployeeIdSettings>(DEFAULT_EMPLOYEE_ID_SETTINGS);
-  const [workspaceSecurity, setWorkspaceSecurity] = useState<WorkspaceSecuritySettings>({ strongPasswords: true });
+  const [workspaceSecurity, setWorkspaceSecurity] = useState<WorkspaceSecuritySettings>({ strongPasswords: false });
   const [message, setMessage] = useState('');
   const [performance, setPerformance] = useState<UserPerformance | null>(null);
   const [loadingPerformance, setLoadingPerformance] = useState(false);
@@ -166,7 +166,7 @@ export const SettingsPage: React.FC = () => {
       nextSequence: workspace?.settings?.employeeIdConfig?.nextSequence || DEFAULT_EMPLOYEE_ID_SETTINGS.nextSequence,
     });
     setWorkspaceSecurity({
-      strongPasswords: workspace?.settings?.security?.strongPasswords ?? true,
+      strongPasswords: workspace?.settings?.security?.strongPasswords ?? false,
     });
   }, [workspace]);
 
