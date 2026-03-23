@@ -285,31 +285,8 @@ export const DashboardPage: React.FC = () => {
 
   return (
     <div className="max-w-full mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-          <h1 className="page-title text-2xl sm:text-3xl">
-            {greeting()}, {user?.name.split(' ')[0]} 👋
-          </h1>
-          <p className="page-subtitle text-xs sm:text-sm">
-            {user?.role === 'super_admin' 
-              ? "Here's the overall health and growth of the platform today."
-              : "Here's what's happening with your projects today."}
-          </p>
-        </motion.div>
-        {user?.role !== 'super_admin' && (
-          <motion.button
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            onClick={() => navigate('/projects?new=true')}
-            className="btn-primary btn-md w-full sm:w-auto"
-          >
-            <Plus size={16} />
-            New Project
-          </motion.button>
-        )}
-      </div>
+      {/* No header actions needed for dashboard as per request */}
+      <div className="pt-2" />
 
       {/* Stats */}
       {user?.role === 'super_admin' ? (
