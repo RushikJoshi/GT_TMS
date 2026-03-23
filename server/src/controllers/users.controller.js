@@ -68,6 +68,21 @@ export async function create(req, res, next) {
   }
 }
 
+export async function importBulk(req, res, next) {
+  try {
+    const { companyId, workspaceId, role } = req.auth;
+    const result = await UserService.importUsersBulk({
+      companyId,
+      workspaceId,
+      actorRole: role,
+      rows: req.body?.rows || [],
+    });
+    return res.status(200).json({ success: true, data: result });
+  } catch (e) {
+    return next(e);
+  }
+}
+
 export async function update(req, res, next) {
   try {
     const { companyId, workspaceId, role, sub: userId } = req.auth;

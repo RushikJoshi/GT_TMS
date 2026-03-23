@@ -290,6 +290,67 @@ export async function createUser({ companyId, workspaceId, actorRole, input }) {
   return user;
 }
 
+export async function importUsersBulk({ companyId, workspaceId, actorRole, rows }) {
+  if (!['super_admin', 'admin'].includes(actorRole)) {
+    const err = new Error('Only company admins can import users');
+    err.statusCode = 403;
+    err.code = 'FORBIDDEN';
+    throw err;
+  }
+
+  const normalizedRows = Array.isArray(rows) ? rows : [];
+  if (normalizedRows.length === 0) {
+    const err = new Error('No users provided for import');
+    err.statusCode = 400;
+    err.code = 'IMPORT_EMPTY';
+    throw err;
+  }
+
+  const createdUsers = [];
+  const failures = [];
+
+  for (let index = 0; index < normalizedRows.length; index += 1) {
+    const row = normalizedRows[index] || {};
+    const input = {
+      name: String(row.name ?? '').trim(),
+      email: String(row.email ?? '').trim(),
+      password: String(row.password ?? '').trim(),
+      role: String(row.role ?? 'team_member').trim() || 'team_member',
+      jobTitle: String(row.jobTitle ?? '').trim(),
+      department: String(row.department ?? '').trim(),
+      color: typeof row.color === 'string' ? row.color.trim() : undefined,
+    };
+
+    const rowNumber = Number(row.rowNumber) > 0 ? Number(row.rowNumber) : index + 2;
+
+    try {
+      const user = await createUser({
+        companyId,
+        workspaceId,
+        actorRole,
+        input,
+      });
+      createdUsers.push(user);
+    } catch (error) {
+      failures.push({
+        rowNumber,
+        email: input.email,
+        name: input.name,
+        message: error?.message || 'Failed to import user',
+        code: error?.code || 'IMPORT_FAILED',
+      });
+    }
+  }
+
+  return {
+    totalRows: normalizedRows.length,
+    createdCount: createdUsers.length,
+    failedCount: failures.length,
+    createdUsers,
+    failures,
+  };
+}
+
 export async function updateUser({ companyId, workspaceId, actorRole, userId, targetUserId, updates }) {
   const tenantId = companyId;
   const { User, Membership } = getTenantModels();
