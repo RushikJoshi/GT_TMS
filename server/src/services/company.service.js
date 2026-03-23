@@ -155,7 +155,7 @@ export async function createCompanyWithAdmin({ name, adminName, adminEmail, admi
         nextSequence: employeeIdConfig.nextSequence + 1,
       },
       security: {
-        strongPasswords: true,
+        strongPasswords: false,
       },
     },
   });

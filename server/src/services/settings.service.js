@@ -10,7 +10,7 @@ const DEFAULT_SECURITY_SETTINGS = {
   openRegistration: true,
   confirmEmail: true,
   extraLoginSecurity: false,
-  strongPasswords: true,
+  strongPasswords: false,
 };
 const DEFAULT_COMPANY_ID_CONFIG = {
   prefix: 'ORG',

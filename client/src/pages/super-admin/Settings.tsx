@@ -73,7 +73,7 @@ const DEFAULT_SETTINGS: SystemSettingsState = {
     openRegistration: true,
     confirmEmail: true,
     extraLoginSecurity: false,
-    strongPasswords: true,
+    strongPasswords: false,
   },
   email: {
     smtpHost: 'smtp.sendgrid.net',
@@ -491,7 +491,14 @@ export const SettingsPage: React.FC = () => {
                 <ToggleRow label="Open Registration" description="Allow self-registration across the platform" checked={settings.security.openRegistration} onChange={() => setSettings((prev) => ({ ...prev, security: { ...prev.security, openRegistration: !prev.security.openRegistration } }))} />
                 <ToggleRow label="Email Confirmation" description="Require verification after signup" checked={settings.security.confirmEmail} onChange={() => setSettings((prev) => ({ ...prev, security: { ...prev.security, confirmEmail: !prev.security.confirmEmail } }))} />
                 <ToggleRow label="Admin Extra Security" description="Enable stricter login flow for admins" checked={settings.security.extraLoginSecurity} onChange={() => setSettings((prev) => ({ ...prev, security: { ...prev.security, extraLoginSecurity: !prev.security.extraLoginSecurity } }))} />
-                <ToggleRow label="Strong Password Policy" description="Require stronger passwords across the system" checked={settings.security.strongPasswords} onChange={() => setSettings((prev) => ({ ...prev, security: { ...prev.security, strongPasswords: !prev.security.strongPasswords } }))} />
+                <ToggleRow
+                  label="Strong Password Policy"
+                  description="Require stronger passwords across the system"
+                  checked={settings.security.strongPasswords}
+                  onChange={() => {
+                    void persistStrongPasswordPolicy(!settings.security.strongPasswords);
+                  }}
+                />
               </div>
             </div>
 
