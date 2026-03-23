@@ -9,6 +9,7 @@ const router = express.Router();
 router.use(requireAuth);
 
 router.get('/me', UsersController.me);
+router.get('/me/performance', UsersController.mePerformance);
 router.put('/me', UsersController.updateMe);
 router.put('/me/preferences', UsersController.updateMyPreferences);
 router.put('/me/password', UsersController.updateMyPassword);
@@ -45,6 +46,7 @@ router.put(
 );
 router.delete('/:id', UsersController.remove);
 router.get('/', UsersController.list);
+router.get('/:id/performance', UsersController.performance);
 router.get('/:id', UsersController.get);
 
 export default router;

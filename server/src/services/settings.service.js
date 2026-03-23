@@ -12,6 +12,27 @@ const DEFAULT_SECURITY_SETTINGS = {
   extraLoginSecurity: false,
   strongPasswords: true,
 };
+const DEFAULT_COMPANY_ID_CONFIG = {
+  prefix: 'ORG',
+  separator: '-',
+  digits: 4,
+  nextSequence: 1,
+};
+
+function normalizeIdConfig(config, fallback = DEFAULT_COMPANY_ID_CONFIG) {
+  return {
+    prefix: String(config?.prefix ?? fallback.prefix ?? '').trim().slice(0, 20),
+    separator: String(config?.separator ?? fallback.separator ?? '').slice(0, 3),
+    digits: Math.max(1, Math.min(8, Number(config?.digits ?? fallback.digits ?? 4) || 4)),
+    nextSequence: Math.max(1, Number(config?.nextSequence ?? fallback.nextSequence ?? 1) || 1),
+  };
+}
+
+export function formatGeneratedId(config, sequence) {
+  const normalized = normalizeIdConfig(config);
+  const padded = String(sequence).padStart(normalized.digits, '0');
+  return `${normalized.prefix}${normalized.separator}${padded}`;
+}
 
 function deepMerge(target, source) {
   const output = { ...target };
@@ -104,6 +125,9 @@ export async function getSystemSettings() {
   const stats = await buildSystemStats(settings.toJSON());
   return {
     ...settings.toJSON(),
+    idGeneration: {
+      company: normalizeIdConfig(settings.idGeneration?.company, DEFAULT_COMPANY_ID_CONFIG),
+    },
     stats,
   };
 }
@@ -115,12 +139,19 @@ export async function updateSystemSettings({ updates, userId }) {
     security: deepMerge(current.security?.toObject?.() || current.security || {}, updates.security || {}),
     email: deepMerge(current.email?.toObject?.() || current.email || {}, updates.email || {}),
     infrastructure: deepMerge(current.infrastructure?.toObject?.() || current.infrastructure || {}, updates.infrastructure || {}),
+    idGeneration: {
+      company: normalizeIdConfig(
+        deepMerge(current.idGeneration?.company?.toObject?.() || current.idGeneration?.company || {}, updates.idGeneration?.company || {}),
+        DEFAULT_COMPANY_ID_CONFIG
+      ),
+    },
   };
 
   current.general = merged.general;
   current.security = merged.security;
   current.email = merged.email;
   current.infrastructure = merged.infrastructure;
+  current.idGeneration = merged.idGeneration;
   current.updatedBy = userId || null;
   await current.save();
 
@@ -135,6 +166,11 @@ export async function getSecuritySettings() {
 export async function getInfrastructureSettings() {
   const settings = await ensureSystemSettings();
   return settings.infrastructure?.toObject?.() || settings.infrastructure || {};
+}
+
+export async function getCompanyIdConfig() {
+  const settings = await ensureSystemSettings();
+  return normalizeIdConfig(settings.idGeneration?.company, DEFAULT_COMPANY_ID_CONFIG);
 }
 
 export function assertPasswordMatchesPolicy(password, securitySettings = DEFAULT_SECURITY_SETTINGS) {

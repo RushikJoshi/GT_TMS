@@ -8,9 +8,16 @@ import { cn } from '../../../../utils/helpers.ts';
 import { useAppStore } from '../../../../context/appStore.ts';
 import api from '../../../../services/api';
 
+const participantId = (participant?: { _id?: string; id?: string } | null) => String(participant?._id || participant?.id || '');
+const messageSenderId = (sender?: string | { _id?: string; id?: string } | null) =>
+    typeof sender === 'string' ? String(sender) : String(sender?._id || sender?.id || '');
+const entityId = (value?: string | { _id?: string; id?: string } | null) =>
+    typeof value === 'string' ? String(value) : String(value?._id || value?.id || '');
 const sameId = (a?: string | null, b?: string | null) => String(a || '') === String(b || '');
+const isGroupConversation = (conversation?: Conversation | null) =>
+    Boolean(conversation?.isGroup || conversation?.groupType === 'project' || conversation?.groupType === 'team' || entityId(conversation?.projectId as string | undefined));
 const getOtherParticipant = (convo: Conversation, currentUserId: string) =>
-    convo.participants.find((p) => !sameId(p._id, currentUserId));
+    convo.participants.find((p) => !sameId(participantId(p), currentUserId));
 
 const MessageBubble = ({ message, isMe, showSender }: { message: Message, isMe: boolean, showSender: boolean }) => (
     <div className={cn(
@@ -41,9 +48,10 @@ const MessageBubble = ({ message, isMe, showSender }: { message: Message, isMe: 
 
 const ConversationItem = ({ convo, isActive, onClick, currentUserId }: { convo: Conversation, isActive: boolean, onClick: () => void, currentUserId: string }) => {
     // For direct chat, the participant is the other guy (not me)
-    const otherParticipant = convo.isGroup ? null : getOtherParticipant(convo, currentUserId);
-    const displayName = convo.isGroup ? (convo.groupName || 'Group Chat') : (otherParticipant?.name || 'Inquiry Session');
-    const avatar = convo.isGroup ? <Users size={20} className="text-brand-600" /> : (otherParticipant?.avatar ? <img src={otherParticipant.avatar} alt="avatar" className="w-full h-full object-cover" /> : <span className="text-brand-600 font-semibold">{(displayName || 'U')[0]}</span>);
+    const isGroup = isGroupConversation(convo);
+    const otherParticipant = isGroup ? null : getOtherParticipant(convo, currentUserId);
+    const displayName = isGroup ? (convo.groupName || 'Group Chat') : (otherParticipant?.name || 'Inquiry Session');
+    const avatar = isGroup ? <Users size={20} className="text-brand-600" /> : (otherParticipant?.avatar ? <img src={otherParticipant.avatar} alt="avatar" className="w-full h-full object-cover" /> : <span className="text-brand-600 font-semibold">{(displayName || 'U')[0]}</span>);
 
     return (
         <button 
@@ -170,7 +178,7 @@ const GroupOverviewPanel = ({
     onClose: () => void;
 }) => {
     const members = conversation.participants || [];
-    const otherMembers = members.filter((member) => !sameId(member._id, currentUserId));
+    const otherMembers = members.filter((member) => !sameId(participantId(member), currentUserId));
 
     return (
         <motion.div
@@ -209,14 +217,14 @@ const GroupOverviewPanel = ({
                     <h3 className="text-[12px] font-bold text-surface-400 uppercase tracking-wider mb-3">Members</h3>
                     <div className="space-y-2">
                         {members.map((member) => (
-                            <div key={member._id} className="flex items-center gap-3 rounded-xl border border-surface-100 px-3 py-3">
+                            <div key={participantId(member)} className="flex items-center gap-3 rounded-xl border border-surface-100 px-3 py-3">
                                 <div className="w-10 h-10 rounded-full bg-surface-100 flex items-center justify-center text-xs font-semibold text-brand-600">
                                     {member.name?.[0] || 'U'}
                                 </div>
                                 <div className="min-w-0 flex-1">
                                     <p className="text-sm font-medium text-surface-900 truncate">
                                         {member.name}
-                                        {sameId(member._id, currentUserId) ? ' (You)' : ''}
+                                        {sameId(participantId(member), currentUserId) ? ' (You)' : ''}
                                     </p>
                                     <p className="text-[11px] text-surface-400 truncate">{member.email}</p>
                                 </div>
@@ -233,7 +241,7 @@ const GroupOverviewPanel = ({
                         <h3 className="text-[12px] font-bold text-surface-400 uppercase tracking-wider mb-3">Quick Contacts</h3>
                         <div className="grid grid-cols-2 gap-2">
                             {otherMembers.map((member) => (
-                                <div key={`quick-${member._id}`} className="rounded-xl border border-surface-100 px-3 py-3 bg-white">
+                                <div key={`quick-${participantId(member)}`} className="rounded-xl border border-surface-100 px-3 py-3 bg-white">
                                     <p className="text-sm font-medium text-surface-900 truncate">{member.name}</p>
                                     <p className="text-[11px] text-surface-400 truncate">{member.role?.replace(/_/g, ' ')}</p>
                                 </div>
@@ -337,6 +345,21 @@ export const AdminChatSidebar = () => {
     }, [isOpen]);
 
     useEffect(() => {
+        if (!isOpen) return;
+
+        const interval = window.setInterval(() => {
+            fetchConversations();
+            if (activeConversationId) {
+                useAdminChatStore.getState().fetchMessages(activeConversationId);
+            }
+        }, 4000);
+
+        return () => {
+            window.clearInterval(interval);
+        };
+    }, [isOpen, activeConversationId, fetchConversations]);
+
+    useEffect(() => {
         if (scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
@@ -344,7 +367,7 @@ export const AdminChatSidebar = () => {
 
     const activeConvo = conversations.find(c => c._id === activeConversationId);
     
-    const isMeCheck = (senderId: string) => String(senderId) === String(user?.id); 
+    const isMeCheck = (senderId: Message['senderId']) => sameId(messageSenderId(senderId), user?.id); 
 
     const visibleProjects = projects.filter((project) => {
         const members = Array.isArray(project.members) ? project.members : [];
@@ -353,7 +376,17 @@ export const AdminChatSidebar = () => {
 
     // Merged view of Projects and Conversations for the "Project Teams" tab
     const projectList = visibleProjects.map(project => {
-        const convo = conversations.find(c => c.projectId === project._id || c.projectId === project.id || (c.isGroup && c.groupName === `${project.name} (Project)`));
+        const projectId = entityId(project);
+        const convo = conversations.find((c) => {
+            if (!isGroupConversation(c)) return false;
+
+            const conversationProjectId = entityId(c.projectId as string | undefined);
+            if (projectId && conversationProjectId && sameId(conversationProjectId, projectId)) {
+                return true;
+            }
+
+            return c.groupType === 'project' && c.groupName === `${project.name} (Project)`;
+        });
         return {
             ...project,
             conversation: convo
@@ -373,7 +406,7 @@ export const AdminChatSidebar = () => {
 
     // Filter conversations for the "Direct" tab
     const directConversations = conversations.filter((c) => {
-        if (c.isGroup) return false;
+        if (isGroupConversation(c)) return false;
         const other = getOtherParticipant(c, user?.id || '');
         if (!other) return false;
         return `${other?.name || ''} ${other?.email || ''}`.toLowerCase().includes(search.toLowerCase());
@@ -383,6 +416,10 @@ export const AdminChatSidebar = () => {
         e.preventDefault();
         if (!input.trim()) return;
         await sendMessage(input);
+        await fetchConversations();
+        if (activeConversationId) {
+            await useAdminChatStore.getState().fetchMessages(activeConversationId);
+        }
         setInput('');
     };
 
@@ -399,11 +436,12 @@ export const AdminChatSidebar = () => {
         if (res) {
             setIsStartingDirect(false);
             setActiveConversation(res._id);
+            await fetchConversations();
         }
     };
 
     const handleStartProjectChat = async (project: any) => {
-        if (project.conversation) {
+        if (isGroupConversation(project.conversation)) {
             setActiveConversation(project.conversation._id);
         } else {
             // If No conversation, create one
@@ -416,12 +454,13 @@ export const AdminChatSidebar = () => {
                 // Update projects list locally to include the new convo
                 setProjects(prev => prev.map(p => (p._id === project._id || p.id === project.id) ? { ...p, conversation: res } : p));
                 setActiveConversation(res._id);
+                await fetchConversations();
             }
         }
     };
 
-    const currentRecipient = activeConvo?.isGroup 
-        ? activeConvo.groupName 
+    const currentRecipient = isGroupConversation(activeConvo)
+        ? activeConvo?.groupName 
         : (activeConvo ? getOtherParticipant(activeConvo, user?.id || '')?.name : undefined) || 'Chat Session';
 
     const availableDirectUsers = users.filter((item) =>
@@ -591,7 +630,7 @@ export const AdminChatSidebar = () => {
                                                             currentUserId={user?.id || ''}
                                                         />
                                                     ))}
-
+{/* 
                                                     <div className="px-5 py-3 border-t border-surface-100 bg-surface-50/60">
                                                         <p className="text-[10px] font-bold text-surface-400 uppercase tracking-widest mb-2">All Employees</p>
                                                         <div className="space-y-1 max-h-64 overflow-y-auto">
@@ -618,7 +657,7 @@ export const AdminChatSidebar = () => {
                                                                 </div>
                                                             )}
                                                         </div>
-                                                    </div>
+                                                    </div> */}
                                                 </>
                                             )}
                                         </div>
@@ -646,7 +685,7 @@ export const AdminChatSidebar = () => {
                                             <ChevronLeft size={18} />
                                          </button>
                                          <div className="w-14 h-14 rounded-full bg-gradient-to-br from-surface-50 to-surface-100 border border-surface-200 flex items-center justify-center text-brand-600 relative shrink-0 shadow-inner">
-                                             {activeConvo?.isGroup ? <Users size={24} /> : <span className="text-lg font-semibold">{currentRecipient ? currentRecipient[0] : 'U'}</span>}
+                                             {isGroupConversation(activeConvo) ? <Users size={24} /> : <span className="text-lg font-semibold">{currentRecipient ? currentRecipient[0] : 'U'}</span>}
                                              <div className="absolute bottom-1 right-1 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white" />
                                          </div>
                                          <div className="flex-1 min-w-0">
@@ -654,12 +693,12 @@ export const AdminChatSidebar = () => {
                                                   {currentRecipient}
                                               </div>
                                               <span className="text-[12px] text-emerald-500 font-semibold block mt-0.5 truncate">
-                                                  {activeConvo?.isGroup ? `@${activeConvo.participants.length} members` : 'Online'}
+                                                  {isGroupConversation(activeConvo) ? `@${activeConvo?.participants.length || 0} members` : 'Online'}
                                               </span>
                                          </div>
                                      </div>
                                      <div className="flex items-center gap-1">
-                                         {activeConvo?.isGroup && (
+                                         {isGroupConversation(activeConvo) && (
                                              <button
                                                  className="p-2 text-surface-400 hover:text-brand-600 rounded-lg"
                                                  onClick={() => setShowGroupOverview(true)}
@@ -679,13 +718,13 @@ export const AdminChatSidebar = () => {
                                         <div className="space-y-1">
                                             {messages.map((msg, index) => {
                                                 const previous = messages[index - 1];
-                                                const showSender = !previous || String(previous.senderId) !== String(msg.senderId);
+                                                const showSender = !previous || messageSenderId(previous.senderId) !== messageSenderId(msg.senderId);
                                                 return (
                                                     <MessageBubble
                                                         key={msg._id}
                                                         message={msg}
                                                         isMe={isMeCheck(msg.senderId)}
-                                                        showSender={showSender || Boolean(activeConvo?.isGroup)}
+                                                        showSender={showSender || Boolean(isGroupConversation(activeConvo))}
                                                     />
                                                 );
                                             })}
@@ -724,9 +763,9 @@ export const AdminChatSidebar = () => {
                                 </div>
 
                                 <AnimatePresence>
-                                    {showGroupOverview && activeConvo?.isGroup && (
+                                    {showGroupOverview && isGroupConversation(activeConvo) && (
                                         <GroupOverviewPanel
-                                            conversation={activeConvo}
+                                            conversation={activeConvo as Conversation}
                                             currentUserId={user?.id || ''}
                                             onClose={() => setShowGroupOverview(false)}
                                         />

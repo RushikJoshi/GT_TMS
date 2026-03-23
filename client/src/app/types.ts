@@ -28,13 +28,57 @@ export interface CompletionReview {
   completedBy?: string;
   completionRemark: string;
   reviewStatus: CompletionReviewStatus;
+  rating?: number;
   reviewRemark: string;
   reviewedAt?: string;
   reviewedBy?: string;
 }
 
+export interface PerformanceSummary {
+  assignedTasks: number;
+  completedTasks: number;
+  approvedTasks: number;
+  pendingReviewTasks: number;
+  changesRequestedTasks: number;
+  overdueOpenTasks: number;
+  averageRating: number;
+  completionRate: number;
+  approvalRate: number;
+  onTimeRate: number;
+  performanceScore: number;
+  activeProjects: number;
+}
+
+export interface PerformanceTrendPoint {
+  month: string;
+  completed: number;
+  approved: number;
+  averageRating: number;
+}
+
+export interface PerformanceEvaluation {
+  id: string;
+  type: 'project_task' | 'quick_task';
+  title: string;
+  projectId?: string;
+  rating?: number;
+  reviewRemark: string;
+  reviewedAt?: string;
+  completedAt?: string;
+}
+
+export interface UserPerformance {
+  userId: string;
+  summary: PerformanceSummary;
+  ratingDistribution: Array<{ rating: number; count: number }>;
+  monthlyTrend: PerformanceTrendPoint[];
+  activeProjects: Array<{ id: string; name: string; status: ProjectStatus }>;
+  recentEvaluations: PerformanceEvaluation[];
+}
+
 export interface User {
   id: string;
+  employeeId?: string;
   name: string;
   email: string;
   avatar?: string;
@@ -84,6 +128,12 @@ export interface Workspace {
     timezone?: string;
     dateFormat?: string;
     weekStartsOn?: string;
+    employeeIdConfig?: {
+      prefix?: string;
+      separator?: string;
+      digits?: number;
+      nextSequence?: number;
+    };
     permissions?: Record<string, Partial<Record<Role, boolean>>>;
   };
 }

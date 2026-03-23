@@ -7,6 +7,7 @@ const userSchema = new mongoose.Schema(
     tenantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true, index: true },
     name: { type: String, required: true, trim: true, maxlength: 120 },
     email: { type: String, required: true, trim: true, lowercase: true, maxlength: 200 },
+    employeeId: { type: String, trim: true, maxlength: 80 },
     passwordHash: { type: String, required: true, select: false },
     role: { type: String, enum: roles, required: true, default: 'team_member' },
     jobTitle: { type: String, trim: true, maxlength: 120 },
@@ -42,6 +43,7 @@ const userSchema = new mongoose.Schema(
 );
 
 userSchema.index({ tenantId: 1, email: 1 }, { unique: true });
+userSchema.index({ tenantId: 1, employeeId: 1 }, { unique: true, sparse: true });
 
 userSchema.set('toJSON', {
   transform: (_doc, ret) => {

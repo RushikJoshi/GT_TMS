@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 
 const companySchema = new mongoose.Schema(
   {
+    organizationId: { type: String, required: true, trim: true, maxlength: 80, unique: true },
     name: { type: String, required: true, trim: true, maxlength: 200 },
     email: { type: String, required: true, trim: true, lowercase: true, maxlength: 200 },
     status: { type: String, enum: ['active', 'trial', 'suspended'], default: 'active' },
@@ -11,6 +12,7 @@ const companySchema = new mongoose.Schema(
 );
 
 companySchema.index({ email: 1 }, { unique: true });
+companySchema.index({ organizationId: 1 }, { unique: true });
 
 companySchema.set('toJSON', {
   transform: (_doc, ret) => {

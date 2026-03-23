@@ -42,6 +42,14 @@ type SystemSettingsState = {
     lastBackupAt: string | null;
     storageLimitMb?: number;
   };
+  idGeneration: {
+    company: {
+      prefix: string;
+      separator: string;
+      digits: number;
+      nextSequence: number;
+    };
+  };
   stats?: {
     lastBackupText?: string;
     storageUsedText?: string;
@@ -84,6 +92,14 @@ const DEFAULT_SETTINGS: SystemSettingsState = {
     maintenanceMode: false,
     lastBackupAt: null,
     storageLimitMb: 512000,
+  },
+  idGeneration: {
+    company: {
+      prefix: 'ORG',
+      separator: '-',
+      digits: 4,
+      nextSequence: 1,
+    },
   },
   stats: {
     lastBackupText: 'Never',
@@ -141,6 +157,12 @@ export const SettingsPage: React.FC = () => {
           templates: { ...DEFAULT_SETTINGS.email.templates, ...(data.email?.templates || {}) },
         },
         infrastructure: { ...DEFAULT_SETTINGS.infrastructure, ...(data.infrastructure || {}) },
+        idGeneration: {
+          company: {
+            ...DEFAULT_SETTINGS.idGeneration.company,
+            ...(data.idGeneration?.company || {}),
+          },
+        },
         stats: { ...DEFAULT_SETTINGS.stats, ...(data.stats || {}) },
       });
     } catch {
@@ -163,6 +185,7 @@ export const SettingsPage: React.FC = () => {
         security: settings.security,
         email: settings.email,
         infrastructure: settings.infrastructure,
+        idGeneration: settings.idGeneration,
       });
       setSettings((prev) => ({
         ...prev,
@@ -295,6 +318,31 @@ export const SettingsPage: React.FC = () => {
                   <ToggleRow label="Extra Login Security" description="Add extra login verification for admins" checked={settings.security.extraLoginSecurity} onChange={() => setSettings((prev) => ({ ...prev, security: { ...prev.security, extraLoginSecurity: !prev.security.extraLoginSecurity } }))} />
                   <ToggleRow label="Strong Passwords" description="Require difficult passwords for safety" checked={settings.security.strongPasswords} onChange={() => setSettings((prev) => ({ ...prev, security: { ...prev.security, strongPasswords: !prev.security.strongPasswords } }))} />
                 </div>
+              </div>
+
+              <div className="card p-6">
+                <h3 className="mb-4 font-display font-bold text-surface-900 dark:text-white">Organization ID Format</h3>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="label">Prefix</label>
+                    <input value={settings.idGeneration.company.prefix} onChange={(e) => setSettings((prev) => ({ ...prev, idGeneration: { company: { ...prev.idGeneration.company, prefix: e.target.value } } }))} className="input" />
+                  </div>
+                  <div>
+                    <label className="label">Separator</label>
+                    <input value={settings.idGeneration.company.separator} onChange={(e) => setSettings((prev) => ({ ...prev, idGeneration: { company: { ...prev.idGeneration.company, separator: e.target.value } } }))} className="input" />
+                  </div>
+                  <div>
+                    <label className="label">Digits</label>
+                    <input type="number" min={1} max={8} value={settings.idGeneration.company.digits} onChange={(e) => setSettings((prev) => ({ ...prev, idGeneration: { company: { ...prev.idGeneration.company, digits: Number(e.target.value) || 4 } } }))} className="input" />
+                  </div>
+                  <div>
+                    <label className="label">Next Sequence</label>
+                    <input type="number" min={1} value={settings.idGeneration.company.nextSequence} onChange={(e) => setSettings((prev) => ({ ...prev, idGeneration: { company: { ...prev.idGeneration.company, nextSequence: Number(e.target.value) || 1 } } }))} className="input" />
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-surface-400">
+                  Preview: {settings.idGeneration.company.prefix}{settings.idGeneration.company.separator}{String(settings.idGeneration.company.nextSequence).padStart(settings.idGeneration.company.digits, '0')}
+                </p>
               </div>
             </div>
 
