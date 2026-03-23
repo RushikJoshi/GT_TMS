@@ -29,6 +29,26 @@ router.post(
   ),
   UsersController.create
 );
+router.post(
+  '/import',
+  validateBody(
+    z.object({
+      rows: z.array(
+        z.object({
+          rowNumber: z.number().int().positive().optional(),
+          name: z.string().trim().min(1).max(120),
+          email: z.string().trim().email().max(200),
+          password: z.string().min(8).max(200),
+          role: z.enum(['super_admin', 'admin', 'manager', 'team_leader', 'team_member']).optional(),
+          jobTitle: z.string().trim().max(120).optional(),
+          department: z.string().trim().max(120).optional(),
+          color: z.string().trim().max(32).optional(),
+        })
+      ).min(1).max(200),
+    })
+  ),
+  UsersController.importBulk
+);
 router.put(
   '/:id',
   validateBody(

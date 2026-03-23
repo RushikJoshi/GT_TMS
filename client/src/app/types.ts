@@ -114,6 +114,33 @@ export interface User {
   };
 }
 
+export interface UserImportRow {
+  rowNumber?: number;
+  name: string;
+  email: string;
+  password: string;
+  role?: Role;
+  jobTitle?: string;
+  department?: string;
+  color?: string;
+}
+
+export interface UserImportFailure {
+  rowNumber: number;
+  email?: string;
+  name?: string;
+  message: string;
+  code?: string;
+}
+
+export interface UserImportResult {
+  totalRows: number;
+  createdCount: number;
+  failedCount: number;
+  createdUsers: User[];
+  failures: UserImportFailure[];
+}
+
 export interface Workspace {
   id: string;
   name: string;
