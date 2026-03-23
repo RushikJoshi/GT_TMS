@@ -31,6 +31,7 @@ const COMPANY_STATUS_BADGES: Record<string, { label: string; className: string }
 
 interface Company {
   id: string;
+  organizationId?: string;
   name: string;
   email: string;
   usersCount: number;
@@ -192,7 +193,7 @@ export const CompaniesPage: React.FC = () => {
                   </div>
                   <div>
                     <p className="font-medium text-surface-900 dark:text-white text-sm">{c.name}</p>
-                    <p className="text-xs text-surface-400">{c.email}</p>
+                    <p className="text-xs text-surface-400">{c.organizationId || 'ORG pending'} · {c.email}</p>
                   </div>
                 </div>
               )

@@ -100,6 +100,7 @@ export async function review(req, res, next) {
       role,
       id: req.params.id,
       action: req.body.action,
+      rating: req.body.rating,
       reviewRemark: req.body.reviewRemark,
     });
     if (!qt) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Quick task not found' } });

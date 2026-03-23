@@ -62,6 +62,7 @@ const taskSchema = new mongoose.Schema(
       completedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
       completionRemark: { type: String, trim: true, maxlength: 5000, default: '' },
       reviewStatus: { type: String, enum: reviewStatuses, default: 'pending' },
+      rating: { type: Number, min: 1, max: 5, default: null },
       reviewRemark: { type: String, trim: true, maxlength: 5000, default: '' },
       reviewedAt: { type: Date, default: null },
       reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
@@ -135,12 +136,14 @@ taskSchema.set('toJSON', {
           completedBy: ret.completionReview.completedBy ? String(ret.completionReview.completedBy) : undefined,
           completionRemark: ret.completionReview.completionRemark || '',
           reviewStatus: ret.completionReview.reviewStatus || 'pending',
+          rating: typeof ret.completionReview.rating === 'number' ? ret.completionReview.rating : undefined,
           reviewRemark: ret.completionReview.reviewRemark || '',
           reviewedAt: ret.completionReview.reviewedAt ? new Date(ret.completionReview.reviewedAt).toISOString() : undefined,
           reviewedBy: ret.completionReview.reviewedBy ? String(ret.completionReview.reviewedBy) : undefined,
         }
       : {
           reviewStatus: 'pending',
+          rating: undefined,
           completionRemark: '',
           reviewRemark: '',
         };

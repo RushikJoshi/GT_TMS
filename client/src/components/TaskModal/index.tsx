@@ -22,6 +22,34 @@ interface TaskModalProps {
   onClose: () => void;
 }
 
+type ChecklistItem = { id: string; text: string; done: boolean };
+
+function parseChecklist(value?: string) {
+  const lines = String(value || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (!lines.length) return [{ id: generateId(), text: '', done: false }] as ChecklistItem[];
+
+  return lines.map((line) => {
+    const checked = /^\[(x|X)\]\s*/.test(line);
+    const unchecked = /^\[\s\]\s*/.test(line);
+    return {
+      id: generateId(),
+      done: checked,
+      text: line.replace(/^\[(x|X|\s)\]\s*/, '').replace(/^-+\s*/, ''),
+    };
+  }) as ChecklistItem[];
+}
+
+function serializeChecklist(items: ChecklistItem[]) {
+  return items
+    .filter((item) => item.text.trim())
+    .map((item) => `[${item.done ? 'x' : ' '}] ${item.text.trim()}`)
+    .join('\n');
+}
+
 export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => {
   const { updateTask, deleteTask, projects, users, bootstrap } = useAppStore();
   const { user } = useAuthStore();
@@ -29,8 +57,9 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => 
   const [newComment, setNewComment] = useState('');
   const [comments, setComments] = useState<Comment[]>(task?.comments || []);
   const [activeTab, setActiveTab] = useState<'details' | 'activity'>('details');
-  const [completionRemark, setCompletionRemark] = useState(task?.completionReview?.completionRemark || '');
-  const [reviewRemark, setReviewRemark] = useState(task?.completionReview?.reviewRemark || '');
+  const [completionChecklist, setCompletionChecklist] = useState<ChecklistItem[]>(parseChecklist(task?.completionReview?.completionRemark));
+  const [reviewChecklist, setReviewChecklist] = useState<ChecklistItem[]>(parseChecklist(task?.completionReview?.reviewRemark));
+  const [rating, setRating] = useState<number>(task?.completionReview?.rating || 0);
   const { register, handleSubmit } = useForm<{ title: string }>();
 
   if (!task) return null;
@@ -64,10 +93,37 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => 
     }
   };
 
+  const updateChecklistItem = (
+    setter: React.Dispatch<React.SetStateAction<ChecklistItem[]>>,
+    id: string,
+    updates: Partial<ChecklistItem>
+  ) => {
+    setter((items) => items.map((item) => (item.id === id ? { ...item, ...updates } : item)));
+  };
+
+  const removeChecklistItem = (
+    setter: React.Dispatch<React.SetStateAction<ChecklistItem[]>>
+  , id: string) => {
+    setter((items) => {
+      const next = items.filter((item) => item.id !== id);
+      return next.length ? next : [{ id: generateId(), text: '', done: false }];
+    });
+  };
+
+  const addChecklistItem = (
+    setter: React.Dispatch<React.SetStateAction<ChecklistItem[]>>
+  ) => {
+    setter((items) => [...items, { id: generateId(), text: '', done: false }]);
+  };
+
+  const completionRemark = serializeChecklist(completionChecklist);
+  const reviewRemark = serializeChecklist(reviewChecklist);
+
   const handleReview = async (action: 'approve' | 'changes_requested') => {
     try {
       const response = await tasksService.review(task.id, {
         action,
+        rating: action === 'approve' ? rating : undefined,
         reviewRemark: reviewRemark.trim() || undefined,
       });
       updateTask(task.id, response.data.data ?? response.data);
@@ -190,15 +246,42 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => 
 
                 {(task.status === 'done' || completionReview?.completedAt) && (
                   <div>
-                    <label className="label">Completion Remark</label>
-                    <textarea
-                      value={completionRemark}
-                      onChange={e => setCompletionRemark(e.target.value)}
-                      onBlur={() => { void persistTaskUpdate({ completionRemark }, 'Completion remark update failed'); }}
-                      placeholder="Add completion notes..."
-                      className="input h-auto min-h-[90px] py-2 resize-none"
-                      rows={3}
-                    />
+                    <div className="mb-2 flex items-center justify-between">
+                      <label className="label mb-0">Completion Remark</label>
+                      <button
+                        type="button"
+                        onClick={() => { void persistTaskUpdate({ completionRemark }, 'Completion remark update failed'); }}
+                        className="btn-secondary btn-sm"
+                      >
+                        Save Remark
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {completionChecklist.map((item) => (
+                        <div key={item.id} className="flex items-center gap-2 rounded-xl border border-surface-200 bg-white px-3 py-2 dark:border-surface-700 dark:bg-surface-900">
+                          <input
+                            type="checkbox"
+                            checked={item.done}
+                            onChange={(e) => updateChecklistItem(setCompletionChecklist, item.id, { done: e.target.checked })}
+                            className="rounded"
+                          />
+                          <input
+                            value={item.text}
+                            onChange={(e) => updateChecklistItem(setCompletionChecklist, item.id, { text: e.target.value })}
+                            onBlur={() => { void persistTaskUpdate({ completionRemark }, 'Completion remark update failed'); }}
+                            placeholder="Add completion checklist item..."
+                            className="flex-1 bg-transparent text-sm outline-none"
+                          />
+                          <button type="button" onClick={() => removeChecklistItem(setCompletionChecklist, item.id)} className="btn-ghost w-8 h-8 text-surface-400">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
+                      <button type="button" onClick={() => addChecklistItem(setCompletionChecklist)} className="btn-ghost btn-sm text-xs">
+                        <Plus size={12} />
+                        Add Item
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -217,18 +300,64 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => 
                         {(completionReview?.reviewStatus || 'pending').replace('_', ' ')}
                       </span>
                     </div>
-                    <textarea
-                      value={reviewRemark}
-                      onChange={e => setReviewRemark(e.target.value)}
-                      placeholder="Add review remarks..."
-                      className="input h-auto min-h-[90px] py-2 resize-none"
-                      rows={3}
-                    />
+                    <div className="space-y-2">
+                      {reviewChecklist.map((item) => (
+                        <div key={item.id} className="flex items-center gap-2 rounded-xl border border-surface-200 bg-white px-3 py-2 dark:border-surface-700 dark:bg-surface-900">
+                          <input
+                            type="checkbox"
+                            checked={item.done}
+                            onChange={(e) => updateChecklistItem(setReviewChecklist, item.id, { done: e.target.checked })}
+                            className="rounded"
+                          />
+                          <input
+                            value={item.text}
+                            onChange={(e) => updateChecklistItem(setReviewChecklist, item.id, { text: e.target.value })}
+                            placeholder="Add review checklist item..."
+                            className="flex-1 bg-transparent text-sm outline-none"
+                          />
+                          <button type="button" onClick={() => removeChecklistItem(setReviewChecklist, item.id)} className="btn-ghost w-8 h-8 text-surface-400">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
+                      <button type="button" onClick={() => addChecklistItem(setReviewChecklist)} className="btn-ghost btn-sm text-xs">
+                        <Plus size={12} />
+                        Add Item
+                      </button>
+                    </div>
                     {canReview && task.status === 'done' && (
-                      <div className="flex gap-2 mt-3">
-                        <button type="button" onClick={() => void handleReview('approve')} className="btn-primary btn-sm">Approve</button>
+                      <div className="mt-3 space-y-3">
+                        <div>
+                          <label className="label">Rating</label>
+                          <div className="flex gap-2">
+                            {[1, 2, 3, 4, 5].map((value) => (
+                              <button
+                                key={value}
+                                type="button"
+                                onClick={() => setRating(value)}
+                                className={cn(
+                                  'flex h-9 w-9 items-center justify-center rounded-xl border text-sm font-medium transition-all',
+                                  rating >= value
+                                    ? 'border-amber-400 bg-amber-50 text-amber-600 dark:border-amber-500 dark:bg-amber-950/30 dark:text-amber-300'
+                                    : 'border-surface-200 text-surface-500 hover:border-surface-300 dark:border-surface-700'
+                                )}
+                              >
+                                {value}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        {completionReview?.rating ? <p className="text-xs text-surface-400">Current rating: {completionReview.rating}/5</p> : null}
+                        <div className="flex gap-2">
+                        <button type="button" onClick={() => void handleReview('approve')} className="btn-primary btn-sm" disabled={rating < 1}>Approve</button>
                         <button type="button" onClick={() => void handleReview('changes_requested')} className="btn-secondary btn-sm">Request Changes</button>
+                        </div>
                       </div>
+                    )}
+                    {!canReview && (
+                      <p className="mt-3 text-xs text-surface-400">
+                        Only the reporter, assigned reporting person, or management can submit the review.
+                      </p>
                     )}
                   </div>
                 )}
@@ -408,6 +537,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => 
             <p>Updated {formatRelativeTime(task.updatedAt)}</p>
             {completionReview?.completedAt && <p>Completed {formatRelativeTime(completionReview.completedAt)}</p>}
             {completionReview?.reviewedAt && <p>Reviewed {formatRelativeTime(completionReview.reviewedAt)}</p>}
+            {completionReview?.rating ? <p>Rating {completionReview.rating}/5</p> : null}
           </div>
         </div>
       </div>

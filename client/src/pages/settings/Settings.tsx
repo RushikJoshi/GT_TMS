@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { ResponsiveContainer, AreaChart, Area, CartesianGrid, Tooltip, XAxis, YAxis, BarChart, Bar } from 'recharts';
 import {
   User,
   Lock,
@@ -15,6 +16,10 @@ import {
   Sun,
   Check,
   Loader2,
+  Star,
+  TrendingUp,
+  CheckCircle2,
+  ClipboardList,
 } from 'lucide-react';
 import { cn } from '../../utils/helpers';
 import { useAuthStore } from '../../context/authStore';
@@ -23,6 +28,7 @@ import { UserAvatar } from '../../components/UserAvatar';
 import { Tabs, TabsContent } from '../../components/ui';
 import { PROJECT_COLORS } from '../../app/constants';
 import { usersService, workspacesService } from '../../services/api';
+import type { UserPerformance } from '../../app/types';
 
 const TAB_ITEMS = [
   { value: 'profile', label: 'Profile', icon: <User size={14} /> },
@@ -66,6 +72,13 @@ type AppearanceSettings = {
   weekStartsOn: string;
 };
 
+type EmployeeIdSettings = {
+  prefix: string;
+  separator: string;
+  digits: number;
+  nextSequence: number;
+};
+
 const SettingRow: React.FC<{
   label: string;
   description?: string;
@@ -94,7 +107,15 @@ export const SettingsPage: React.FC = () => {
   const [selectedColor, setSelectedColor] = useState(user?.color || PROJECT_COLORS[0]);
   const [workspaceName, setWorkspaceName] = useState('');
   const [workspaceSlug, setWorkspaceSlug] = useState('');
+  const [employeeIdSettings, setEmployeeIdSettings] = useState<EmployeeIdSettings>({
+    prefix: workspace?.settings?.employeeIdConfig?.prefix || 'EMP',
+    separator: workspace?.settings?.employeeIdConfig?.separator || '-',
+    digits: workspace?.settings?.employeeIdConfig?.digits || 4,
+    nextSequence: workspace?.settings?.employeeIdConfig?.nextSequence || 1,
+  });
   const [message, setMessage] = useState('');
+  const [performance, setPerformance] = useState<UserPerformance | null>(null);
+  const [loadingPerformance, setLoadingPerformance] = useState(false);
   const workspace = workspaces[0];
 
   const defaultNotifications = useMemo<NotificationSettings>(() => ({
@@ -131,7 +152,33 @@ export const SettingsPage: React.FC = () => {
   useEffect(() => {
     setWorkspaceName(workspace?.name || '');
     setWorkspaceSlug(workspace?.slug || '');
+    setEmployeeIdSettings({
+      prefix: workspace?.settings?.employeeIdConfig?.prefix || 'EMP',
+      separator: workspace?.settings?.employeeIdConfig?.separator || '-',
+      digits: workspace?.settings?.employeeIdConfig?.digits || 4,
+      nextSequence: workspace?.settings?.employeeIdConfig?.nextSequence || 1,
+    });
   }, [workspace]);
+
+  useEffect(() => {
+    let active = true;
+    setLoadingPerformance(true);
+    usersService.myPerformance()
+      .then((res) => {
+        if (!active) return;
+        setPerformance(res.data?.data ?? null);
+      })
+      .catch(() => {
+        if (active) setPerformance(null);
+      })
+      .finally(() => {
+        if (active) setLoadingPerformance(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const { register: registerProfile, handleSubmit: handleProfile, reset: resetProfile } = useForm<ProfileForm>({
     defaultValues: {
@@ -259,6 +306,7 @@ export const SettingsPage: React.FC = () => {
           timezone: appearanceSettings.timezone,
           dateFormat: appearanceSettings.dateFormat,
           weekStartsOn: appearanceSettings.weekStartsOn,
+          employeeIdConfig: employeeIdSettings,
         },
       });
       await bootstrap();
@@ -334,6 +382,15 @@ export const SettingsPage: React.FC = () => {
                   <p className="font-display font-semibold text-surface-900 dark:text-white">{user.name}</p>
                   <p className="text-xs capitalize text-surface-400">{user.role.replace('_', ' ')}</p>
                 </div>
+                <div className="w-full rounded-2xl border border-surface-100 bg-surface-50 p-3 text-center dark:border-surface-800 dark:bg-surface-900/60">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-surface-400">Overall Performance</p>
+                  <p className="mt-1 text-3xl font-semibold text-surface-900 dark:text-white">
+                    {loadingPerformance ? '--' : `${performance?.summary.performanceScore ?? 0}%`}
+                  </p>
+                  <p className="mt-1 text-xs text-surface-500">
+                    {loadingPerformance ? 'Loading analytics...' : `${performance?.summary.averageRating ?? 0}/5 average rating`}
+                  </p>
+                </div>
                 <div>
                   <p className="mb-2 text-center text-xs text-surface-500">Profile color</p>
                   <div className="flex flex-wrap justify-center gap-1.5">
@@ -385,6 +442,122 @@ export const SettingsPage: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+              {[
+                {
+                  label: 'Assigned Tasks',
+                  value: performance?.summary.assignedTasks ?? 0,
+                  sub: `${performance?.summary.completedTasks ?? 0} completed`,
+                  icon: <ClipboardList size={16} />,
+                },
+                {
+                  label: 'Approval Rate',
+                  value: `${performance?.summary.approvalRate ?? 0}%`,
+                  sub: `${performance?.summary.approvedTasks ?? 0} approved completions`,
+                  icon: <CheckCircle2 size={16} />,
+                },
+                {
+                  label: 'Average Rating',
+                  value: `${performance?.summary.averageRating ?? 0}/5`,
+                  sub: `${performance?.summary.pendingReviewTasks ?? 0} pending reviews`,
+                  icon: <Star size={16} />,
+                },
+              ].map((item) => (
+                <div key={item.label} className="card p-5">
+                  <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-950/30 dark:text-brand-300">
+                    {item.icon}
+                  </div>
+                  <p className="text-2xl font-semibold text-surface-900 dark:text-white">{item.value}</p>
+                  <p className="mt-1 text-sm font-medium text-surface-700 dark:text-surface-300">{item.label}</p>
+                  <p className="mt-1 text-xs text-surface-400">{item.sub}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <div className="card p-5">
+                <div className="mb-4 flex items-center gap-2">
+                  <TrendingUp size={16} className="text-brand-600 dark:text-brand-300" />
+                  <h3 className="font-display font-semibold text-surface-900 dark:text-white">Performance Evolution</h3>
+                </div>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={performance?.monthlyTrend ?? []}>
+                      <defs>
+                        <linearGradient id="profilePerformanceFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#3366ff" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#3366ff" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.2)" />
+                      <XAxis dataKey="month" tickLine={false} axisLine={false} />
+                      <YAxis tickLine={false} axisLine={false} />
+                      <Tooltip />
+                      <Area type="monotone" dataKey="completed" stroke="#3366ff" fill="url(#profilePerformanceFill)" strokeWidth={2} />
+                      <Area type="monotone" dataKey="approved" stroke="#10b981" fill="transparent" strokeWidth={2} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              <div className="card p-5">
+                <div className="mb-4 flex items-center gap-2">
+                  <Star size={16} className="text-amber-500" />
+                  <h3 className="font-display font-semibold text-surface-900 dark:text-white">Rating Distribution</h3>
+                </div>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={performance?.ratingDistribution ?? []}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.2)" />
+                      <XAxis dataKey="rating" tickFormatter={(value) => `${value}★`} tickLine={false} axisLine={false} />
+                      <YAxis tickLine={false} axisLine={false} />
+                      <Tooltip formatter={(value: number) => [`${value}`, 'Tasks']} />
+                      <Bar dataKey="count" fill="#f59e0b" radius={[8, 8, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <div className="card p-5">
+                <h3 className="mb-4 font-display font-semibold text-surface-900 dark:text-white">Recent Task Evaluations</h3>
+                <div className="space-y-3">
+                  {(performance?.recentEvaluations ?? []).length ? performance?.recentEvaluations.map((item) => (
+                    <div key={item.id} className="rounded-2xl border border-surface-100 p-3 dark:border-surface-800">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-surface-900 dark:text-white">{item.title}</p>
+                          <p className="text-xs uppercase tracking-[0.14em] text-surface-400">
+                            {item.type === 'project_task' ? 'Project Task' : 'Quick Task'}
+                          </p>
+                        </div>
+                        <span className="badge bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-300">
+                          {item.rating ? `${item.rating}/5` : 'No rating'}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-xs text-surface-500">{item.reviewRemark || 'No review remark added.'}</p>
+                    </div>
+                  )) : <p className="text-sm text-surface-400">No reviewed completions yet.</p>}
+                </div>
+              </div>
+
+              <div className="card p-5">
+                <h3 className="mb-4 font-display font-semibold text-surface-900 dark:text-white">Project Footprint</h3>
+                <div className="space-y-3">
+                  {(performance?.activeProjects ?? []).length ? performance?.activeProjects.map((project) => (
+                    <div key={project.id} className="flex items-center justify-between gap-3 rounded-2xl border border-surface-100 px-4 py-3 dark:border-surface-800">
+                      <div>
+                        <p className="text-sm font-medium text-surface-900 dark:text-white">{project.name}</p>
+                        <p className="text-xs capitalize text-surface-400">{project.status.replace('_', ' ')}</p>
+                      </div>
+                      <span className="text-xs text-surface-500">Active member</span>
+                    </div>
+                  )) : <p className="text-sm text-surface-400">No active project memberships yet.</p>}
+                </div>
+              </div>
+            </div>
           </form>
         </TabsContent>
 
@@ -413,6 +586,30 @@ export const SettingsPage: React.FC = () => {
                     </div>
                     <button className="btn-primary btn-sm" type="button">Upgrade</button>
                   </div>
+                </div>
+                <div className="rounded-xl border border-surface-100 bg-surface-50 p-4 dark:border-surface-700 dark:bg-surface-800">
+                  <h4 className="mb-3 text-sm font-semibold text-surface-800 dark:text-surface-200">Employee ID Format</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label">Prefix</label>
+                      <input value={employeeIdSettings.prefix} onChange={(e) => setEmployeeIdSettings((prev) => ({ ...prev, prefix: e.target.value }))} className="input" />
+                    </div>
+                    <div>
+                      <label className="label">Separator</label>
+                      <input value={employeeIdSettings.separator} onChange={(e) => setEmployeeIdSettings((prev) => ({ ...prev, separator: e.target.value }))} className="input" />
+                    </div>
+                    <div>
+                      <label className="label">Digits</label>
+                      <input type="number" min={1} max={8} value={employeeIdSettings.digits} onChange={(e) => setEmployeeIdSettings((prev) => ({ ...prev, digits: Number(e.target.value) || 4 }))} className="input" />
+                    </div>
+                    <div>
+                      <label className="label">Next Sequence</label>
+                      <input type="number" min={1} value={employeeIdSettings.nextSequence} onChange={(e) => setEmployeeIdSettings((prev) => ({ ...prev, nextSequence: Number(e.target.value) || 1 }))} className="input" />
+                    </div>
+                  </div>
+                  <p className="mt-2 text-xs text-surface-400">
+                    Preview: {employeeIdSettings.prefix}{employeeIdSettings.separator}{String(employeeIdSettings.nextSequence).padStart(employeeIdSettings.digits, '0')}
+                  </p>
                 </div>
                 <div className="flex justify-end pt-2">
                   <button className="btn-primary btn-md" onClick={saveWorkspace} disabled={savingWorkspace}>

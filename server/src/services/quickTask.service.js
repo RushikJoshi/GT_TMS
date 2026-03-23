@@ -113,6 +113,7 @@ export async function updateQuickTask({ companyId, workspaceId, userId, id, upda
         completedBy: null,
         completionRemark: '',
         reviewStatus: 'pending',
+        rating: null,
         reviewRemark: '',
         reviewedAt: null,
         reviewedBy: null,
@@ -123,6 +124,7 @@ export async function updateQuickTask({ companyId, workspaceId, userId, id, upda
         completedBy: movedToDone ? userId : (current.completedBy || null),
         completionRemark: updates.completionRemark !== undefined ? (updates.completionRemark || '') : (current.completionRemark || ''),
         reviewStatus: movedToDone ? 'pending' : (current.reviewStatus || 'pending'),
+        rating: movedToDone ? null : (typeof current.rating === 'number' ? current.rating : null),
         reviewRemark: movedToDone ? '' : (current.reviewRemark || ''),
         reviewedAt: movedToDone ? null : (current.reviewedAt || null),
         reviewedBy: movedToDone ? null : (current.reviewedBy || null),
@@ -186,7 +188,7 @@ export async function updateQuickTask({ companyId, workspaceId, userId, id, upda
   return qt;
 }
 
-export async function reviewQuickTask({ companyId, workspaceId, userId, role, id, action, reviewRemark }) {
+export async function reviewQuickTask({ companyId, workspaceId, userId, role, id, action, reviewRemark, rating }) {
   const tenantId = companyId;
   const { QuickTask, ActivityLog, Notification } = getTenantModels();
   const qt = await QuickTask.findOne({ _id: id, tenantId, workspaceId });
@@ -214,9 +216,17 @@ export async function reviewQuickTask({ companyId, workspaceId, userId, role, id
     throw err;
   }
 
+  if (action === 'approve' && !(typeof rating === 'number' && rating >= 1 && rating <= 5)) {
+    const err = new Error('A rating between 1 and 5 is required to approve a completed quick task');
+    err.statusCode = 400;
+    err.code = 'RATING_REQUIRED';
+    throw err;
+  }
+
   qt.completionReview = {
     ...(qt.completionReview?.toObject?.() || qt.completionReview || {}),
     reviewStatus: action === 'approve' ? 'approved' : 'changes_requested',
+    rating: action === 'approve' ? rating : null,
     reviewRemark: reviewRemark || '',
     reviewedAt: new Date(),
     reviewedBy: userId,

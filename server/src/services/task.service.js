@@ -53,6 +53,7 @@ function defaultCompletionReview() {
     completedBy: null,
     completionRemark: '',
     reviewStatus: 'pending',
+    rating: null,
     reviewRemark: '',
     reviewedAt: null,
     reviewedBy: null,
@@ -76,6 +77,7 @@ function buildCompletionState({ existingReview, existingStatus, nextStatus, upda
     review.completedAt = new Date();
     review.completedBy = userId;
     review.reviewStatus = 'pending';
+    review.rating = null;
     review.reviewRemark = '';
     review.reviewedAt = null;
     review.reviewedBy = null;
@@ -332,7 +334,7 @@ export async function moveTaskStatus({ companyId, workspaceId, userId, role, tas
   return updateTask({ companyId, workspaceId, userId, role, taskId, updates: { status } });
 }
 
-export async function reviewTaskCompletion({ companyId, workspaceId, userId, role, taskId, action, reviewRemark }) {
+export async function reviewTaskCompletion({ companyId, workspaceId, userId, role, taskId, action, reviewRemark, rating }) {
   const tenantId = companyId;
   const { Task, ActivityLog } = getTenantModels();
   const task = await Task.findOne({
@@ -365,11 +367,19 @@ export async function reviewTaskCompletion({ companyId, workspaceId, userId, rol
     throw err;
   }
 
+  if (action === 'approve' && !(typeof rating === 'number' && rating >= 1 && rating <= 5)) {
+    const err = new Error('A rating between 1 and 5 is required to approve a completed task');
+    err.statusCode = 400;
+    err.code = 'RATING_REQUIRED';
+    throw err;
+  }
+
   const nextReviewStatus = action === 'approve' ? 'approved' : 'changes_requested';
   task.completionReview = {
     ...defaultCompletionReview(),
     ...(task.completionReview?.toObject?.() || task.completionReview || {}),
     reviewStatus: nextReviewStatus,
+    rating: action === 'approve' ? rating : null,
     reviewRemark: reviewRemark || '',
     reviewedAt: new Date(),
     reviewedBy: userId,

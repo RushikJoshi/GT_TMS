@@ -125,6 +125,20 @@ export const ProjectDetailPage: React.FC = () => {
     }
   };
 
+  const handleDeleteTask = async (taskId: string) => {
+    try {
+      await tasksService.delete(taskId);
+      await bootstrap();
+      emitSuccessToast('Task removed from the board.', 'Task Deleted');
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.error?.message ||
+        error?.response?.data?.message ||
+        'Task could not be deleted.';
+      emitErrorToast(message, 'Task delete failed');
+    }
+  };
+
   const statusCounts = Object.keys(STATUS_CONFIG).reduce((acc, key) => {
     acc[key as TaskStatus] = projectTasks.filter(t => t.status === key).length;
     return acc;
@@ -226,7 +240,7 @@ export const ProjectDetailPage: React.FC = () => {
       {/* Views */}
       <Tabs value={activeView} onValueChange={setActiveView} items={TAB_ITEMS} variant="underline">
         <TabsContent value="kanban" className="pt-4">
-          <KanbanBoard projectId={project.id} onOpenTask={openTask} onAddTask={handleAddTask} />
+          <KanbanBoard projectId={project.id} onOpenTask={openTask} onAddTask={handleAddTask} onDeleteTask={handleDeleteTask} />
         </TabsContent>
 
         <TabsContent value="list" className="pt-4">

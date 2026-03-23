@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Calendar, Flag, Trash2, Zap, MessageSquare, Send } from 'lucide-react';
-import { cn, formatDate } from '../../utils/helpers';
+import { ArrowLeft, Calendar, Flag, Trash2, Zap, MessageSquare, Send, Plus } from 'lucide-react';
+import { cn, formatDate, generateId } from '../../utils/helpers';
 import { useAppStore } from '../../context/appStore';
 import { useAuthStore } from '../../context/authStore';
 import { PRIORITY_CONFIG, STATUS_CONFIG } from '../../app/constants';
@@ -9,6 +9,30 @@ import { EmptyState } from '../../components/ui';
 import { QuickTaskModal } from '../../components/QuickTaskModal';
 import { quickTasksService } from '../../services/api';
 import type { Priority, QuickTaskStatus } from '../../app/types';
+
+type ChecklistItem = { id: string; text: string; done: boolean };
+
+function parseChecklist(value?: string) {
+  const lines = String(value || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (!lines.length) return [{ id: generateId(), text: '', done: false }] as ChecklistItem[];
+
+  return lines.map((line) => ({
+    id: generateId(),
+    done: /^\[(x|X)\]\s*/.test(line),
+    text: line.replace(/^\[(x|X|\s)\]\s*/, '').replace(/^-+\s*/, ''),
+  })) as ChecklistItem[];
+}
+
+function serializeChecklist(items: ChecklistItem[]) {
+  return items
+    .filter((item) => item.text.trim())
+    .map((item) => `[${item.done ? 'x' : ' '}] ${item.text.trim()}`)
+    .join('\n');
+}
 
 export const QuickTaskDetailPage: React.FC = () => {
   const navigate = useNavigate();
@@ -19,8 +43,9 @@ export const QuickTaskDetailPage: React.FC = () => {
 
   const [editOpen, setEditOpen] = useState(false);
   const [commentText, setCommentText] = useState('');
-  const [completionRemark, setCompletionRemark] = useState(task?.completionReview?.completionRemark || '');
-  const [reviewRemark, setReviewRemark] = useState(task?.completionReview?.reviewRemark || '');
+  const [completionChecklist, setCompletionChecklist] = useState<ChecklistItem[]>(parseChecklist(task?.completionReview?.completionRemark));
+  const [reviewChecklist, setReviewChecklist] = useState<ChecklistItem[]>(parseChecklist(task?.completionReview?.reviewRemark));
+  const [rating, setRating] = useState<number>(task?.completionReview?.rating || 0);
 
   if (!task) {
     return (
@@ -84,7 +109,7 @@ export const QuickTaskDetailPage: React.FC = () => {
 
   const saveCompletionRemark = async () => {
     try {
-      await syncQuickTask({ completionRemark });
+      await syncQuickTask({ completionRemark: serializeChecklist(completionChecklist) });
     } catch {}
   };
 
@@ -92,10 +117,33 @@ export const QuickTaskDetailPage: React.FC = () => {
     try {
       await quickTasksService.review(task.id, {
         action,
-        reviewRemark: reviewRemark.trim() || undefined,
+        rating: action === 'approve' ? rating : undefined,
+        reviewRemark: serializeChecklist(reviewChecklist).trim() || undefined,
       });
       await bootstrap();
     } catch {}
+  };
+
+  const updateChecklistItem = (
+    setter: React.Dispatch<React.SetStateAction<ChecklistItem[]>>,
+    id: string,
+    updates: Partial<ChecklistItem>
+  ) => {
+    setter((items) => items.map((item) => (item.id === id ? { ...item, ...updates } : item)));
+  };
+
+  const removeChecklistItem = (
+    setter: React.Dispatch<React.SetStateAction<ChecklistItem[]>>,
+    id: string
+  ) => {
+    setter((items) => {
+      const next = items.filter((item) => item.id !== id);
+      return next.length ? next : [{ id: generateId(), text: '', done: false }];
+    });
+  };
+
+  const addChecklistItem = (setter: React.Dispatch<React.SetStateAction<ChecklistItem[]>>) => {
+    setter((items) => [...items, { id: generateId(), text: '', done: false }]);
   };
 
   return (
@@ -218,15 +266,38 @@ export const QuickTaskDetailPage: React.FC = () => {
 
           {(task.status === 'done' || task.completionReview?.completedAt) && (
             <div className="card p-5">
-              <h3 className="font-display font-semibold text-surface-900 dark:text-white mb-3">Completion Remark</h3>
-              <textarea
-                value={completionRemark}
-                onChange={(e) => setCompletionRemark(e.target.value)}
-                onBlur={() => void saveCompletionRemark()}
-                placeholder="Add completion notes..."
-                className="input h-auto min-h-[100px] py-2 resize-none"
-                rows={4}
-              />
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="font-display font-semibold text-surface-900 dark:text-white">Completion Remark</h3>
+                <button type="button" onClick={() => void saveCompletionRemark()} className="btn-secondary btn-sm">
+                  Save Remark
+                </button>
+              </div>
+              <div className="space-y-2">
+                {completionChecklist.map((item) => (
+                  <div key={item.id} className="flex items-center gap-2 rounded-xl border border-surface-200 bg-white px-3 py-2 dark:border-surface-700 dark:bg-surface-900">
+                    <input
+                      type="checkbox"
+                      checked={item.done}
+                      onChange={(e) => updateChecklistItem(setCompletionChecklist, item.id, { done: e.target.checked })}
+                      className="rounded"
+                    />
+                    <input
+                      value={item.text}
+                      onChange={(e) => updateChecklistItem(setCompletionChecklist, item.id, { text: e.target.value })}
+                      onBlur={() => void saveCompletionRemark()}
+                      placeholder="Add completion checklist item..."
+                      className="flex-1 bg-transparent text-sm outline-none"
+                    />
+                    <button type="button" onClick={() => removeChecklistItem(setCompletionChecklist, item.id)} className="btn-ghost w-8 h-8 text-surface-400">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+                <button type="button" onClick={() => addChecklistItem(setCompletionChecklist)} className="btn-ghost btn-sm text-xs">
+                  <Plus size={12} />
+                  Add Item
+                </button>
+              </div>
             </div>
           )}
 
@@ -245,18 +316,64 @@ export const QuickTaskDetailPage: React.FC = () => {
                   {(task.completionReview?.reviewStatus || 'pending').replace('_', ' ')}
                 </span>
               </div>
-              <textarea
-                value={reviewRemark}
-                onChange={(e) => setReviewRemark(e.target.value)}
-                placeholder="Add reviewer remarks..."
-                className="input h-auto min-h-[100px] py-2 resize-none"
-                rows={4}
-              />
+              <div className="space-y-2">
+                {reviewChecklist.map((item) => (
+                  <div key={item.id} className="flex items-center gap-2 rounded-xl border border-surface-200 bg-white px-3 py-2 dark:border-surface-700 dark:bg-surface-900">
+                    <input
+                      type="checkbox"
+                      checked={item.done}
+                      onChange={(e) => updateChecklistItem(setReviewChecklist, item.id, { done: e.target.checked })}
+                      className="rounded"
+                    />
+                    <input
+                      value={item.text}
+                      onChange={(e) => updateChecklistItem(setReviewChecklist, item.id, { text: e.target.value })}
+                      placeholder="Add review checklist item..."
+                      className="flex-1 bg-transparent text-sm outline-none"
+                    />
+                    <button type="button" onClick={() => removeChecklistItem(setReviewChecklist, item.id)} className="btn-ghost w-8 h-8 text-surface-400">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+                <button type="button" onClick={() => addChecklistItem(setReviewChecklist)} className="btn-ghost btn-sm text-xs">
+                  <Plus size={12} />
+                  Add Item
+                </button>
+              </div>
               {canReview && task.status === 'done' && (
-                <div className="flex gap-2 mt-3">
-                  <button type="button" onClick={() => void handleReview('approve')} className="btn-primary btn-sm">Approve</button>
-                  <button type="button" onClick={() => void handleReview('changes_requested')} className="btn-secondary btn-sm">Request Changes</button>
+                <div className="mt-3 space-y-3">
+                  <div>
+                    <label className="label">Rating</label>
+                    <div className="flex gap-2">
+                      {[1, 2, 3, 4, 5].map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setRating(value)}
+                          className={cn(
+                            'flex h-9 w-9 items-center justify-center rounded-xl border text-sm font-medium transition-all',
+                            rating >= value
+                              ? 'border-amber-400 bg-amber-50 text-amber-600 dark:border-amber-500 dark:bg-amber-950/30 dark:text-amber-300'
+                              : 'border-surface-200 text-surface-500 hover:border-surface-300 dark:border-surface-700'
+                          )}
+                        >
+                          {value}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {task.completionReview?.rating ? <p className="text-xs text-surface-400">Current rating: {task.completionReview.rating}/5</p> : null}
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => void handleReview('approve')} className="btn-primary btn-sm" disabled={rating < 1}>Approve</button>
+                    <button type="button" onClick={() => void handleReview('changes_requested')} className="btn-secondary btn-sm">Request Changes</button>
+                  </div>
                 </div>
+              )}
+              {!canReview && (
+                <p className="mt-3 text-xs text-surface-400">
+                  Only the reporter or management can submit the review for this quick task.
+                </p>
               )}
             </div>
           )}
@@ -266,6 +383,7 @@ export const QuickTaskDetailPage: React.FC = () => {
             <p className="text-sm text-surface-400">Created {task.createdAt ? formatDate(task.createdAt) : '-'} · Updated {task.updatedAt ? formatDate(task.updatedAt) : '-'}</p>
             {task.completionReview?.completedAt && <p className="text-sm text-surface-400 mt-1">Completed {formatDate(task.completionReview.completedAt)}</p>}
             {task.completionReview?.reviewedAt && <p className="text-sm text-surface-400 mt-1">Reviewed {formatDate(task.completionReview.reviewedAt)}</p>}
+            {task.completionReview?.rating ? <p className="text-sm text-surface-400 mt-1">Rating {task.completionReview.rating}/5</p> : null}
           </div>
         </div>
 

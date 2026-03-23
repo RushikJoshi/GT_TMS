@@ -3,6 +3,7 @@ import API from '../../../../api/axios.ts';
 
 export interface Participant {
     _id: string;
+    id?: string;
     name: string;
     email: string;
     avatar?: string;
@@ -28,7 +29,7 @@ export interface Conversation {
 export interface Message {
     _id: string;
     conversationId: string;
-    senderId: string;
+    senderId: string | { _id?: string; id?: string; name?: string; avatar?: string };
     senderName: string;
     text: string;
     createdAt: string;
