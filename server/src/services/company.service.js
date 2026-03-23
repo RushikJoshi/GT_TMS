@@ -1,5 +1,6 @@
 import Company from '../models/Company.js';
 import AuthLookup from '../models/AuthLookup.js';
+import SystemSetting from '../models/SystemSetting.js';
 import { getTenantModels } from '../config/tenantDb.js';
 import { hashPassword } from '../utils/password.js';
 import { assertPasswordAllowed, formatGeneratedId, getCompanyIdConfig } from './settings.service.js';
@@ -104,7 +105,7 @@ export async function createCompanyWithAdmin({ name, adminName, adminEmail, admi
 
   await assertPasswordAllowed(adminPassword);
 
-  const { organizationId } = await reserveOrganizationId();
+  const { organizationId, nextSequenceUsed } = await reserveOrganizationId();
   const company = await Company.create({
     organizationId,
     name,
@@ -156,6 +157,11 @@ export async function createCompanyWithAdmin({ name, adminName, adminEmail, admi
     role: 'admin',
     status: 'active',
   });
+
+  await SystemSetting.updateOne(
+    { key: 'system' },
+    { $set: { 'idGeneration.company.nextSequence': nextSequenceUsed + 1 } }
+  );
 
   return {
     id: company.id,
