@@ -79,6 +79,13 @@ type EmployeeIdSettings = {
   nextSequence: number;
 };
 
+const DEFAULT_EMPLOYEE_ID_SETTINGS: EmployeeIdSettings = {
+  prefix: 'EMP',
+  separator: '-',
+  digits: 4,
+  nextSequence: 1,
+};
+
 const SettingRow: React.FC<{
   label: string;
   description?: string;
@@ -107,12 +114,7 @@ export const SettingsPage: React.FC = () => {
   const [selectedColor, setSelectedColor] = useState(user?.color || PROJECT_COLORS[0]);
   const [workspaceName, setWorkspaceName] = useState('');
   const [workspaceSlug, setWorkspaceSlug] = useState('');
-  const [employeeIdSettings, setEmployeeIdSettings] = useState<EmployeeIdSettings>({
-    prefix: workspace?.settings?.employeeIdConfig?.prefix || 'EMP',
-    separator: workspace?.settings?.employeeIdConfig?.separator || '-',
-    digits: workspace?.settings?.employeeIdConfig?.digits || 4,
-    nextSequence: workspace?.settings?.employeeIdConfig?.nextSequence || 1,
-  });
+  const [employeeIdSettings, setEmployeeIdSettings] = useState<EmployeeIdSettings>(DEFAULT_EMPLOYEE_ID_SETTINGS);
   const [message, setMessage] = useState('');
   const [performance, setPerformance] = useState<UserPerformance | null>(null);
   const [loadingPerformance, setLoadingPerformance] = useState(false);
@@ -153,10 +155,10 @@ export const SettingsPage: React.FC = () => {
     setWorkspaceName(workspace?.name || '');
     setWorkspaceSlug(workspace?.slug || '');
     setEmployeeIdSettings({
-      prefix: workspace?.settings?.employeeIdConfig?.prefix || 'EMP',
-      separator: workspace?.settings?.employeeIdConfig?.separator || '-',
-      digits: workspace?.settings?.employeeIdConfig?.digits || 4,
-      nextSequence: workspace?.settings?.employeeIdConfig?.nextSequence || 1,
+      prefix: workspace?.settings?.employeeIdConfig?.prefix || DEFAULT_EMPLOYEE_ID_SETTINGS.prefix,
+      separator: workspace?.settings?.employeeIdConfig?.separator || DEFAULT_EMPLOYEE_ID_SETTINGS.separator,
+      digits: workspace?.settings?.employeeIdConfig?.digits || DEFAULT_EMPLOYEE_ID_SETTINGS.digits,
+      nextSequence: workspace?.settings?.employeeIdConfig?.nextSequence || DEFAULT_EMPLOYEE_ID_SETTINGS.nextSequence,
     });
   }, [workspace]);
 
