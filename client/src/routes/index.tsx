@@ -22,6 +22,7 @@ import QuickTasksPage from '../pages/quicktasks/QuickTasks';
 import QuickTaskDetailPage from '../pages/quicktasks/QuickTaskDetail';
 import MyTasksPage from '../pages/tasks/MyTasks';
 import NotificationsPage from '../pages/notifications/Notifications';
+import MISDashboard from '../pages/mis/MISDashboard';
 import UserSettingsPage from '../pages/settings/Settings';
 
 // Admin pages
@@ -109,6 +110,7 @@ export const router = createBrowserRouter([
       { path: 'calendar', element: <CalendarPage /> },
       { path: 'teams', element: <TeamsPage /> },
       { path: 'reports', element: <ReportsPage /> },
+      { path: 'mis-dashboard', element: <MISDashboard /> },
       { path: 'notifications', element: <NotificationsPage /> },
       { path: 'quick-tasks', element: <QuickTasksPage /> },
       { path: 'quick-tasks/:id', element: <QuickTaskDetailPage /> },

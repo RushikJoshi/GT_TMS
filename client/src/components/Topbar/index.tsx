@@ -24,6 +24,7 @@ const BREADCRUMB_MAP: Record<string, string> = {
   permissions: 'Permissions',
   billing: 'Billing',
   'my-tasks': 'My Tasks',
+  'mis-dashboard': 'MIS Dashboard',
 };
 
 export const Topbar: React.FC = () => {
@@ -72,25 +73,12 @@ export const Topbar: React.FC = () => {
         'left-0'
       )}
     >
-      {/* Breadcrumbs - Simplified on mobile */}
-      <nav className="flex items-center gap-1 sm:gap-1.5 flex-1 min-w-0 mr-2 sm:mr-4 overflow-hidden">
-        {breadcrumbs.map((crumb, i) => (
-          <React.Fragment key={crumb.path}>
-            {i > 0 && <ChevronRight size={14} className="text-surface-300 flex-shrink-0 hidden sm:block" />}
-            <button
-              onClick={() => navigate(crumb.path)}
-              className={cn(
-                'text-sm font-medium truncate transition-colors',
-                i === breadcrumbs.length - 1
-                  ? 'text-surface-900 dark:text-white'
-                  : 'text-surface-400 hover:text-surface-700 dark:text-surface-500 dark:hover:text-surface-300 hidden sm:block'
-              )}
-            >
-              {crumb.label}
-            </button>
-          </React.Fragment>
-        ))}
-      </nav>
+      {/* Page Title - Always Uppercase */}
+      <div className="flex-1 min-w-0 mr-4">
+        <h1 className="text-xs sm:text-sm font-bold tracking-[0.2em] text-surface-900 dark:text-white uppercase">
+          {breadcrumbs[breadcrumbs.length - 1]?.label || ''}
+        </h1>
+      </div>
 
       {/* Search */}
       <div ref={searchRef} className="relative hidden md:block">

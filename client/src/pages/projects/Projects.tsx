@@ -250,11 +250,8 @@ export const ProjectsPage: React.FC = () => {
 
   return (
     <div className="max-w-full mx-auto">
-      <div className="page-header flex items-start justify-between flex-wrap gap-4">
-        <div>
-          <h1 className="page-title">Projects</h1>
-          <p className="page-subtitle">{projects.length} total projects across your workspace</p>
-        </div>
+      {/* Header Actions */}
+      <div className="flex justify-end pt-2">
         <button onClick={() => setShowModal(true)} className="btn-primary btn-md">
           <Plus size={16} />
           New Project

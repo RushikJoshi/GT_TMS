@@ -26,7 +26,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Projects', icon: FolderKanban, path: '/projects' },
   { label: 'Calendar', icon: Calendar, path: '/calendar' },
   { label: 'Teams', icon: Users, path: '/teams', roles: ['super_admin', 'admin', 'manager', 'team_leader'] },
-  { label: 'Reports', icon: BarChart3, path: '/reports', roles: ['super_admin', 'admin', 'manager'] },
+  { label: 'MIS Dashboard', icon: BarChart3, path: '/mis-dashboard', roles: ['super_admin', 'admin', 'manager'] },
   { label: 'Activity Logs', icon: Activity, path: '/logs', roles: ['super_admin', 'admin', 'manager', 'team_leader'] },
   { label: 'Notifications', icon: Bell, path: '/notifications' },
 ];
@@ -36,7 +36,7 @@ const SUPER_ADMIN_NAV: NavItem[] = [
   { label: 'Projects', icon: FolderKanban, path: '/projects' },
   { label: 'Calendar', icon: Calendar, path: '/calendar' },
   { label: 'Teams', icon: Users, path: '/teams' },
-  { label: 'Reports', icon: BarChart3, path: '/reports' },
+  { label: 'MIS Dashboard', icon: BarChart3, path: '/mis-dashboard' },
   { label: 'Activity Logs', icon: Activity, path: '/logs' },
   { label: 'Notifications', icon: Bell, path: '/notifications' },
 ];
@@ -46,6 +46,7 @@ const PLATFORM_ADMIN_NAV: NavItem[] = [
   { label: 'Companies', icon: Building2, path: '/companies' },
   { label: 'Users List', icon: UserCircle, path: '/users' },
   { label: 'Reports & Analytics', icon: BarChart3, path: '/reports' },
+  { label: 'MIS Dashboard', icon: Zap, path: '/mis-dashboard' },
   { label: 'Settings', icon: Settings, path: '/settings' },
   { label: 'System Logs', icon: Briefcase, path: '/logs' },
   { label: 'Notifications', icon: Bell, path: '/notifications' },

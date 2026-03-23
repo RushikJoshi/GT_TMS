@@ -11,6 +11,7 @@ import usersRoutes from './modules/users.routes.js';
 import workspacesRoutes from './modules/workspaces.routes.js';
 import companiesRoutes from './modules/companies.routes.js';
 import settingsRoutes from './modules/settings.routes.js';
+import misRoutes from './modules/mis.routes.js';
 
 const router = express.Router();
 
@@ -25,6 +26,7 @@ router.use('/quick-tasks', quickTasksRoutes);
 router.use('/notifications', notificationsRoutes);
 router.use('/activity', activityRoutes);
 router.use('/settings', settingsRoutes);
+router.use('/mis', misRoutes);
 
 export default router;
 

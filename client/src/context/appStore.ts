@@ -36,6 +36,10 @@ interface AppStore {
   deleteQuickTask: (id: string) => void;
   setQuickTaskStatus: (id: string, status: QuickTaskStatus) => void;
 
+  addTeam: (team: Team) => void;
+  updateTeam: (id: string, updates: Partial<Team>) => void;
+  deleteTeam: (id: string) => void;
+
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
 
@@ -118,6 +122,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
   setQuickTaskStatus: (id, status) => set(s => ({
     quickTasks: s.quickTasks.map(t => t.id === id ? { ...t, status, updatedAt: new Date().toISOString() } : t),
   })),
+
+  addTeam: (team) => set(s => ({ teams: [team, ...s.teams] })),
+  updateTeam: (id, updates) => set(s => ({
+    teams: s.teams.map(t => t.id === id ? { ...t, ...updates } : t),
+  })),
+  deleteTeam: (id) => set(s => ({ teams: s.teams.filter(t => t.id !== id) })),
 
   markNotificationRead: (id) => set(s => ({
     notifications: s.notifications.map(n => n.id === id ? { ...n, isRead: true } : n),

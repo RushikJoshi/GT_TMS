@@ -147,6 +147,15 @@ export const notificationsService = {
   getBroadcastHistory: () => api.get('/notifications/broadcast-history'),
 };
 
+export const misService = {
+  getSummary: () => api.get('/mis/summary'),
+  getTasks: () => api.get('/mis/tasks'),
+  getEmployees: () => api.get('/mis/employees'),
+  getProjects: () => api.get('/mis/projects'),
+  getTime: () => api.get('/mis/time'),
+  getWeeklyReport: () => api.get('/mis/weekly-report'),
+};
+
 export const activityService = {
   getRecent: (limit = 50) => api.get('/activity', { params: { limit } }),
   list: (params?: { limit?: number; q?: string; type?: string; entityType?: string; days?: number }) =>

@@ -7,6 +7,8 @@ import { UserAvatar } from '../../components/UserAvatar';
 import { Modal } from '../../components/Modal';
 import { ProgressBar, EmptyState } from '../../components/ui';
 import type { Team } from '../../app/types';
+import { teamsService } from '../../services/api';
+import { emitSuccessToast } from '../../context/toastBus';
 
 const TeamCard: React.FC<{ team: Team; onOpen: (t: Team) => void }> = ({ team, onOpen }) => {
   const { projects, tasks, users } = useAppStore();
@@ -162,6 +164,149 @@ const TeamDetailModal: React.FC<{ team: Team | null; onClose: () => void }> = ({
   );
 };
 
+const CreateTeamModal: React.FC<{
+  open: boolean;
+  onClose: () => void;
+  onCreated: (team: Team) => void;
+}> = ({ open, onClose, onCreated }) => {
+  const { users, projects, addTeam } = useAppStore();
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [color, setColor] = useState('#6366f1');
+  const [leaderId, setLeaderId] = useState('');
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
+  const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const colors = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#10b981', '#06b6d4', '#3b82f6'];
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || !leaderId) return;
+
+    setLoading(true);
+    try {
+      const res = await teamsService.create({
+        name,
+        description,
+        color,
+        leaderId,
+        members: selectedMembers,
+        projectIds: selectedProjects,
+      });
+
+      const newTeam = res.data.data ?? res.data;
+      addTeam(newTeam);
+      onCreated(newTeam);
+      emitSuccessToast('Team created successfully!');
+      handleClose();
+    } catch (err) {
+      // Error handled by interceptor
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClose = () => {
+    setName('');
+    setDescription('');
+    setColor('#6366f1');
+    setLeaderId('');
+    setSelectedMembers([]);
+    setSelectedProjects([]);
+    onClose();
+  };
+
+  return (
+    <Modal open={open} onClose={handleClose} title="Create New Team" size="md">
+      <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        <div>
+          <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1.5">Team Name *</label>
+          <input
+            required
+            type="text"
+            className="input-field"
+            placeholder="e.g. Design Team"
+            value={name}
+            onChange={e => setName(e.target.value)}
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1.5">Description</label>
+          <textarea
+            className="input-field min-h-[80px]"
+            placeholder="What does this team do?"
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-2">Team Color</label>
+          <div className="flex flex-wrap gap-2">
+            {colors.map(c => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setColor(c)}
+                className={cn(
+                  "w-8 h-8 rounded-full border-2 transition-transform",
+                  color === c ? "border-brand-500 scale-110" : "border-transparent hover:scale-105"
+                )}
+                style={{ backgroundColor: c }}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1.5">Team Leader *</label>
+            <select
+              required
+              className="input-field"
+              value={leaderId}
+              onChange={e => setLeaderId(e.target.value)}
+            >
+              <option value="">Select Leader</option>
+              {users.map(u => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1.5">Team Members</label>
+          <select
+            multiple
+            className="input-field min-h-[120px]"
+            value={selectedMembers}
+            onChange={e => setSelectedMembers(Array.from(e.target.selectedOptions, o => o.value))}
+          >
+            {users.map(u => (
+              <option key={u.id} value={u.id}>{u.name}</option>
+            ))}
+          </select>
+          <p className="text-[10px] text-surface-400 mt-1">Hold Ctrl/Cmd to select multiple members</p>
+        </div>
+
+        <div className="flex justify-end gap-3 mt-8">
+          <button type="button" onClick={handleClose} className="btn-ghost btn-md">Cancel</button>
+          <button
+            type="submit"
+            disabled={loading || !name.trim() || !leaderId}
+            className="btn-primary btn-md"
+          >
+            {loading ? 'Creating...' : 'Create Team'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
 export const TeamsPage: React.FC = () => {
   const { teams } = useAppStore();
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
@@ -169,15 +314,8 @@ export const TeamsPage: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto">
-      <div className="page-header flex items-start justify-between">
-        <div>
-          <h1 className="page-title">Teams</h1>
-          <p className="page-subtitle">{teams.length} teams in your workspace</p>
-        </div>
-        <button onClick={() => setShowCreate(true)} className="btn-primary btn-md">
-          <Plus size={16} /> New Team
-        </button>
-      </div>
+      {/* Header Actions removed as per request */}
+      <div className="pt-2" />
 
       {teams.length === 0 ? (
         <EmptyState
@@ -195,6 +333,13 @@ export const TeamsPage: React.FC = () => {
       )}
 
       <TeamDetailModal team={selectedTeam} onClose={() => setSelectedTeam(null)} />
+      <CreateTeamModal 
+        open={showCreate} 
+        onClose={() => setShowCreate(false)} 
+        onCreated={(t) => {
+          setSelectedTeam(t);
+        }}
+      />
     </div>
   );
 };
