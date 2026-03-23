@@ -130,6 +130,23 @@ export const DashboardPage: React.FC = () => {
       })()
     : null;
 
+  const platformEvents = useMemo(() => {
+    return platformActivity.slice(0, 4).map((item) => {
+      const type = String(item.type || '').toLowerCase();
+      const isAlert = type.includes('error') || type.includes('suspend') || type.includes('delete');
+      const isGrowth = type.includes('create') || type.includes('signup') || type.includes('register');
+      const isUpgrade = type.includes('update') || type.includes('upgrade');
+
+      return {
+        id: item.id,
+        description: item.description || 'Platform activity recorded',
+        time: formatRelativeTime(item.createdAt),
+        icon: isAlert ? <AlertTriangle size={12} /> : isUpgrade ? <TrendingUp size={12} /> : <Plus size={12} />,
+        color: isAlert ? 'bg-rose-500' : isUpgrade ? 'bg-brand-500' : 'bg-emerald-500',
+      };
+    });
+  }, [platformActivity]);
+
   const greeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Good morning';
@@ -451,16 +468,16 @@ export const DashboardPage: React.FC = () => {
           >
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-display font-semibold text-surface-900 dark:text-white">
-                Company Plans
+                Company Status Distribution
               </h3>
-              <span className="badge-blue">Total: 482</span>
+              <span className="badge-blue">Total: {companiesLoading ? '...' : companies.length}</span>
             </div>
             <div className="space-y-4">
-              {[
-                { label: 'Enterprise', count: 42, color: 'bg-indigo-500', percent: 45 },
-                { label: 'Business Pro', count: 156, color: 'bg-brand-500', percent: 35 },
-                { label: 'Free Trial', count: 284, color: 'bg-amber-500', percent: 20 },
-              ].map((plan, i) => (
+              {(planCounts || [
+                { label: 'Active', count: 0, color: 'bg-indigo-500', percent: 0 },
+                { label: 'Trial', count: 0, color: 'bg-brand-500', percent: 0 },
+                { label: 'Suspended', count: 0, color: 'bg-amber-500', percent: 0 },
+              ]).map((plan, i) => (
                 <div key={i} className="space-y-1.5">
                   <div className="flex items-center justify-between text-xs font-medium">
                     <span className="text-surface-600 dark:text-surface-400">{plan.label}</span>
@@ -484,31 +501,33 @@ export const DashboardPage: React.FC = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.35 }}
-            className="card p-5"
+            className="card p-4 sm:p-5"
           >
-            <h3 className="font-display font-semibold text-surface-900 dark:text-white mb-4">Platform Events</h3>
-            <div className="space-y-4">
-              {[
-                { type: 'signup', company: 'Nebula Labs', time: '12m ago', icon: <Plus size={12} />, color: 'bg-emerald-500' },
-                { type: 'upgrade', company: 'Gitakshmi', time: '1h ago', icon: <TrendingUp size={12} />, color: 'bg-brand-500' },
-                { type: 'alert', company: 'Global Tech', time: '3h ago', icon: <AlertTriangle size={12} />, color: 'bg-rose-500' },
-                { type: 'signup', company: 'Stellar Inc', time: '5h ago', icon: <Plus size={12} />, color: 'bg-emerald-500' },
-              ].map((event, i) => (
-                <div key={i} className="flex items-start gap-3">
-                  <div className={cn("w-6 h-6 rounded-lg flex items-center justify-center text-white flex-shrink-0 mt-0.5", event.color)}>
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <h3 className="font-display font-semibold text-surface-900 dark:text-white">Platform Events</h3>
+              {platformEvents.length > 0 && (
+                <span className="text-[11px] font-medium text-surface-400 whitespace-nowrap">
+                  Latest {platformEvents.length}
+                </span>
+              )}
+            </div>
+            <div className="space-y-3 sm:space-y-4">
+              {(platformEvents.length ? platformEvents : []).map((event) => (
+                <div key={event.id} className="flex items-start gap-2.5 sm:gap-3">
+                  <div className={cn("w-7 h-7 sm:w-6 sm:h-6 rounded-lg flex items-center justify-center text-white flex-shrink-0 mt-0.5", event.color)}>
                     {event.icon}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs text-surface-700 dark:text-surface-300">
-                      <span className="font-bold text-surface-900 dark:text-white">{event.company}</span>
-                      {event.type === 'signup' && ' registered a new account'}
-                      {event.type === 'upgrade' && ' upgraded to Enterprise'}
-                      {event.type === 'alert' && ' reached storage limit'}
+                    <p className="text-xs sm:text-[13px] leading-5 text-surface-700 dark:text-surface-300 break-words">
+                      {event.description}
                     </p>
-                    <p className="text-[10px] text-surface-400 mt-1">{event.time}</p>
+                    <p className="text-[10px] sm:text-[11px] text-surface-400 mt-1">{event.time}</p>
                   </div>
                 </div>
               ))}
+              {!platformEvents.length && !activityLoading && (
+                <p className="text-sm text-surface-400">No recent platform events found.</p>
+              )}
             </div>
           </motion.div>
         </div>

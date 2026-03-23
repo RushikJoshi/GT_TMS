@@ -149,7 +149,6 @@ export const Sidebar: React.FC = () => {
                   <p className="font-display font-bold text-surface-900 dark:text-white text-sm leading-tight truncate">
                     {workspace.name}
                   </p>
-                  <p className="text-xs text-surface-400 capitalize">{workspace.plan} plan</p>
                 </div>
                 <ChevronDown
                   size={14}

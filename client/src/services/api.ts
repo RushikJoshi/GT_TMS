@@ -86,6 +86,7 @@ export const usersService = {
   getById: (id: string) => api.get(`/users/${id}`),
   getPerformance: (id: string) => api.get(`/users/${id}/performance`),
   create: (data: unknown) => api.post('/users', data),
+  importBulk: (rows: unknown[]) => api.post('/users/import', { rows }),
   update: (id: string, data: unknown) => api.put(`/users/${id}`, data),
   delete: (id: string) => api.delete(`/users/${id}`),
   me: () => api.get('/users/me'),

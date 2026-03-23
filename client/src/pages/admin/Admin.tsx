@@ -12,7 +12,99 @@ import { usersService, workspacesService } from '../../services/api';
 import { UserAvatar } from '../../components/UserAvatar';
 import { Modal } from '../../components/Modal';
 import { Table, ProgressBar, EmptyState } from '../../components/ui';
-import type { User, Role } from '../../app/types';
+import { emitSuccessToast } from '../../context/toastBus';
+import type { User, Role, UserImportResult, UserImportRow } from '../../app/types';
+
+const USER_IMPORT_TEMPLATE_HEADERS = ['name', 'email', 'password', 'role', 'jobTitle', 'department'];
+
+function parseCsvLine(line: string) {
+  const values: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      values.push(current.trim());
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  values.push(current.trim());
+  return values.map((value) => value.replace(/^"|"$/g, '').trim());
+}
+
+function parseUsersCsv(content: string) {
+  const sanitized = content.replace(/^\uFEFF/, '');
+  const lines = sanitized
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length < 2) {
+    return { rows: [] as UserImportRow[], parseErrors: ['The file must contain a header row and at least one user row.'] };
+  }
+
+  const headers = parseCsvLine(lines[0]).map((header) => header.trim());
+  const requiredHeaders = ['name', 'email', 'password'];
+  const missingHeaders = requiredHeaders.filter((header) => !headers.includes(header));
+
+  if (missingHeaders.length > 0) {
+    return { rows: [] as UserImportRow[], parseErrors: [`Missing required columns: ${missingHeaders.join(', ')}`] };
+  }
+
+  const rows: UserImportRow[] = [];
+  const parseErrors: string[] = [];
+
+  for (let lineIndex = 1; lineIndex < lines.length; lineIndex += 1) {
+    const values = parseCsvLine(lines[lineIndex]);
+    const record = headers.reduce<Record<string, string>>((acc, header, index) => {
+      acc[header] = values[index] ?? '';
+      return acc;
+    }, {});
+
+    if (!record.name && !record.email && !record.password) continue;
+
+    const roleValue = (record.role || 'team_member').trim() as Role;
+    const allowedRoles: Role[] = ['admin', 'manager', 'team_leader', 'team_member'];
+    if (!allowedRoles.includes(roleValue)) {
+      parseErrors.push(`Row ${lineIndex + 1}: role must be one of ${allowedRoles.join(', ')}.`);
+      continue;
+    }
+
+    if (!record.name?.trim() || !record.email?.trim() || !record.password?.trim()) {
+      parseErrors.push(`Row ${lineIndex + 1}: name, email, and password are required.`);
+      continue;
+    }
+
+    rows.push({
+      rowNumber: lineIndex + 1,
+      name: record.name.trim(),
+      email: record.email.trim().toLowerCase(),
+      password: record.password.trim(),
+      role: roleValue,
+      jobTitle: record.jobTitle?.trim() || '',
+      department: record.department?.trim() || '',
+    });
+  }
+
+  return { rows, parseErrors };
+}
 
 // ─── Workspaces Admin ─────────────────────────────────────────────────────────
 export const AdminWorkspacesPage: React.FC = () => {
@@ -105,6 +197,7 @@ export const AdminUsersPage: React.FC = () => {
   const [search, setSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [roleFilter, setRoleFilter] = useState<Role | 'all'>('all');
   const [editForm, setEditForm] = useState({
     role: 'team_member' as Role,
@@ -123,6 +216,11 @@ export const AdminUsersPage: React.FC = () => {
   const [createError, setCreateError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [isSavingUser, setIsSavingUser] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importFileName, setImportFileName] = useState('');
+  const [importRows, setImportRows] = useState<UserImportRow[]>([]);
+  const [importParseErrors, setImportParseErrors] = useState<string[]>([]);
+  const [importResult, setImportResult] = useState<UserImportResult | null>(null);
   const { users, addUser, bootstrap } = useAppStore();
 
   const filtered = users.filter(u => {
@@ -157,6 +255,14 @@ export const AdminUsersPage: React.FC = () => {
     });
     setCreateError('');
     setIsCreating(false);
+  };
+
+  const resetImportState = () => {
+    setImportFileName('');
+    setImportRows([]);
+    setImportParseErrors([]);
+    setImportResult(null);
+    setIsImporting(false);
   };
 
   useEffect(() => {
@@ -208,6 +314,49 @@ export const AdminUsersPage: React.FC = () => {
     }
   };
 
+  const downloadImportTemplate = () => {
+    const csv = `${USER_IMPORT_TEMPLATE_HEADERS.join(',')}\n`;
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'user-import-template.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setImportResult(null);
+    setImportFileName(file.name);
+
+    const text = await file.text();
+    const parsed = parseUsersCsv(text);
+    setImportRows(parsed.rows);
+    setImportParseErrors(parsed.parseErrors);
+  };
+
+  const handleBulkImport = async () => {
+    if (importRows.length === 0) return;
+    setIsImporting(true);
+    setImportResult(null);
+    try {
+      const res = await usersService.importBulk(importRows);
+      const result = (res.data?.data ?? res.data) as UserImportResult;
+      setImportResult(result);
+      await bootstrap();
+      emitSuccessToast(
+        `${result.createdCount} user${result.createdCount === 1 ? '' : 's'} imported successfully.`,
+        'Import Completed'
+      );
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto">
       <div className="page-header flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
@@ -215,7 +364,21 @@ export const AdminUsersPage: React.FC = () => {
           <h1 className="page-title text-2xl sm:text-3xl">Users</h1>
           <p className="page-subtitle text-xs sm:text-sm">{users.length} users across all workspaces</p>
         </div>
-        <button onClick={() => setCreateOpen(true)} className="btn-primary btn-md w-full sm:w-auto"><Plus size={16} /> Create New User</button>
+        <div className="flex w-full sm:w-auto flex-col sm:flex-row gap-3">
+          <button onClick={downloadImportTemplate} className="btn-secondary btn-md w-full sm:w-auto">
+            Download Template
+          </button>
+          <button
+            onClick={() => {
+              resetImportState();
+              setImportOpen(true);
+            }}
+            className="btn-secondary btn-md w-full sm:w-auto"
+          >
+            Import Users
+          </button>
+          <button onClick={() => setCreateOpen(true)} className="btn-primary btn-md w-full sm:w-auto"><Plus size={16} /> Create New User</button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -329,6 +492,131 @@ export const AdminUsersPage: React.FC = () => {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        open={importOpen}
+        onClose={() => {
+          setImportOpen(false);
+          resetImportState();
+        }}
+        title="Import Users"
+        description="Upload an Excel-friendly CSV file to create multiple users at once."
+        size="lg"
+      >
+        <div className="p-4 sm:p-6 space-y-5">
+          <div className="rounded-2xl border border-dashed border-surface-200 bg-surface-50/80 p-4 sm:p-5">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-surface-900 dark:text-surface-100">Upload filled template</p>
+                <p className="text-xs text-surface-500">Required columns: `name`, `email`, `password`. Optional: `role`, `jobTitle`, `department`.</p>
+              </div>
+              <label className="btn-primary btn-md cursor-pointer w-full sm:w-auto text-center">
+                Choose CSV File
+                <input type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => { void handleImportFile(e); }} />
+              </label>
+            </div>
+            {importFileName && (
+              <p className="mt-3 text-xs text-surface-400">Selected file: {importFileName}</p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="rounded-xl bg-surface-50 p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-surface-400">Parsed Rows</p>
+              <p className="mt-1 text-2xl font-display font-bold text-surface-900 dark:text-surface-100">{importRows.length}</p>
+            </div>
+            <div className="rounded-xl bg-surface-50 p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-surface-400">Parse Errors</p>
+              <p className="mt-1 text-2xl font-display font-bold text-rose-500">{importParseErrors.length}</p>
+            </div>
+            <div className="rounded-xl bg-surface-50 p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-surface-400">Allowed Roles</p>
+              <p className="mt-1 text-sm font-medium text-surface-700 dark:text-surface-300">admin, manager, team_leader, team_member</p>
+            </div>
+          </div>
+
+          {importParseErrors.length > 0 && (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
+              <p className="text-sm font-semibold text-rose-700 mb-2">Fix these rows before import</p>
+              <div className="space-y-1 max-h-40 overflow-y-auto">
+                {importParseErrors.map((error, index) => (
+                  <p key={`${error}-${index}`} className="text-xs text-rose-600">{error}</p>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {importRows.length > 0 && (
+            <div className="rounded-2xl border border-surface-200 overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 bg-surface-50">
+                <p className="text-sm font-semibold text-surface-800 dark:text-surface-200">Preview</p>
+                <p className="text-xs text-surface-400">Showing first {Math.min(importRows.length, 5)} rows</p>
+              </div>
+              <div className="divide-y divide-surface-100">
+                {importRows.slice(0, 5).map((row) => (
+                  <div key={`${row.rowNumber}-${row.email}`} className="px-4 py-3 grid grid-cols-1 sm:grid-cols-[1.2fr_1.2fr_0.9fr] gap-2 text-sm">
+                    <div className="min-w-0">
+                      <p className="font-medium text-surface-900 dark:text-surface-100 truncate">{row.name}</p>
+                      <p className="text-xs text-surface-400">Row {row.rowNumber}</p>
+                    </div>
+                    <p className="text-surface-600 dark:text-surface-300 truncate">{row.email}</p>
+                    <p className="text-surface-500 capitalize">{ROLE_CONFIG[row.role || 'team_member'].label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {importResult && (
+            <div className="rounded-2xl border border-surface-200 p-4 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="rounded-xl bg-emerald-50 p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-600">Created</p>
+                  <p className="mt-1 text-2xl font-display font-bold text-emerald-700">{importResult.createdCount}</p>
+                </div>
+                <div className="rounded-xl bg-rose-50 p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-600">Failed</p>
+                  <p className="mt-1 text-2xl font-display font-bold text-rose-700">{importResult.failedCount}</p>
+                </div>
+                <div className="rounded-xl bg-surface-50 p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-surface-400">Total</p>
+                  <p className="mt-1 text-2xl font-display font-bold text-surface-900 dark:text-surface-100">{importResult.totalRows}</p>
+                </div>
+              </div>
+              {importResult.failures.length > 0 && (
+                <div className="space-y-1 max-h-40 overflow-y-auto">
+                  {importResult.failures.map((failure) => (
+                    <p key={`${failure.rowNumber}-${failure.email || failure.name || failure.message}`} className="text-xs text-rose-600">
+                      Row {failure.rowNumber} ({failure.email || failure.name || 'Unknown'}): {failure.message}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex flex-col-reverse sm:flex-row gap-3 pt-1">
+            <button
+              type="button"
+              onClick={() => {
+                setImportOpen(false);
+                resetImportState();
+              }}
+              className="btn-secondary btn-md flex-1"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              onClick={() => { void handleBulkImport(); }}
+              disabled={isImporting || importRows.length === 0 || importParseErrors.length > 0}
+              className="btn-primary btn-md flex-1"
+            >
+              {isImporting ? 'Importing...' : `Import ${importRows.length || ''} Users`}
+            </button>
+          </div>
+        </div>
       </Modal>
 
       <Modal
