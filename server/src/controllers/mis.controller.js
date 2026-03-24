@@ -1,324 +1,327 @@
-import { getTaskModel } from '../models/Task.js';
-import { getProjectModel } from '../models/Project.js';
+import { getMISModel } from '../models/MIS.js';
 import { getUserModel } from '../models/User.js';
+import { getProjectModel } from '../models/Project.js';
 import mongoose from 'mongoose';
 
-/**
- * Helper to get models with connection
- */
 const getModels = (conn) => ({
-  Task: getTaskModel(conn),
-  Project: getProjectModel(conn),
-  User: getUserModel(conn)
+  MIS: getMISModel(conn),
+  User: getUserModel(conn),
+  Project: getProjectModel(conn)
 });
 
-/**
- * GET /mis/summary
- */
-export async function getSummary(req, res, next) {
+// CREATE MIS
+export async function createMIS(req, res, next) {
   try {
     const { companyId, workspaceId } = req.auth;
-    const { Task } = getModels(mongoose.connection);
-
-    const match = { 
-      tenantId: new mongoose.Types.ObjectId(companyId), 
-      workspaceId: new mongoose.Types.ObjectId(workspaceId) 
-    };
-
-    const summary = await Task.aggregate([
-      { $match: match },
-      {
-        $group: {
-          _id: null,
-          totalTasks: { $sum: 1 },
-          completedTasks: { $sum: { $cond: [{ $eq: ["$status", "done"] }, 1, 0] } },
-          pendingTasks: { $sum: { $cond: [{ $ne: ["$status", "done"] }, 1, 0] } },
-          overdueTasks: { 
-            $sum: { 
-              $cond: [
-                { 
-                  $and: [
-                    { $ne: ["$status", "done"] },
-                    { $lt: ["$dueDate", new Date()] }
-                  ] 
-                }, 
-                1, 0
-              ] 
-            } 
-          },
-          totalEstimatedTime: { $sum: "$estimatedTime" },
-          totalActualTime: { $sum: "$trackedHours" }
-        }
-      },
-      {
-        $project: {
-          _id: 0,
-          totalTasks: 1,
-          completedTasks: 1,
-          pendingTasks: 1,
-          overdueTasks: 1,
-          totalEstimatedTime: 1,
-          totalActualTime: 1,
-          efficiency: {
-            $cond: [
-              { $gt: ["$totalActualTime", 0] },
-              { $multiply: [{ $divide: ["$totalEstimatedTime", "$totalActualTime"] }, 100] },
-              0
-            ]
-          }
-        }
-      }
-    ]);
-
-    return res.status(200).json({
-      success: true,
-      data: summary[0] || { totalTasks: 0, completedTasks: 0, pendingTasks: 0, overdueTasks: 0, totalEstimatedTime: 0, totalActualTime: 0, efficiency: 0 }
+    const userId = req.auth.sub || req.auth.id;
+    const { MIS } = getModels(mongoose.connection);
+    
+    const { week, projectId, goals, learnings, keyTasks, status } = req.body;
+    
+    const newMis = new MIS({
+      tenantId: companyId,
+      workspaceId,
+      employeeId: userId,
+      week,
+      projectId: projectId || undefined,
+      goals: goals || [],
+      learnings: learnings || [],
+      keyTasks: keyTasks || [],
+      status: status || 'draft'
     });
+    
+    await newMis.save();
+    return res.status(201).json({ success: true, data: newMis });
+  } catch (e) {
+    console.error("createMIS Error:", e);
+    return res.status(500).json({ success: false, message: e.message, stack: e.stack });
+  }
+}
+
+// GET SINGLE MIS
+export async function getMISById(req, res, next) {
+  try {
+    const { companyId } = req.auth;
+    const { MIS } = getModels(mongoose.connection);
+    
+    const mis = await MIS.findOne({ _id: req.params.id, tenantId: companyId }).populate('employeeId', 'name email avatar').populate('projectId', 'name');
+    if (!mis) return res.status(404).json({ success: false, message: 'MIS not found' });
+    
+    return res.status(200).json({ success: true, data: mis });
   } catch (e) {
     next(e);
   }
 }
 
-/**
- * GET /mis/tasks
- */
-export async function getTasks(req, res, next) {
+// GET MIS BY EMPLOYEE
+export async function getMISByEmployee(req, res, next) {
   try {
-    const { companyId, workspaceId } = req.auth;
-    const { Task } = getModels(mongoose.connection);
+    const { companyId } = req.auth;
+    const userId = req.auth.sub || req.auth.id;
+    const { MIS } = getModels(mongoose.connection);
+    
+    const misList = await MIS.find({ 
+      employeeId: req.params.employeeId === 'me' ? userId : req.params.employeeId, 
+      tenantId: companyId 
+    }).sort({ createdAt: -1 }).populate('projectId', 'name');
+    
+    return res.status(200).json({ success: true, data: misList });
+  } catch (e) {
+    next(e);
+  }
+}
 
-    const match = { 
-      tenantId: new mongoose.Types.ObjectId(companyId), 
-      workspaceId: new mongoose.Types.ObjectId(workspaceId) 
-    };
+// UPDATE MIS
+export async function updateMIS(req, res, next) {
+  try {
+    const { companyId } = req.auth;
+    const userId = req.auth.sub || req.auth.id;
+    const { MIS } = getModels(mongoose.connection);
+    
+    const misId = req.body.id || req.body._id; // client may pass ID in body
+    if (!misId) return res.status(400).json({ success: false, message: 'MIS ID is required' });
 
-    const tasksStats = await Task.aggregate([
-      { $match: match },
-      {
-        $group: {
-          _id: "$status",
-          count: { $sum: 1 }
-        }
+    const mis = await MIS.findOne({ _id: misId, tenantId: companyId });
+    if (!mis) return res.status(404).json({ success: false, message: 'MIS not found' });
+    
+    // Only allow editing in draft or rejected mode
+    if (mis.status !== 'draft' && mis.status !== 'rejected') {
+      return res.status(403).json({ success: false, message: 'Only draft or rejected MIS can be updated' });
+    }
+    
+    // Check permission
+    if (mis.employeeId.toString() !== userId && !['super_admin', 'admin', 'manager'].includes(req.auth.role)) {
+      return res.status(403).json({ success: false, message: 'Not authorized to edit this MIS' });
+    }
+    
+    const allowedUpdates = ['week', 'projectId', 'goals', 'learnings', 'keyTasks'];
+    allowedUpdates.forEach(key => {
+      if (req.body[key] !== undefined) {
+        mis[key] = req.body[key];
       }
-    ]);
+    });
+    
+    await mis.save();
+    return res.status(200).json({ success: true, data: mis });
+  } catch (e) {
+    console.error("updateMIS Error:", e);
+    return res.status(500).json({ success: false, message: e.message, stack: e.stack });
+  }
+}
 
-    const formatted = tasksStats.reduce((acc, curr) => {
-      acc[curr._id] = curr.count;
-      return acc;
-    }, {});
+// SUBMIT MIS
+export async function submitMIS(req, res, next) {
+  try {
+    const { companyId } = req.auth;
+    const userId = req.auth.sub || req.auth.id;
+    const { MIS } = getModels(mongoose.connection);
+    
+    const misId = req.body.id || req.body._id;
+    const mis = await MIS.findOne({ _id: misId, tenantId: companyId });
+    if (!mis) return res.status(404).json({ success: false, message: 'MIS not found' });
+    
+    if (mis.employeeId.toString() !== userId) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+    
+    if (mis.status !== 'draft' && mis.status !== 'rejected') {
+      return res.status(400).json({ success: false, message: 'Only Draft or Rejected MIS can be submitted' });
+    }
+    
+    mis.status = 'submitted';
+    await mis.save();
+    
+    return res.status(200).json({ success: true, data: mis, message: 'MIS submitted successfully' });
+  } catch (e) {
+    next(e);
+  }
+}
 
+// GET PENDING MIS (MANAGER)
+export async function getPendingMIS(req, res, next) {
+  try {
+    const { companyId } = req.auth;
+    const { MIS } = getModels(mongoose.connection);
+    
+    const misList = await MIS.find({ tenantId: companyId, status: 'submitted' })
+                             .populate('employeeId', 'name avatar')
+                             .populate('projectId', 'name')
+                             .sort({ updatedAt: -1 });
+                             
+    return res.status(200).json({ success: true, data: misList });
+  } catch (e) {
+    next(e);
+  }
+}
+
+// APPROVE MIS (MANAGER)
+export async function approveMIS(req, res, next) {
+  try {
+    const { companyId } = req.auth;
+    const { MIS } = getModels(mongoose.connection);
+    
+    const misId = req.body.id || req.body._id;
+    const managerComment = req.body.managerComment || '';
+    
+    const mis = await MIS.findOne({ _id: misId, tenantId: companyId });
+    if (!mis) return res.status(404).json({ success: false, message: 'MIS not found' });
+    
+    mis.status = 'approved';
+    mis.managerComment = managerComment;
+    await mis.save();
+    
+    return res.status(200).json({ success: true, data: mis, message: 'MIS approved' });
+  } catch (e) {
+    next(e);
+  }
+}
+
+// REJECT MIS (MANAGER)
+export async function rejectMIS(req, res, next) {
+  try {
+    const { companyId } = req.auth;
+    const { MIS } = getModels(mongoose.connection);
+    
+    const misId = req.body.id || req.body._id;
+    const managerComment = req.body.managerComment;
+    
+    if (!managerComment) {
+      return res.status(400).json({ success: false, message: 'Comment is mandatory for rejection' });
+    }
+    
+    const mis = await MIS.findOne({ _id: misId, tenantId: companyId });
+    if (!mis) return res.status(404).json({ success: false, message: 'MIS not found' });
+    
+    mis.status = 'rejected';
+    mis.managerComment = managerComment;
+    await mis.save();
+    
+    return res.status(200).json({ success: true, data: mis, message: 'MIS rejected' });
+  } catch (e) {
+    next(e);
+  }
+}
+
+// REPORTS: WEEKLY
+export async function getReportWeekly(req, res, next) {
+  try {
+    const { companyId } = req.auth;
+    const { week } = req.query; // optional filter
+    const { MIS } = getModels(mongoose.connection);
+    
+    const query = { tenantId: companyId };
+    if (week) query.week = week;
+    
+    const reports = await MIS.find(query)
+      .populate('employeeId', 'name email avatar')
+      .lean();
+      
+    const formatted = reports.map(r => ({
+      id: r._id,
+      employeeName: r.employeeId?.name || 'Unknown',
+      avatar: r.employeeId?.avatar,
+      week: r.week,
+      totalGoals: r.goals.length,
+      completedGoals: r.goals.filter(g => g.status === 'Done').length,
+      pendingGoals: r.goals.filter(g => g.status !== 'Done').length,
+      status: r.status
+    }));
+      
     return res.status(200).json({ success: true, data: formatted });
   } catch (e) {
     next(e);
   }
 }
 
-/**
- * GET /mis/employees
- */
-export async function getEmployees(req, res, next) {
+// REPORTS: EMPLOYEE
+export async function getReportEmployee(req, res, next) {
   try {
-    const { companyId, workspaceId } = req.auth;
-    const { Task, User } = getModels(mongoose.connection);
-
-    const users = await User.find({ tenantId: companyId, workspaceId }).lean();
+    const { companyId } = req.auth;
+    const { MIS, User } = getModels(mongoose.connection);
     
-    // Aggregate task counts per user
-    const stats = await Task.aggregate([
-      { $match: { 
-        tenantId: new mongoose.Types.ObjectId(companyId), 
-        workspaceId: new mongoose.Types.ObjectId(workspaceId) 
-      }},
-      { $unwind: "$assigneeIds" },
+    const pipelines = [
+      { $match: { tenantId: new mongoose.Types.ObjectId(companyId) } },
+      { $unwind: "$keyTasks" },
       {
         $group: {
-          _id: "$assigneeIds",
-          tasksAssigned: { $sum: 1 },
-          tasksCompleted: { $sum: { $cond: [{ $eq: ["$status", "done"] }, 1, 0] } },
-          delayedTasks: { 
-            $sum: { 
-              $cond: [
-                { $and: [{ $ne: ["$status", "done"] }, { $lt: ["$dueDate", new Date()] }] }, 
-                1, 0
-              ] 
-            } 
-          },
-          totalHours: { $sum: "$trackedHours" }
+          _id: "$employeeId",
+          totalTasks: { $sum: 1 },
+          completedTasks: { $sum: { $cond: [{ $eq: ["$keyTasks.status", "Done"] }, 1, 0] } }
         }
       }
-    ]);
-
-    const enriched = users.map(u => {
-      const userStat = stats.find(s => s._id.toString() === u._id.toString());
+    ];
+    
+    const stats = await MIS.aggregate(pipelines);
+    const users = await User.find({ tenantId: companyId }, 'name avatar').lean();
+    
+    const data = users.map(u => {
+      const s = stats.find(stat => stat._id.toString() === u._id.toString());
+      const total = s?.totalTasks || 0;
+      const completed = s?.completedTasks || 0;
+      const efficiency = total > 0 ? Math.round((completed / total) * 100) : 0;
+      
       return {
         id: u._id,
-        name: u.name,
-        avatar: u.avatar || '',
-        color: u.color || '#3366ff',
-        tasksAssigned: userStat?.tasksAssigned || 0,
-        tasksCompleted: userStat?.tasksCompleted || 0,
-        delayedTasks: userStat?.delayedTasks || 0,
-        totalHours: Math.round((userStat?.totalHours || 0) * 10) / 10,
-        productivity: (userStat?.tasksAssigned || 0) > 0 
-          ? Math.round((userStat.tasksCompleted / userStat.tasksAssigned) * 100) 
-          : 0
+        employeeName: u.name,
+        avatar: u.avatar,
+        totalTasks: total,
+        completedTasks: completed,
+        pendingTasks: total - completed,
+        efficiency
       };
     });
-
-    return res.status(200).json({ success: true, data: enriched });
-  } catch (e) {
-    next(e);
-  }
-}
-
-/**
- * GET /mis/projects
- */
-export async function getProjects(req, res, next) {
-  try {
-    const { companyId, workspaceId } = req.auth;
-    const { Task, Project } = getModels(mongoose.connection);
-
-    const projects = await Project.find({ tenantId: companyId, workspaceId }).lean();
-
-    const stats = await Task.aggregate([
-      { $match: { 
-        tenantId: new mongoose.Types.ObjectId(companyId), 
-        workspaceId: new mongoose.Types.ObjectId(workspaceId) 
-      }},
-      {
-        $group: {
-          _id: "$projectId",
-          totalTasks: { $sum: 1 },
-          completedTasks: { $sum: { $cond: [{ $eq: ["$status", "done"] }, 1, 0] } }
-        }
-      }
-    ]);
-
-    const enriched = projects.map(p => {
-      const s = stats.find(stat => stat._id && stat._id.toString() === p._id.toString());
-      const progress = s?.totalTasks ? Math.round((s.completedTasks / s.totalTasks) * 100) : 0;
-      return {
-        id: p._id,
-        name: p.name,
-        color: p.color || '#3366ff',
-        totalTasks: s?.totalTasks || 0,
-        completedTasks: s?.completedTasks || 0,
-        progress
-      };
-    });
-
-    return res.status(200).json({ success: true, data: enriched });
-  } catch (e) {
-    next(e);
-  }
-}
-
-/**
- * GET /mis/time
- */
-export async function getTime(req, res, next) {
-  try {
-    const { companyId, workspaceId } = req.auth;
-    const { Task } = getModels(mongoose.connection);
-
-    // Get last 7 days of activity grouped by day
-    const last7Days = new Date();
-    last7Days.setDate(last7Days.getDate() - 7);
-
-    const timeStats = await Task.aggregate([
-      { $match: { 
-        tenantId: new mongoose.Types.ObjectId(companyId), 
-        workspaceId: new mongoose.Types.ObjectId(workspaceId),
-        updatedAt: { $gte: last7Days }
-      }},
-      {
-        $group: {
-          _id: { $dateToString: { format: "%Y-%m-%d", date: "$updatedAt" } },
-          hours: { $sum: "$trackedHours" }
-        }
-      },
-      { $sort: { _id: 1 } }
-    ]);
-
-    const daysMap = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const formatted = timeStats.map(t => {
-      const d = new Date(t._id);
-      return {
-        day: daysMap[d.getDay()],
-        hours: Math.round(t.hours * 10) / 10
-      };
-    });
-
-    return res.status(200).json({ success: true, data: formatted });
-  } catch (e) {
-    next(e);
-  }
-}
-
-/**
- * GET /mis/weekly-report
- */
-export async function getWeeklyReport(req, res, next) {
-  try {
-    const { companyId, workspaceId } = req.auth;
-    const { Task, User } = getModels(mongoose.connection);
-
-    const oneWeekAgo = new Date();
-    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-
-    const tasks = await Task.find({ 
-      tenantId: companyId, 
-      workspaceId,
-      updatedAt: { $gte: oneWeekAgo }
-    }).lean();
-
-    const employees = await getEmployees(req, { 
-      status: () => ({ json: (data) => data.data }) 
-    }, next);
     
-    // Fix: getEmployees is an async endpoint, calling it directly as a function needs a mock res.
-    // Simpler: just fetch employee stats again or use the aggregation logic directly.
-    const employeePerf = await Task.aggregate([
-      { $match: { tenantId: new mongoose.Types.ObjectId(companyId), workspaceId: new mongoose.Types.ObjectId(workspaceId) }},
-      { $unwind: "$assigneeIds" },
+    return res.status(200).json({ success: true, data });
+  } catch (e) {
+    next(e);
+  }
+}
+
+// REPORTS: PROJECT
+export async function getReportProject(req, res, next) {
+  try {
+    const { companyId } = req.auth;
+    const { MIS, Project } = getModels(mongoose.connection);
+    
+    const pipelines = [
+      { $match: { tenantId: new mongoose.Types.ObjectId(companyId), projectId: { $exists: true, $ne: null } } },
+      { $unwind: "$keyTasks" },
       {
         $group: {
-          _id: "$assigneeIds",
-          completed: { $sum: { $cond: [{ $eq: ["$status", "done"] }, 1, 0] } },
-          assigned: { $sum: 1 }
+          _id: {
+             projectId: "$projectId",
+             employeeId: "$employeeId"
+          },
+          completedTasks: { $sum: { $cond: [{ $eq: ["$keyTasks.status", "Done"] }, 1, 0] } },
+          pendingTasks: { $sum: { $cond: [{ $ne: ["$keyTasks.status", "Done"] }, 1, 0] } },
+          statusArray: { $push: "$status" }
         }
       }
-    ]);
-
-    const users = await User.find({ _id: { $in: employeePerf.map(s => s._id) } }).lean();
+    ];
     
-    const perfs = employeePerf.map(s => {
-      const u = users.find(user => user._id.toString() === s._id.toString());
+    const stats = await MIS.aggregate(pipelines);
+    
+    // population for aggregation results
+    await MIS.populate(stats, { path: "_id.projectId", model: "Project", select: "name" });
+    await MIS.populate(stats, { path: "_id.employeeId", model: "User", select: "name avatar" });
+    
+    const data = stats.map(s => {
+      // average status or most common status? We can just pick the first or derive one.
+      const status = s.statusArray.includes('draft') ? 'In Progress' : 'Aligned';
+      
       return {
-        name: u?.name || 'Unknown',
-        productivity: Math.round((s.completed / s.assigned) * 100)
+        projectId: s._id.projectId?._id,
+        projectName: s._id.projectId?.name || 'Unknown',
+        employeeId: s._id.employeeId?._id,
+        employeeName: s._id.employeeId?.name || 'Unknown',
+        avatar: s._id.employeeId?.avatar,
+        completedTasks: s.completedTasks,
+        pendingTasks: s.pendingTasks,
+        status
       };
     });
-
-    const topPerformer = perfs.length > 0 ? perfs.reduce((prev, curr) => prev.productivity > curr.productivity ? prev : curr) : null;
-    const leastPerformer = perfs.length > 0 ? perfs.reduce((prev, curr) => prev.productivity < curr.productivity ? prev : curr) : null;
-
-    const completed = tasks.filter(t => t.status === 'done').length;
-    const delayed = tasks.filter(t => t.status !== 'done' && t.dueDate && new Date(t.dueDate) < new Date()).length;
-    const totalHours = tasks.reduce((acc, t) => acc + (t.trackedHours || 0), 0);
-
-    return res.status(200).json({
-      success: true,
-      data: {
-        totalTasksCompleted: completed,
-        totalDelayedTasks: delayed,
-        totalHoursWorked: Math.round(totalHours * 10) / 10,
-        topPerformer: topPerformer?.name || 'N/A',
-        leastPerformer: leastPerformer?.name || 'N/A',
-        period: 'Last 7 Days'
-      }
-    });
+    
+    return res.status(200).json({ success: true, data });
   } catch (e) {
     next(e);
   }

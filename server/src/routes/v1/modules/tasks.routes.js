@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { requireAuth } from '../../../middleware/auth.middleware.js';
 import { validateBody } from '../../../middleware/validate.middleware.js';
 import * as TasksController from '../../../controllers/tasks.controller.js';
+import * as AllTasksController from '../../../controllers/allTasks.controller.js';
 
 const router = express.Router();
 
@@ -80,9 +81,13 @@ const reviewTaskSchema = z.object({
   reviewRemark: z.string().trim().max(5000).optional(),
 });
 
-const addSubtaskSchema = z.object({
-  title: z.string().trim().min(1).max(300),
-});
+ const addSubtaskSchema = z.object({
+   title: z.string().trim().min(1).max(300),
+ });
+ 
+ const addCommentSchema = z.object({
+   content: z.string().trim().min(1).max(8000),
+ });
 
 const patchSubtaskSchema = z.object({
   title: z.string().trim().min(1).max(300).optional(),
@@ -90,8 +95,12 @@ const patchSubtaskSchema = z.object({
   order: z.number().optional(),
 });
 
+router.get('/overview', AllTasksController.getOverview);
+router.get('/all', AllTasksController.getAllTasks);
+
 router.get('/', TasksController.list);
-router.get('/:id', TasksController.getOne);
+ router.get('/detail/:id', TasksController.getDetail);
+ router.get('/:id', TasksController.getOne);
 router.post('/', validateBody(taskCreateSchema), TasksController.create);
 router.put('/:id', validateBody(taskUpdateSchema), TasksController.update);
 router.delete('/:id', TasksController.remove);
@@ -102,6 +111,7 @@ router.post('/:id/subtasks', validateBody(addSubtaskSchema), TasksController.add
 router.patch('/:id/subtasks/:subtaskId', validateBody(patchSubtaskSchema), TasksController.patchSubtask);
 router.delete('/:id/subtasks/:subtaskId', TasksController.deleteSubtask);
 
-router.post('/:id/attachments', upload.array('files', 10), TasksController.uploadAttachments);
+ router.post('/:id/attachments', upload.array('files', 10), TasksController.uploadAttachments);
+ router.post('/:id/comments', validateBody(addCommentSchema), TasksController.addComment);
 
 export default router;
