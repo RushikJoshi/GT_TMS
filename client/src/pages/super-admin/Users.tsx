@@ -235,17 +235,35 @@ export const UsersPage: React.FC = () => {
             },
             { key: 'createdAt', header: 'Created', render: (u: any) => <span className="text-xs text-surface-400">{formatDate(u.createdAt)}</span> },
             {
-              key: 'actions', header: '', align: 'right',
+              key: 'actions', header: 'Actions', align: 'right', width: '148px',
               render: (u: any) => (
-                <div className="flex items-center justify-end gap-1">
-                  <button onClick={() => { setSelectedUser(u); setShowModal(true); }} className="p-1.5 text-surface-400 hover:text-brand-600 transition-colors" title="Edit User">
-                    <Edit3 size={14} />
+                <div className="flex items-center justify-end gap-3 whitespace-nowrap pr-1">
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedUser(u); setShowModal(true); }}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600 shadow-sm hover:bg-brand-100 transition-colors"
+                    title="Edit User"
+                    aria-label={`Edit ${u.name}`}
+                  >
+                    <Edit3 size={18} strokeWidth={2.25} />
                   </button>
-                  <button onClick={() => { void handleToggleActive(u); }} className="p-1.5 text-surface-400 hover:text-rose-500 transition-colors" title={u.isActive ? 'Block User' : 'Activate User'}>
-                    <ShieldAlert size={14} />
+                  <button
+                    type="button"
+                    onClick={() => { void handleToggleActive(u); }}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600 shadow-sm hover:bg-amber-100 transition-colors"
+                    title={u.isActive ? 'Block User' : 'Activate User'}
+                    aria-label={`${u.isActive ? 'Block' : 'Activate'} ${u.name}`}
+                  >
+                    <ShieldAlert size={18} strokeWidth={2.25} />
                   </button>
-                  <button onClick={() => { void handleDeleteUser(u); }} className="p-1.5 text-surface-400 hover:text-rose-600 transition-colors" title="Delete User">
-                    <Trash2 size={14} />
+                  <button
+                    type="button"
+                    onClick={() => { void handleDeleteUser(u); }}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50 text-rose-600 shadow-sm hover:bg-rose-100 transition-colors"
+                    title="Delete User"
+                    aria-label={`Delete ${u.name}`}
+                  >
+                    <Trash2 size={18} strokeWidth={2.25} />
                   </button>
                 </div>
               )

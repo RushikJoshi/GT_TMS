@@ -141,6 +141,37 @@ export interface UserImportResult {
   failures: UserImportFailure[];
 }
 
+export interface QuickTaskImportRow {
+  rowNumber?: number;
+  title: string;
+  description?: string;
+  priority?: Priority;
+  status?: QuickTaskStatus;
+  assigneeEmails?: string;
+  assigneeNames?: string;
+  reporterEmail?: string;
+  reporterName?: string;
+  dueDate?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface QuickTaskImportFailure {
+  rowNumber: number;
+  title?: string;
+  assigneeEmails?: string;
+  message: string;
+  code?: string;
+}
+
+export interface QuickTaskImportResult {
+  totalRows: number;
+  createdCount: number;
+  failedCount: number;
+  createdTasks: QuickTask[];
+  failures: QuickTaskImportFailure[];
+}
+
 export interface Workspace {
   id: string;
   name: string;

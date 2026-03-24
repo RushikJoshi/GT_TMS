@@ -96,12 +96,21 @@ function getUploadsDirectorySizeMb() {
 }
 
 async function buildSystemStats(settings) {
-  const { User } = getTenantModels();
-  const [companiesCount, usersCount, onlineUsers] = await Promise.all([
-    Company.countDocuments(),
-    User.countDocuments(),
-    User.countDocuments({ isActive: true }),
-  ]);
+  const companies = await Company.find().select('_id');
+  const companyStats = await Promise.all(
+    companies.map(async (company) => {
+      const { User } = await getTenantModels(company._id);
+      const [usersCount, onlineUsers] = await Promise.all([
+        User.countDocuments(),
+        User.countDocuments({ isActive: true }),
+      ]);
+      return { usersCount, onlineUsers };
+    })
+  );
+
+  const companiesCount = companies.length;
+  const usersCount = companyStats.reduce((sum, item) => sum + item.usersCount, 0);
+  const onlineUsers = companyStats.reduce((sum, item) => sum + item.onlineUsers, 0);
 
   const storageUsedMb = getUploadsDirectorySizeMb();
   const storageLimitMb = settings.infrastructure?.storageLimitMb || 512000;
@@ -180,7 +189,7 @@ export async function getEffectiveSecuritySettings({ companyId = null, workspace
     return globalSettings;
   }
 
-  const { Workspace } = getTenantModels();
+  const { Workspace } = await getTenantModels(companyId);
   const workspace = await Workspace.findOne({ _id: workspaceId, tenantId: companyId }).select('settings.security');
   if (!workspace) {
     return globalSettings;

@@ -11,7 +11,7 @@ function isAdminRole(role) {
 
 /** @returns {Promise<mongoose.Types.ObjectId[]|null>} null = all projects allowed */
 export async function getAccessibleProjectIds({ tenantId, workspaceId, userId, role }) {
-  const { Project, Team } = getTenantModels();
+  const { Project, Team } = await getTenantModels(tenantId);
   if (isAdminRole(role)) return null;
 
   const uid = strId(userId);
@@ -91,7 +91,7 @@ function buildCompletionState({ existingReview, existingStatus, nextStatus, upda
 }
 
 async function getTaskReviewUsers({ tenantId, workspaceId, projectId, task, fallbackReporterId }) {
-  const { Project } = getTenantModels();
+  const { Project } = await getTenantModels(tenantId);
   const project = await Project.findOne({ _id: projectId, tenantId, workspaceId }).lean();
   return Array.from(
     new Set([
@@ -102,7 +102,7 @@ async function getTaskReviewUsers({ tenantId, workspaceId, projectId, task, fall
 }
 
 async function notifyUsers({ tenantId, workspaceId, userIds, type, title, message, relatedId }) {
-  const { Notification } = getTenantModels();
+  const { Notification } = await getTenantModels(tenantId);
   if (!userIds.length) return;
   await Notification.insertMany(
     userIds.map((userId) => ({
@@ -144,7 +144,7 @@ export async function listTasks({
   role,
 }) {
   const tenantId = companyId;
-  const { Task } = getTenantModels();
+  const { Task } = await getTenantModels(companyId);
   const filter = {
     tenantId,
     workspaceId,
@@ -189,7 +189,7 @@ export async function createTask({ companyId, workspaceId, userId, role, data })
     throw err;
   }
 
-  const { Task, Project, ActivityLog, Notification } = getTenantModels();
+  const { Task, Project, ActivityLog, Notification } = await getTenantModels(companyId);
   const task = await Task.create({
     tenantId,
     workspaceId,
@@ -247,7 +247,7 @@ export async function createTask({ companyId, workspaceId, userId, role, data })
 
 export async function getTaskById({ companyId, workspaceId, userId, role, taskId }) {
   const tenantId = companyId;
-  const { Task } = getTenantModels();
+  const { Task } = await getTenantModels(companyId);
   const task = await Task.findOne({
     _id: taskId,
     tenantId,
@@ -262,7 +262,7 @@ export async function getTaskById({ companyId, workspaceId, userId, role, taskId
 
 export async function updateTask({ companyId, workspaceId, userId, role, taskId, updates }) {
   const tenantId = companyId;
-  const { Task, ActivityLog } = getTenantModels();
+  const { Task, ActivityLog } = await getTenantModels(companyId);
   const existing = await Task.findOne({
     _id: taskId,
     tenantId,
@@ -336,7 +336,7 @@ export async function moveTaskStatus({ companyId, workspaceId, userId, role, tas
 
 export async function reviewTaskCompletion({ companyId, workspaceId, userId, role, taskId, action, reviewRemark, rating }) {
   const tenantId = companyId;
-  const { Task, ActivityLog } = getTenantModels();
+  const { Task, ActivityLog } = await getTenantModels(companyId);
   const task = await Task.findOne({
     _id: taskId,
     tenantId,
@@ -428,7 +428,7 @@ export async function reviewTaskCompletion({ companyId, workspaceId, userId, rol
 
 export async function deleteTask({ companyId, workspaceId, userId, role, taskId }) {
   const tenantId = companyId;
-  const { Task, Project, ActivityLog } = getTenantModels();
+  const { Task, Project, ActivityLog } = await getTenantModels(companyId);
   const existing = await Task.findOne({
     _id: taskId,
     tenantId,
@@ -464,7 +464,7 @@ export async function deleteTask({ companyId, workspaceId, userId, role, taskId 
 
 export async function addSubtask({ companyId, workspaceId, userId, role, taskId, title }) {
   const tenantId = companyId;
-  const { Task } = getTenantModels();
+  const { Task } = await getTenantModels(companyId);
   const task = await Task.findOne({
     _id: taskId,
     tenantId,
@@ -487,7 +487,7 @@ export async function addSubtask({ companyId, workspaceId, userId, role, taskId,
 
 export async function updateSubtask({ companyId, workspaceId, userId, role, taskId, subtaskId, updates }) {
   const tenantId = companyId;
-  const { Task } = getTenantModels();
+  const { Task } = await getTenantModels(companyId);
   const task = await Task.findOne({
     _id: taskId,
     tenantId,
@@ -513,7 +513,7 @@ export async function updateSubtask({ companyId, workspaceId, userId, role, task
 
 export async function removeSubtask({ companyId, workspaceId, userId, role, taskId, subtaskId }) {
   const tenantId = companyId;
-  const { Task } = getTenantModels();
+  const { Task } = await getTenantModels(companyId);
   const task = await Task.findOne({
     _id: taskId,
     tenantId,
@@ -537,7 +537,7 @@ export async function removeSubtask({ companyId, workspaceId, userId, role, task
 
 export async function addTaskAttachments({ companyId, workspaceId, userId, role, taskId, files, requestBaseUrl }) {
   const tenantId = companyId;
-  const { Task } = getTenantModels();
+  const { Task } = await getTenantModels(companyId);
 
   const task = await Task.findOne({
     _id: taskId,

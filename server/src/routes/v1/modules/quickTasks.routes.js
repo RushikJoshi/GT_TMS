@@ -27,6 +27,26 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
+const optionalTrimmedString = (max) =>
+  z.preprocess(
+    (value) => {
+      if (typeof value !== 'string') return value;
+      const trimmed = value.trim();
+      return trimmed === '' ? undefined : trimmed;
+    },
+    z.string().max(max).optional()
+  );
+
+const optionalEmailString = () =>
+  z.preprocess(
+    (value) => {
+      if (typeof value !== 'string') return value;
+      const trimmed = value.trim();
+      return trimmed === '' ? undefined : trimmed;
+    },
+    z.string().email().max(200).optional()
+  );
+
 const createSchema = z.object({
   title: z.string().trim().min(2).max(300),
   description: z.string().trim().max(10000).optional(),
@@ -37,6 +57,25 @@ const createSchema = z.object({
   assigneeId: z.string().optional().nullable(),
   dueDate: z.string().optional(),
   completionRemark: z.string().trim().max(5000).optional(),
+});
+
+const importSchema = z.object({
+  rows: z.array(
+    z.object({
+      rowNumber: z.number().int().positive().optional(),
+      title: z.string().trim().min(2).max(300),
+      description: optionalTrimmedString(10000),
+      status: z.enum(['todo', 'in_progress', 'done']).optional(),
+      priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
+      assigneeEmails: optionalTrimmedString(1000),
+      assigneeNames: optionalTrimmedString(1000),
+      reporterEmail: optionalEmailString(),
+      reporterName: optionalTrimmedString(200),
+      dueDate: optionalTrimmedString(50),
+      createdAt: optionalTrimmedString(50),
+      updatedAt: optionalTrimmedString(50),
+    })
+  ).min(1).max(500),
 });
 
 const addCommentSchema = z.object({
@@ -51,6 +90,7 @@ const reviewQuickTaskSchema = z.object({
 
 router.get('/', QuickTasksController.list);
 router.post('/', validateBody(createSchema), QuickTasksController.create);
+router.post('/import', validateBody(importSchema), QuickTasksController.importBulk);
 router.put('/:id', validateBody(createSchema.partial()), QuickTasksController.update);
 router.delete('/:id', QuickTasksController.remove);
 

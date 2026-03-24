@@ -16,7 +16,7 @@ function fileAgentLog(payload) {
 
 export async function listProjects({ companyId, workspaceId, status, department, q, page = 1, limit = 50 }) {
   const tenantId = companyId;
-  const { Project } = getTenantModels();
+  const { Project } = await getTenantModels(companyId);
   const filter = { tenantId, workspaceId };
   if (status) filter.status = status;
   if (department) filter.department = department;
@@ -33,14 +33,14 @@ export async function listProjects({ companyId, workspaceId, status, department,
 
 export async function getProject({ companyId, workspaceId, projectId }) {
   const tenantId = companyId;
-  const { Project } = getTenantModels();
+  const { Project } = await getTenantModels(companyId);
   const project = await Project.findOne({ _id: projectId, tenantId, workspaceId });
   return project;
 }
 
 export async function createProject({ companyId, workspaceId, userId, data }) {
   const tenantId = companyId;
-  const { Project, ActivityLog } = getTenantModels();
+  const { Project, ActivityLog } = await getTenantModels(companyId);
   const incomingMembers = Array.isArray(data.members) ? data.members.filter(Boolean) : [];
   const validMembers = incomingMembers.filter((memberId) => mongoose.Types.ObjectId.isValid(memberId));
   const members = Array.from(new Set([
@@ -122,7 +122,7 @@ export async function createProject({ companyId, workspaceId, userId, data }) {
 
 export async function updateProject({ companyId, workspaceId, userId, projectId, updates }) {
   const tenantId = companyId;
-  const { Project, ActivityLog } = getTenantModels();
+  const { Project, ActivityLog } = await getTenantModels(companyId);
   const normalizedUpdates = { ...updates };
 
   if (Array.isArray(updates.members)) {
@@ -201,7 +201,7 @@ export async function updateProject({ companyId, workspaceId, userId, projectId,
 
 export async function deleteProject({ companyId, workspaceId, userId, projectId }) {
   const tenantId = companyId;
-  const { Project, ActivityLog } = getTenantModels();
+  const { Project, ActivityLog } = await getTenantModels(companyId);
   const project = await Project.findOneAndDelete({ _id: projectId, tenantId, workspaceId });
   if (!project) return null;
 

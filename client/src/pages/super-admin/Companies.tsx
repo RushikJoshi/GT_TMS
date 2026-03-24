@@ -31,7 +31,9 @@ const COMPANY_STATUS_BADGES: Record<string, { label: string; className: string }
 
 interface Company {
   id: string;
+  tenantId?: string;
   organizationId?: string;
+  databaseName?: string;
   name: string;
   email: string;
   usersCount: number;
