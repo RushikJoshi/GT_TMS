@@ -65,7 +65,7 @@ const RequireRole: React.FC<{ roles: Role[]; children: React.ReactNode }> = ({ r
 
 const SettingsRoute: React.FC = () => {
   const { user } = useAuthStore();
-  if (user?.role === 'super_admin') {
+  if (user?.role === 'super_admin' || user?.role === 'admin') {
     return <SASettings />;
   }
   return <UserSettingsPage />;
