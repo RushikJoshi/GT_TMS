@@ -178,8 +178,8 @@ export const AdminWorkspacesPage: React.FC = () => {
               key: 'actions', header: '', align: 'right',
               render: () => (
                 <div className="flex items-center gap-1 justify-end">
-                  <button className="btn-ghost btn-sm w-7 h-7"><Edit3 size={13} /></button>
-                  <button className="btn-ghost btn-sm w-7 h-7 text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30"><Trash2 size={13} /></button>
+                  <button className="btn-ghost btn-lg w-17 h-17"><Edit3 size={17} /></button>
+                  <button className="btn-ghost btn-lg w-17 h-17 text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30"><Trash2 size={17} /></button>
                 </div>
               )
             },
@@ -311,6 +311,7 @@ export const AdminUsersPage: React.FC = () => {
       if (selectedUser?.id === userId) setSelectedUser(null);
     } catch {
       // shared interceptor shows the error
+      console.log("Error occured!! while deleting the user");
     }
   };
 
@@ -434,8 +435,8 @@ export const AdminUsersPage: React.FC = () => {
               key: 'actions', header: '', align: 'right',
               render: (u) => (
                 <div className="flex items-center gap-1 justify-end">
-                  <button onClick={() => setSelectedUser(u)} className="btn-ghost btn-sm w-7 h-7"><Edit3 size={13} /></button>
-                  <button onClick={() => { void handleDeleteUser(u.id); }} className="btn-ghost btn-sm w-7 h-7 text-rose-400 hover:bg-rose-50"><Trash2 size={13} /></button>
+                  <button onClick={() => setSelectedUser(u)} className="btn-ghost btn w-7 h-7"><Edit3 size={13} /></button>
+                  <button onClick={() => { void handleDeleteUser(u.id); }} className="btn-ghost btn w-7 h-7 text-rose-400 hover:bg-rose-50"><Trash2 size={13} /></button>
                 </div>
               )
             },

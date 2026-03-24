@@ -13,13 +13,13 @@ function fileAgentLog(payload) {
 
 export async function listQuickTasks({ companyId, workspaceId }) {
   const tenantId = companyId;
-  const { QuickTask } = getTenantModels();
+  const { QuickTask } = await getTenantModels(companyId);
   return QuickTask.find({ tenantId, workspaceId }).sort({ updatedAt: -1 });
 }
 
 export async function createQuickTask({ companyId, workspaceId, userId, data }) {
   const tenantId = companyId;
-  const { QuickTask, ActivityLog, Notification } = getTenantModels();
+  const { QuickTask, ActivityLog, Notification } = await getTenantModels(companyId);
 
   // #region agent log
   fetch('http://127.0.0.1:7462/ingest/1ea124be-0e11-4062-90a0-e3d9902964d6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'e243b9'},body:JSON.stringify({sessionId:'e243b9',runId:'pre-fix',hypothesisId:'H1',location:'server/src/services/quickTask.service.js:createQuickTask',message:'Creating quick task in DB',data:{tenantId:String(tenantId),workspaceId:String(workspaceId),reporterId:String(userId),assigneeIdsCount:Array.isArray(data?.assigneeIds)?data.assigneeIds.length:undefined,assigneeIdProvided:!!data?.assigneeId,status:data?.status,priority:data?.priority},timestamp:Date.now()})}).catch(()=>{});
@@ -32,7 +32,10 @@ export async function createQuickTask({ companyId, workspaceId, userId, data }) 
       ? [data.assigneeId]
       : [];
 
-  const qt = await QuickTask.create({
+  const reporterId = data.reporterId || userId;
+  const migrationMode = Boolean(data.migrationMode);
+
+  let qt = await QuickTask.create({
     tenantId,
     workspaceId,
     title: data.title,
@@ -40,22 +43,38 @@ export async function createQuickTask({ companyId, workspaceId, userId, data }) 
     status: data.status || 'todo',
     priority: data.priority || 'medium',
     assigneeIds,
-    reporterId: userId,
+    reporterId,
     dueDate: data.dueDate ? new Date(data.dueDate) : null,
   });
 
-  await ActivityLog.create({
-    tenantId,
-    workspaceId,
-    userId,
-    type: 'quick_task_created',
-    description: `Created quick task "${qt.title}"`,
-    entityType: 'quick_task',
-    entityId: qt._id,
-    metadata: {},
-  });
+  if (data.createdAt || data.updatedAt) {
+    await QuickTask.updateOne(
+      { _id: qt._id },
+      {
+        $set: {
+          ...(data.createdAt ? { createdAt: new Date(data.createdAt) } : {}),
+          ...(data.updatedAt ? { updatedAt: new Date(data.updatedAt) } : {}),
+        },
+      },
+      { timestamps: false }
+    );
+    qt = await QuickTask.findById(qt._id);
+  }
 
-  if (assigneeIds.length) {
+  if (!migrationMode) {
+    await ActivityLog.create({
+      tenantId,
+      workspaceId,
+      userId,
+      type: 'quick_task_created',
+      description: `Created quick task "${qt.title}"`,
+      entityType: 'quick_task',
+      entityId: qt._id,
+      metadata: {},
+    });
+  }
+
+  if (!migrationMode && assigneeIds.length) {
     await Notification.insertMany(
       assigneeIds.map((assignee) => ({
         tenantId,
@@ -73,9 +92,179 @@ export async function createQuickTask({ companyId, workspaceId, userId, data }) 
   return qt;
 }
 
+async function resolveAssigneeIdsFromEmails({ companyId, emails }) {
+  return resolveUserIdsFromIdentifiers({ companyId, identifiers: emails, fieldLabel: 'Assignees' });
+}
+
+function normalizeUserIdentifier(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function normalizeUserName(value) {
+  return normalizeUserIdentifier(value).replace(/\s+/g, ' ');
+}
+
+async function buildUserDirectory(companyId) {
+  const { User } = await getTenantModels(companyId);
+  const users = await User.find({ tenantId: companyId, isActive: true })
+    .select('_id email name employeeId')
+    .lean();
+
+  const byEmail = new Map();
+  const byEmployeeId = new Map();
+  const byName = new Map();
+
+  for (const user of users) {
+    const userId = String(user._id);
+    const email = normalizeUserIdentifier(user.email);
+    const employeeId = normalizeUserIdentifier(user.employeeId);
+    const name = normalizeUserName(user.name);
+
+    if (email) byEmail.set(email, userId);
+    if (employeeId) byEmployeeId.set(employeeId, userId);
+    if (name) {
+      const items = byName.get(name) || [];
+      items.push({ id: userId, name: user.name, email: user.email, employeeId: user.employeeId || '' });
+      byName.set(name, items);
+    }
+  }
+
+  return { byEmail, byEmployeeId, byName };
+}
+
+function resolveIdentifierFromDirectory(identifier, directory, fieldLabel) {
+  const normalized = normalizeUserIdentifier(identifier);
+  if (!normalized) return null;
+
+  if (directory.byEmail.has(normalized)) {
+    return directory.byEmail.get(normalized);
+  }
+
+  if (directory.byEmployeeId.has(normalized)) {
+    return directory.byEmployeeId.get(normalized);
+  }
+
+  const normalizedName = normalizeUserName(identifier);
+  const nameMatches = directory.byName.get(normalizedName) || [];
+  if (nameMatches.length === 1) {
+    return nameMatches[0].id;
+  }
+
+  if (nameMatches.length > 1) {
+    const err = new Error(`${fieldLabel} is ambiguous for "${identifier}". Multiple users share that name.`);
+    err.statusCode = 400;
+    err.code = 'USER_LOOKUP_AMBIGUOUS';
+    throw err;
+  }
+
+  const err = new Error(`${fieldLabel} not found for "${identifier}". Match by full name, email, or employee ID.`);
+  err.statusCode = 400;
+  err.code = 'USER_LOOKUP_NOT_FOUND';
+  throw err;
+}
+
+async function resolveUserIdsFromIdentifiers({ companyId, identifiers, fieldLabel }) {
+  const normalizedIdentifiers = Array.from(
+    new Set(
+      (Array.isArray(identifiers) ? identifiers : [])
+        .map((identifier) => String(identifier || '').trim())
+        .filter(Boolean)
+    )
+  );
+
+  if (!normalizedIdentifiers.length) {
+    return [];
+  }
+
+  const directory = await buildUserDirectory(companyId);
+  return normalizedIdentifiers.map((identifier) => resolveIdentifierFromDirectory(identifier, directory, fieldLabel)).filter(Boolean);
+}
+
+async function resolveSingleUserIdFromIdentifier({ companyId, identifier, fieldLabel }) {
+  const values = await resolveUserIdsFromIdentifiers({ companyId, identifiers: [identifier], fieldLabel });
+  return values[0] || null;
+}
+
+export async function importQuickTasksBulk({ companyId, workspaceId, userId, actorRole, rows }) {
+  if (!['super_admin', 'admin', 'manager', 'team_leader'].includes(actorRole)) {
+    const err = new Error('Only admins, managers, or team leaders can import quick tasks');
+    err.statusCode = 403;
+    err.code = 'FORBIDDEN';
+    throw err;
+  }
+
+  const normalizedRows = Array.isArray(rows) ? rows : [];
+  if (!normalizedRows.length) {
+    const err = new Error('No quick tasks provided for import');
+    err.statusCode = 400;
+    err.code = 'IMPORT_EMPTY';
+    throw err;
+  }
+
+  const createdTasks = [];
+  const failures = [];
+
+  for (let index = 0; index < normalizedRows.length; index += 1) {
+    const row = normalizedRows[index] || {};
+    const rowNumber = Number(row.rowNumber) > 0 ? Number(row.rowNumber) : index + 2;
+    const assigneeIdentifiers = [
+      ...String(row.assigneeEmails ?? '')
+        .split(/[;,]/)
+        .map((item) => item.trim())
+        .filter(Boolean),
+      ...String(row.assigneeNames ?? '')
+      .split(/[;,]/)
+      .map((item) => item.trim())
+      .filter(Boolean),
+    ];
+
+    try {
+      const assigneeIds = await resolveUserIdsFromIdentifiers({ companyId, identifiers: assigneeIdentifiers, fieldLabel: 'Assignees' });
+      const reporterIdentifier = row.reporterEmail || row.reporterName;
+      const reporterId = reporterIdentifier
+        ? await resolveSingleUserIdFromIdentifier({ companyId, identifier: reporterIdentifier, fieldLabel: 'Reporter' })
+        : userId;
+      const task = await createQuickTask({
+        companyId,
+        workspaceId,
+        userId,
+        data: {
+          title: String(row.title ?? '').trim(),
+          description: String(row.description ?? '').trim(),
+          priority: row.priority,
+          status: row.status,
+          dueDate: row.dueDate ? String(row.dueDate).trim() : undefined,
+          reporterId,
+          createdAt: row.createdAt ? String(row.createdAt).trim() : undefined,
+          updatedAt: row.updatedAt ? String(row.updatedAt).trim() : undefined,
+          migrationMode: true,
+          assigneeIds,
+        },
+      });
+      createdTasks.push(task);
+    } catch (error) {
+      failures.push({
+        rowNumber,
+        title: String(row.title ?? '').trim(),
+        assigneeEmails: `${String(row.assigneeEmails ?? '').trim()} ${String(row.assigneeNames ?? '').trim()}`.trim(),
+        message: error?.message || 'Failed to import quick task',
+        code: error?.code || 'IMPORT_FAILED',
+      });
+    }
+  }
+
+  return {
+    totalRows: normalizedRows.length,
+    createdCount: createdTasks.length,
+    failedCount: failures.length,
+    createdTasks,
+    failures,
+  };
+}
+
 export async function updateQuickTask({ companyId, workspaceId, userId, id, updates }) {
   const tenantId = companyId;
-  const { QuickTask, ActivityLog, Notification } = getTenantModels();
+  const { QuickTask, ActivityLog, Notification } = await getTenantModels(companyId);
 
   const existing = await QuickTask.findOne({ _id: id, tenantId, workspaceId });
   if (!existing) return null;
@@ -190,7 +379,7 @@ export async function updateQuickTask({ companyId, workspaceId, userId, id, upda
 
 export async function reviewQuickTask({ companyId, workspaceId, userId, role, id, action, reviewRemark, rating }) {
   const tenantId = companyId;
-  const { QuickTask, ActivityLog, Notification } = getTenantModels();
+  const { QuickTask, ActivityLog, Notification } = await getTenantModels(companyId);
   const qt = await QuickTask.findOne({ _id: id, tenantId, workspaceId });
   if (!qt) return null;
 
@@ -282,7 +471,7 @@ export async function reviewQuickTask({ companyId, workspaceId, userId, role, id
 
 export async function deleteQuickTask({ companyId, workspaceId, userId, id }) {
   const tenantId = companyId;
-  const { QuickTask, ActivityLog } = getTenantModels();
+  const { QuickTask, ActivityLog } = await getTenantModels(companyId);
   const qt = await QuickTask.findOneAndDelete({ _id: id, tenantId, workspaceId });
   if (!qt) return null;
 
@@ -302,7 +491,7 @@ export async function deleteQuickTask({ companyId, workspaceId, userId, id }) {
 
 export async function addQuickTaskComment({ companyId, workspaceId, userId, role, taskId, content }) {
   const tenantId = companyId;
-  const { QuickTask, Notification } = getTenantModels();
+  const { QuickTask, Notification } = await getTenantModels(companyId);
 
   const qt = await QuickTask.findOne({ _id: taskId, tenantId, workspaceId });
   if (!qt) return null;
@@ -355,7 +544,7 @@ export async function addQuickTaskComment({ companyId, workspaceId, userId, role
 
 export async function addQuickTaskAttachments({ companyId, workspaceId, userId, role, taskId, files, requestBaseUrl }) {
   const tenantId = companyId;
-  const { QuickTask } = getTenantModels();
+  const { QuickTask } = await getTenantModels(companyId);
 
   const qt = await QuickTask.findOne({ _id: taskId, tenantId, workspaceId });
   if (!qt) return null;

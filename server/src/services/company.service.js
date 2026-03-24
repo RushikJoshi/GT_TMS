@@ -1,7 +1,7 @@
 import Company from '../models/Company.js';
 import AuthLookup from '../models/AuthLookup.js';
 import SystemSetting from '../models/SystemSetting.js';
-import { getTenantModels } from '../config/tenantDb.js';
+import { buildTenantDatabaseName, getTenantModels } from '../config/tenantDb.js';
 import { hashPassword } from '../utils/password.js';
 import { assertPasswordAllowed, formatGeneratedId, getCompanyIdConfig } from './settings.service.js';
 
@@ -40,7 +40,7 @@ function formatEmployeeId(config, sequence) {
 }
 
 async function getCompanyCounts(companyId) {
-  const { User, Project } = getTenantModels();
+  const { User, Project } = await getTenantModels(companyId);
   const [usersCount, projectsCount] = await Promise.all([
     User.countDocuments({ tenantId: companyId }),
     Project.countDocuments({ tenantId: companyId }),
@@ -51,12 +51,18 @@ async function getCompanyCounts(companyId) {
 
 async function serializeCompany(company) {
   const { usersCount, projectsCount } = await getCompanyCounts(company._id);
+  const databaseName = company.databaseName || buildTenantDatabaseName({
+    companyName: company.name,
+    organizationId: company.organizationId,
+  });
 
   return {
     id: company.id,
+    tenantId: company.organizationId,
     organizationId: company.organizationId,
     name: company.name,
     email: company.email,
+    databaseName,
     usersCount,
     projectsCount,
     status: company.status,
@@ -71,10 +77,10 @@ export async function listCompanies() {
   // lightweight counts (can be optimized with aggregation later)
   const uMap = new Map();
   const pMap = new Map();
-  const { User, Project } = getTenantModels();
 
   await Promise.all(companies.map(async (c) => {
     try {
+      const { User, Project } = await getTenantModels(c._id);
       const [uc, pc] = await Promise.all([
         User.countDocuments({ tenantId: c._id }),
         Project.countDocuments({ tenantId: c._id }),
@@ -90,9 +96,11 @@ export async function listCompanies() {
 
   return companies.map((c) => ({
     id: c.id,
+    tenantId: c.organizationId,
     organizationId: c.organizationId,
     name: c.name,
     email: c.email,
+    databaseName: c.databaseName || buildTenantDatabaseName({ companyName: c.name, organizationId: c.organizationId }),
     usersCount: uMap.get(c.id) || 0,
     projectsCount: pMap.get(c.id) || 0,
     status: c.status,
@@ -117,6 +125,7 @@ export async function createCompanyWithAdmin({ name, adminName, adminEmail, admi
     organizationId,
     name,
     email: adminEmail.toLowerCase(),
+    databaseName: buildTenantDatabaseName({ companyName: name, organizationId }),
     status,
     color: '#3366ff',
   });
@@ -127,7 +136,7 @@ export async function createCompanyWithAdmin({ name, adminName, adminEmail, admi
     { upsert: true }
   );
 
-  const { User, Workspace, Membership } = getTenantModels();
+  const { User, Workspace, Membership } = await getTenantModels(company._id);
   const employeeIdConfig = getDefaultEmployeeIdConfig();
   const adminEmployeeId = formatEmployeeId(employeeIdConfig, employeeIdConfig.nextSequence);
 
@@ -175,9 +184,11 @@ export async function createCompanyWithAdmin({ name, adminName, adminEmail, admi
 
   return {
     id: company.id,
+    tenantId: company.organizationId,
     organizationId: company.organizationId,
     name: company.name,
     email: company.email,
+    databaseName: company.databaseName,
     usersCount: 1,
     projectsCount: 0,
     status: company.status,
@@ -209,7 +220,7 @@ export async function updateCompany({ id, name, adminEmail, status }) {
   company.status = status;
   await company.save();
 
-  const { User, Workspace } = getTenantModels();
+  const { User, Workspace } = await getTenantModels(company._id);
 
   if (previousEmail !== nextEmail) {
     await User.updateMany(

@@ -1,14 +1,177 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Search, Zap, User, Calendar, CheckCircle2 } from 'lucide-react';
+import { Plus, Search, Zap, User, Calendar, CheckCircle2, Upload } from 'lucide-react';
 import { cn, formatDate } from '../../utils/helpers';
 import { useAuthStore } from '../../context/authStore';
 import { useAppStore } from '../../context/appStore';
 import { PRIORITY_CONFIG, STATUS_CONFIG } from '../../app/constants';
 import { EmptyState, Tabs, TabsContent } from '../../components/ui';
 import { QuickTaskModal } from '../../components/QuickTaskModal';
-import type { QuickTask, QuickTaskStatus } from '../../app/types';
+import { Modal } from '../../components/Modal';
+import { emitSuccessToast } from '../../context/toastBus';
+import { quickTasksService } from '../../services/api';
+import type { QuickTask, QuickTaskImportResult, QuickTaskImportRow, QuickTaskStatus } from '../../app/types';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+
+const QUICK_TASK_IMPORT_TEMPLATE_HEADERS = ['title', 'description', 'priority', 'status', 'assigneeNames', 'reporterName', 'dueDate', 'createdAt', 'updatedAt'];
+const QUICK_TASK_IMPORT_HEADER_ALIASES: Record<string, string[]> = {
+  title: ['title', 'tasktitle', 'taskname', 'task', 'subject', 'quicktask', 'quicktasktitle'],
+  description: ['description', 'details', 'taskdescription', 'remarks', 'comment', 'notes'],
+  priority: ['priority', 'severity', 'importance'],
+  status: ['status', 'state', 'taskstatus'],
+  assigneeEmails: ['assigneeemails', 'assigneeemail', 'assignedtoemail', 'owneremail', 'assigneduseremail'],
+  assigneeNames: ['assigneenames', 'assigneename', 'assignedto', 'assignee', 'owner', 'assigneduser', 'assignedusername'],
+  reporterEmail: ['reporteremail', 'createdbyemail', 'creatoremail', 'reportedbyemail', 'requestedbyemail', 'taskowneremail'],
+  reporterName: ['reportername', 'createdby', 'creator', 'reportedby', 'requestedby', 'reportingperson', 'reportingpersonname'],
+  dueDate: ['duedate', 'due', 'deadline', 'targetdate', 'enddate'],
+  createdAt: ['createdat', 'createdon', 'createddate', 'taskcreatedat'],
+  updatedAt: ['updatedat', 'updatedon', 'lastupdated', 'modifiedat', 'modifiedon'],
+};
+
+function normalizeHeader(value: string) {
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function normalizePriorityValue(value?: string) {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (!normalized) return 'medium';
+  if (['low', 'medium', 'high', 'urgent'].includes(normalized)) return normalized;
+  return normalized;
+}
+
+function normalizeStatusValue(value?: string) {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (!normalized) return 'todo';
+  if (normalized === 'completed') return 'done';
+  if (normalized === 'inprogress') return 'in_progress';
+  if (['todo', 'in_progress', 'done'].includes(normalized)) return normalized;
+  return normalized;
+}
+
+function parseCsvLine(line: string) {
+  const values: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      values.push(current.trim());
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  values.push(current.trim());
+  return values.map((value) => value.replace(/^"|"$/g, '').trim());
+}
+
+function parseQuickTasksCsv(content: string) {
+  const sanitized = content.replace(/^\uFEFF/, '');
+  const lines = sanitized
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length < 2) {
+    return { rows: [] as QuickTaskImportRow[], parseErrors: ['The file must contain a header row and at least one quick task row.'] };
+  }
+
+  const headers = parseCsvLine(lines[0]).map((header) => header.trim());
+  const normalizedHeaders = headers.map((header) => normalizeHeader(header));
+  const headerKeyMap = normalizedHeaders.reduce<Record<string, string>>((acc, normalized, index) => {
+    acc[normalized] = headers[index];
+    return acc;
+  }, {});
+
+  const resolveHeader = (canonicalKey: keyof typeof QUICK_TASK_IMPORT_HEADER_ALIASES | 'title') => {
+    const aliases = canonicalKey === 'title'
+      ? QUICK_TASK_IMPORT_HEADER_ALIASES.title
+      : QUICK_TASK_IMPORT_HEADER_ALIASES[canonicalKey];
+    return aliases.find((alias) => headerKeyMap[alias]) ? headerKeyMap[aliases.find((alias) => headerKeyMap[alias]) as string] : undefined;
+  };
+
+  const mappedHeaders = {
+    title: resolveHeader('title'),
+    description: resolveHeader('description'),
+    priority: resolveHeader('priority'),
+    status: resolveHeader('status'),
+    assigneeEmails: resolveHeader('assigneeEmails'),
+    assigneeNames: resolveHeader('assigneeNames'),
+    reporterEmail: resolveHeader('reporterEmail'),
+    reporterName: resolveHeader('reporterName'),
+    dueDate: resolveHeader('dueDate'),
+    createdAt: resolveHeader('createdAt'),
+    updatedAt: resolveHeader('updatedAt'),
+  };
+
+  const requiredHeaders = ['title'];
+  const missingHeaders = requiredHeaders.filter((header) => !mappedHeaders[header as keyof typeof mappedHeaders]);
+
+  if (missingHeaders.length > 0) {
+    return { rows: [] as QuickTaskImportRow[], parseErrors: [`Missing required columns: ${missingHeaders.join(', ')}`] };
+  }
+
+  const rows: QuickTaskImportRow[] = [];
+  const parseErrors: string[] = [];
+  const validPriorities = ['low', 'medium', 'high', 'urgent'];
+  const validStatuses = ['todo', 'in_progress', 'done'];
+
+  for (let lineIndex = 1; lineIndex < lines.length; lineIndex += 1) {
+    const values = parseCsvLine(lines[lineIndex]);
+    const record = headers.reduce<Record<string, string>>((acc, header, index) => {
+      acc[header] = values[index] ?? '';
+      return acc;
+    }, {});
+
+    const title = mappedHeaders.title ? record[mappedHeaders.title] : '';
+    if (!title?.trim()) continue;
+
+    const priority = normalizePriorityValue(mappedHeaders.priority ? record[mappedHeaders.priority] : '');
+    const status = normalizeStatusValue(mappedHeaders.status ? record[mappedHeaders.status] : '');
+
+    if (!validPriorities.includes(priority)) {
+      parseErrors.push(`Row ${lineIndex + 1}: priority must be one of ${validPriorities.join(', ')}.`);
+      continue;
+    }
+
+    if (!validStatuses.includes(status)) {
+      parseErrors.push(`Row ${lineIndex + 1}: status must be one of ${validStatuses.join(', ')}.`);
+      continue;
+    }
+
+    rows.push({
+      rowNumber: lineIndex + 1,
+      title: title.trim(),
+      description: mappedHeaders.description ? record[mappedHeaders.description]?.trim() || '' : '',
+      priority: priority as QuickTaskImportRow['priority'],
+      status: status as QuickTaskStatus,
+      assigneeEmails: mappedHeaders.assigneeEmails ? record[mappedHeaders.assigneeEmails]?.trim() || '' : '',
+      assigneeNames: mappedHeaders.assigneeNames ? record[mappedHeaders.assigneeNames]?.trim() || '' : '',
+      reporterEmail: mappedHeaders.reporterEmail ? record[mappedHeaders.reporterEmail]?.trim().toLowerCase() || '' : '',
+      reporterName: mappedHeaders.reporterName ? record[mappedHeaders.reporterName]?.trim() || '' : '',
+      dueDate: mappedHeaders.dueDate ? record[mappedHeaders.dueDate]?.trim() || '' : '',
+      createdAt: mappedHeaders.createdAt ? record[mappedHeaders.createdAt]?.trim() || '' : '',
+      updatedAt: mappedHeaders.updatedAt ? record[mappedHeaders.updatedAt]?.trim() || '' : '',
+    });
+  }
+
+  return { rows, parseErrors };
+}
 
 type ScopeFilter = 'assigned_to_me' | 'created_by_me' | 'all';
 type StatusFilter = QuickTaskStatus | 'all' | 'overdue';
@@ -29,13 +192,22 @@ export const QuickTasksPage: React.FC = () => {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const { user } = useAuthStore();
-  const { quickTasks, users } = useAppStore();
+  const { quickTasks, users, bootstrap } = useAppStore();
 
   const [scope, setScope] = useState<ScopeFilter>('assigned_to_me');
   const [status, setStatus] = useState<StatusFilter>('all');
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<QuickTask | null>(null);
   const [modalOpen, setModalOpen] = useState(params.get('new') === '1');
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFileName, setImportFileName] = useState('');
+  const [importRows, setImportRows] = useState<QuickTaskImportRow[]>([]);
+  const [importParseErrors, setImportParseErrors] = useState<string[]>([]);
+  const [importResult, setImportResult] = useState<QuickTaskImportResult | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importServerError, setImportServerError] = useState('');
+
+  const canImportQuickTasks = ['super_admin', 'admin', 'manager', 'team_leader'].includes(user?.role || '');
 
   const filtered = useMemo(() => {
     const uid = user?.id ?? '';
@@ -43,7 +215,7 @@ export const QuickTasksPage: React.FC = () => {
       .filter(t => {
         if (scope === 'assigned_to_me') return (t.assigneeIds || []).includes(uid);
         if (scope === 'created_by_me') return t.reporterId === uid;
-        return true;
+        return true; 
       })
       .filter(t => {
         if (status === 'all') return true;
@@ -99,6 +271,78 @@ export const QuickTasksPage: React.FC = () => {
     setParams(params, { replace: true });
   };
 
+  const resetImportState = () => {
+    setImportFileName('');
+    setImportRows([]);
+    setImportParseErrors([]);
+    setImportResult(null);
+    setIsImporting(false);
+    setImportServerError('');
+  };
+
+  const downloadImportTemplate = () => {
+    const sampleRows = [
+      QUICK_TASK_IMPORT_TEMPLATE_HEADERS.join(','),
+      'Follow up with vendor,Confirm proposal and timeline,high,todo,"Vendor Owner",Admin User,2026-03-31,2026-03-01,2026-03-10',
+      '"Prepare onboarding kit","Create docs and checklist",medium,in_progress,"HR Executive;Team Lead",Operations Manager,2026-04-02,2026-03-05,2026-03-12',
+    ].join('\n');
+    const blob = new Blob([sampleRows], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'quick-task-import-template.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setImportResult(null);
+    setImportServerError('');
+    setImportFileName(file.name);
+
+    const text = await file.text();
+    const parsed = parseQuickTasksCsv(text);
+    setImportRows(parsed.rows);
+    setImportParseErrors(parsed.parseErrors);
+  };
+
+  const handleBulkImport = async () => {
+    if (!importRows.length) return;
+    setIsImporting(true);
+    setImportResult(null);
+    setImportServerError('');
+    try {
+      const res = await quickTasksService.importBulk(importRows);
+      const result = (res.data?.data ?? res.data) as QuickTaskImportResult;
+      setImportResult(result);
+      await bootstrap();
+      emitSuccessToast(
+        `${result.createdCount} quick task${result.createdCount === 1 ? '' : 's'} imported successfully.`,
+        'Import Completed'
+      );
+    } catch (error: any) {
+      const details = error?.response?.data?.error?.details;
+      const fieldErrors = details?.fieldErrors
+        ? Object.entries(details.fieldErrors).flatMap(([field, messages]) =>
+            Array.isArray(messages) ? messages.map((message) => `${field}: ${message}`) : []
+          )
+        : [];
+      const formErrors = Array.isArray(details?.formErrors) ? details.formErrors : [];
+      const message =
+        [...fieldErrors, ...formErrors].filter(Boolean).join(' | ') ||
+        error?.response?.data?.error?.message ||
+        error?.message ||
+        'Import failed.';
+      setImportServerError(message);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   const scopeTabs = [
     { value: 'created_by_me', label: 'Created by me' },
     { value: 'assigned_to_me', label: 'Assigned to me' },
@@ -118,10 +362,30 @@ export const QuickTasksPage: React.FC = () => {
               Individual assignments without linking a project
             </p>
           </div>
+          <div className='flex items-start justify-between gap-4'>
+          {canImportQuickTasks ? (
+            <>
+              {/* <button className="btn-secondary btn-sm hidden md:flex" onClick={downloadImportTemplate}>
+                <Upload size={16} />
+                Download Template
+              </button> */}
+              <button
+                className="btn-secondary btn-sm hidden md:flex"
+                onClick={() => {
+                  resetImportState();
+                  setImportOpen(true);
+                }}
+              >
+                <Upload size={16} />
+                Import Excel
+              </button>
+            </>
+          ) : null}
           <button className="btn-primary btn-sm hidden md:flex" onClick={openNew}>
             <Plus size={16} />
             New Quick Task
           </button>
+          </div>
         </div>
       </div>
 
@@ -259,9 +523,143 @@ export const QuickTasksPage: React.FC = () => {
         onClose={closeModal}
         task={selected}
       />
+
+      <Modal
+        open={importOpen}
+        onClose={() => {
+          setImportOpen(false);
+          resetImportState();
+        }}
+        title="Import Quick Tasks"
+        description="Upload an Excel-friendly CSV file to create multiple quick tasks at once."
+        size="lg"
+      >
+        <div className="p-4 sm:p-6 space-y-5">
+          <div className="rounded-2xl border border-dashed border-surface-200 bg-surface-50/70 p-5 dark:border-surface-700 dark:bg-surface-800/40">
+            <p className="text-sm font-semibold text-surface-800 dark:text-surface-100">Step 1: Prepare your file</p>
+            <p className="mt-1 text-xs text-surface-500">
+              Use the template. Assignees and reporter can be matched by full name, email, or employee ID from the current user table.
+              Multiple assignees can be separated by `;` or `,`. Missing optional fields are imported with system defaults.
+              `dueDate` should be in `YYYY-MM-DD` format.
+            </p>
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+              <button type="button" onClick={downloadImportTemplate} className="btn-secondary btn-md">
+                Download Template
+              </button>
+              <label className="btn-primary btn-md cursor-pointer">
+                Select CSV File
+                <input type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => { void handleImportFile(e); }} />
+              </label>
+            </div>
+            {importFileName && (
+              <p className="mt-3 text-xs text-surface-400">Selected file: {importFileName}</p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="card p-4">
+              <p className="text-xs uppercase tracking-wider text-surface-400">Rows Ready</p>
+              <p className="mt-1 text-2xl font-display font-bold text-surface-900 dark:text-surface-100">{importRows.length}</p>
+            </div>
+            <div className="card p-4">
+              <p className="text-xs uppercase tracking-wider text-surface-400">Parse Errors</p>
+              <p className="mt-1 text-2xl font-display font-bold text-rose-500">{importParseErrors.length}</p>
+            </div>
+            <div className="card p-4">
+              <p className="text-xs uppercase tracking-wider text-surface-400">Template</p>
+              <p className="mt-1 text-sm font-medium text-surface-700 dark:text-surface-200">Excel-compatible CSV</p>
+            </div>
+          </div>
+
+          {importParseErrors.length > 0 && (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-900/40 dark:bg-rose-950/20">
+              <p className="text-sm font-semibold text-rose-700 mb-2">Fix these rows before import</p>
+              <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                {importParseErrors.map((error, index) => (
+                  <p key={`${error}-${index}`} className="text-xs text-rose-600">{error}</p>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {importServerError && (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-900/40 dark:bg-rose-950/20">
+              <p className="text-sm font-semibold text-rose-700 mb-2">Import request failed</p>
+              <p className="text-xs text-rose-600 whitespace-pre-wrap">{importServerError}</p>
+            </div>
+          )}
+
+          {importRows.length > 0 && (
+            <div className="rounded-2xl border border-surface-200 p-4 dark:border-surface-700">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-surface-800 dark:text-surface-100">Preview</p>
+                <p className="text-xs text-surface-400">Showing first {Math.min(importRows.length, 5)} rows</p>
+              </div>
+              <div className="mt-3 space-y-2">
+                {importRows.slice(0, 5).map((row) => (
+                  <div key={`${row.rowNumber}-${row.title}`} className="rounded-xl bg-surface-50 px-3 py-2 text-xs dark:bg-surface-800/50">
+                    <p className="font-medium text-surface-800 dark:text-surface-100">{row.title}</p>
+                    <p className="mt-1 text-surface-500">
+                      Priority: {row.priority || 'medium'} | Status: {row.status || 'todo'} | Assignees: {row.assigneeNames || row.assigneeEmails || 'none'} | Reporter: {row.reporterName || row.reporterEmail || 'current user'} | Due: {row.dueDate || 'none'}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {importResult && (
+            <div className="rounded-2xl border border-surface-200 p-4 dark:border-surface-700">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-surface-400">Created</p>
+                  <p className="mt-1 text-2xl font-display font-bold text-emerald-700">{importResult.createdCount}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-surface-400">Failed</p>
+                  <p className="mt-1 text-2xl font-display font-bold text-rose-700">{importResult.failedCount}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-surface-400">Total</p>
+                  <p className="mt-1 text-2xl font-display font-bold text-surface-900 dark:text-surface-100">{importResult.totalRows}</p>
+                </div>
+              </div>
+              {importResult.failures.length > 0 && (
+                <div className="mt-4 space-y-1 max-h-40 overflow-y-auto pr-1">
+                  {importResult.failures.map((failure) => (
+                    <p key={`${failure.rowNumber}-${failure.title || failure.message}`} className="text-xs text-rose-600">
+                      Row {failure.rowNumber} ({failure.title || 'Untitled'}): {failure.message}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex flex-col-reverse sm:flex-row gap-3 pt-1">
+            <button
+              type="button"
+              onClick={() => {
+                setImportOpen(false);
+                resetImportState();
+              }}
+              className="btn-secondary btn-md flex-1"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              onClick={() => { void handleBulkImport(); }}
+              disabled={isImporting || importRows.length === 0 || importParseErrors.length > 0}
+              className="btn-primary btn-md flex-1"
+            >
+              {isImporting ? 'Importing...' : `Import ${importRows.length || ''} Quick Tasks`}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
 
 export default QuickTasksPage;
-

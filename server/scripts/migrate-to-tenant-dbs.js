@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import connectDB from '../src/config/db.js';
 import Company from '../src/models/Company.js';
 import AuthLookup from '../src/models/AuthLookup.js';
+import { buildTenantDatabaseName } from '../src/config/tenantDb.js';
 
 /**
  * Migration: single DB -> DB-per-tenant.
@@ -9,8 +10,9 @@ import AuthLookup from '../src/models/AuthLookup.js';
  * Assumptions:
  * - You currently have a single database (the one pointed to by MONGO_URI) containing
  *   tenant-scoped collections with a `companyId` field.
- * - You want to keep that database as the *shared* database (companies + auth_lookup),
- *   and copy tenant-scoped docs into per-tenant databases named `PMS_<companyId>`.
+ * - You want to keep that database as the shared registry database
+ *   (`companies`, `authlookups`, system settings, etc.), and move tenant data
+ *   into company-specific databases named from the company name + organization id.
  *
  * Usage:
  * - Set MONGO_URI to the current (single) DB connection string.
@@ -32,10 +34,6 @@ const TENANT_COLLECTIONS = [
   'activitylogs',
   'refreshtokens',
 ];
-
-function tenantDbName(companyId) {
-  return `PMS_${String(companyId)}`;
-}
 
 async function ensureTenantEmptyOrDrop(tenantDb) {
   const existingCollections = await tenantDb.listCollections().toArray();
@@ -67,7 +65,15 @@ async function main() {
 
   for (const company of companies) {
     const cId = company._id;
-    const dbName = tenantDbName(cId);
+    const dbName = company.databaseName || buildTenantDatabaseName({
+      companyName: company.name,
+      organizationId: company.organizationId,
+    });
+
+    if (company.databaseName !== dbName) {
+      company.databaseName = dbName;
+      await company.save();
+    }
 
     const tenantConn = mongoose.connection.useDb(dbName, { useCache: true });
     const tenantDb = tenantConn.db;
@@ -77,8 +83,17 @@ async function main() {
 
     // Copy tenant-scoped docs (preserve _id to keep references stable)
     for (const collName of TENANT_COLLECTIONS) {
-      const docs = await globalDb.collection(collName).find({ companyId: cId }).toArray();
+      const docs = await globalDb.collection(collName).find({
+        $or: [
+          { tenantId: cId },
+          { companyId: cId },
+        ],
+      }).toArray();
       if (docs.length === 0) continue;
+      docs.forEach((doc) => {
+        doc.tenantId = cId;
+        delete doc.companyId;
+      });
       await tenantDb.collection(collName).insertMany(docs, { ordered: false });
       console.log(`- ${collName}: ${docs.length} copied`);
     }
@@ -92,7 +107,7 @@ async function main() {
           .map((u) => ({
             updateOne: {
               filter: { email: String(u.email).toLowerCase() },
-              update: { $set: { email: String(u.email).toLowerCase(), companyId: cId } },
+              update: { $set: { email: String(u.email).toLowerCase(), tenantId: cId }, $unset: { companyId: '' } },
               upsert: true,
             },
           })),

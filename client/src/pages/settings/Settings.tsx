@@ -124,6 +124,7 @@ export const SettingsPage: React.FC = () => {
   const [performance, setPerformance] = useState<UserPerformance | null>(null);
   const [loadingPerformance, setLoadingPerformance] = useState(false);
   const workspace = workspaces[0];
+  const canManagePasswordPolicy = ['super_admin', 'admin'].includes(user?.role || '');
 
   const defaultNotifications = useMemo<NotificationSettings>(() => ({
     taskAssigned: user?.preferences?.notifications?.taskAssigned ?? true,
@@ -308,17 +309,22 @@ export const SettingsPage: React.FC = () => {
     setSavingWorkspace(true);
     setMessage('');
     try {
+      const settingsPayload: Record<string, unknown> = {
+        defaultLanguage: appearanceSettings.language,
+        timezone: appearanceSettings.timezone,
+        dateFormat: appearanceSettings.dateFormat,
+        weekStartsOn: appearanceSettings.weekStartsOn,
+        employeeIdConfig: employeeIdSettings,
+      };
+
+      if (canManagePasswordPolicy) {
+        settingsPayload.security = workspaceSecurity;
+      }
+
       await workspacesService.update(workspace.id, {
         name: workspaceName,
         slug: workspaceSlug,
-        settings: {
-          defaultLanguage: appearanceSettings.language,
-          timezone: appearanceSettings.timezone,
-          dateFormat: appearanceSettings.dateFormat,
-          weekStartsOn: appearanceSettings.weekStartsOn,
-          employeeIdConfig: employeeIdSettings,
-          security: workspaceSecurity,
-        },
+        settings: settingsPayload,
       });
       await bootstrap();
       updateUser({
@@ -716,11 +722,15 @@ export const SettingsPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => {
+                      if (!canManagePasswordPolicy || savingWorkspace) return;
                       void persistWorkspaceStrongPasswordPolicy(!workspaceSecurity.strongPasswords);
                     }}
+                    disabled={!canManagePasswordPolicy || savingWorkspace}
+                    aria-label="Toggle strong password policy"
                     className={cn(
                       'relative h-6 w-10 rounded-full transition-colors',
-                      workspaceSecurity.strongPasswords ? 'bg-brand-600' : 'bg-surface-200 dark:bg-surface-700'
+                      workspaceSecurity.strongPasswords ? 'bg-brand-600' : 'bg-surface-200 dark:bg-surface-700',
+                      (!canManagePasswordPolicy || savingWorkspace) && 'cursor-not-allowed opacity-60'
                     )}
                   >
                     <span
@@ -734,6 +744,11 @@ export const SettingsPage: React.FC = () => {
                 <p className="mt-3 text-xs text-surface-400">
                   When off, users in this organization still need at least 8 characters, but uppercase, number, and special-character requirements are removed.
                 </p>
+                {!canManagePasswordPolicy && (
+                  <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+                    Only company admins can change this policy.
+                  </p>
+                )}
               </div>
 
               <div className="card p-5">

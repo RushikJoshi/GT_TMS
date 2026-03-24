@@ -127,6 +127,7 @@ export const authService = {
 export const quickTasksService = {
   getAll: () => api.get('/quick-tasks'),
   create: (data: unknown) => api.post('/quick-tasks', data),
+  importBulk: (rows: unknown[]) => api.post('/quick-tasks/import', { rows }),
   update: (id: string, data: unknown) => api.put(`/quick-tasks/${id}`, data),
   delete: (id: string) => api.delete(`/quick-tasks/${id}`),
   review: (id: string, body: { action: 'approve' | 'changes_requested'; rating?: number; reviewRemark?: string }) =>

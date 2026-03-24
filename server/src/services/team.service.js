@@ -2,14 +2,14 @@ import { getTenantModels } from '../config/tenantDb.js';
 
 export async function listTeams({ companyId, workspaceId }) {
   const tenantId = companyId;
-  const { Team } = getTenantModels();
+  const { Team } = await getTenantModels(companyId);
   const items = await Team.find({ tenantId, workspaceId }).sort({ createdAt: -1 });
   return items;
 }
 
 export async function createTeam({ companyId, workspaceId, userId, data }) {
   const tenantId = companyId;
-  const { Team, ActivityLog } = getTenantModels();
+  const { Team, ActivityLog } = await getTenantModels(companyId);
   const team = await Team.create({
     tenantId,
     workspaceId,

@@ -2,7 +2,7 @@ import { getTenantModels } from '../config/tenantDb.js';
 
 export async function listWorkspacesForUser({ userId, companyId }) {
   const tenantId = companyId;
-  const { Workspace, Membership } = getTenantModels();
+  const { Workspace, Membership } = await getTenantModels(companyId);
   const memberships = await Membership.find({ userId, tenantId, status: 'active' }).select('workspaceId');
   const ids = memberships.map((m) => m.workspaceId);
   const items = await Workspace.find({ _id: { $in: ids }, tenantId }).sort({ createdAt: -1 });
@@ -15,7 +15,7 @@ export async function listWorkspacesForUser({ userId, companyId }) {
 
 export async function updateWorkspace({ companyId, workspaceId, userId, role, updates }) {
   const tenantId = companyId;
-  const { Workspace } = getTenantModels();
+  const { Workspace } = await getTenantModels(companyId);
   const workspace = await Workspace.findOne({ _id: workspaceId, tenantId });
   if (!workspace) return null;
 
@@ -30,6 +30,14 @@ export async function updateWorkspace({ companyId, workspaceId, userId, role, up
   if (typeof updates.name === 'string' && updates.name.trim()) workspace.name = updates.name.trim();
   if (typeof updates.slug === 'string' && updates.slug.trim()) workspace.slug = updates.slug.trim().toLowerCase();
   if (updates.settings && typeof updates.settings === 'object') {
+    const wantsSecurityPolicyChange = Object.prototype.hasOwnProperty.call(updates.settings || {}, 'security');
+    if (wantsSecurityPolicyChange && !['super_admin', 'admin'].includes(role)) {
+      const err = new Error('Only company admins can update organization password policy');
+      err.statusCode = 403;
+      err.code = 'FORBIDDEN';
+      throw err;
+    }
+
     workspace.settings = {
       ...(workspace.settings?.toObject?.() || workspace.settings || {}),
       ...updates.settings,
@@ -42,7 +50,7 @@ export async function updateWorkspace({ companyId, workspaceId, userId, role, up
 
 export async function exportWorkspaceData({ companyId, workspaceId, userId, role }) {
   const tenantId = companyId;
-  const { Workspace, Membership, Project, Task, Team, QuickTask, Notification, ActivityLog, User } = getTenantModels();
+  const { Workspace, Membership, Project, Task, Team, QuickTask, Notification, ActivityLog, User } = await getTenantModels(companyId);
   const workspace = await Workspace.findOne({ _id: workspaceId, tenantId });
   if (!workspace) return null;
 
