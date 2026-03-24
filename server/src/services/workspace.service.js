@@ -30,6 +30,14 @@ export async function updateWorkspace({ companyId, workspaceId, userId, role, up
   if (typeof updates.name === 'string' && updates.name.trim()) workspace.name = updates.name.trim();
   if (typeof updates.slug === 'string' && updates.slug.trim()) workspace.slug = updates.slug.trim().toLowerCase();
   if (updates.settings && typeof updates.settings === 'object') {
+    const wantsSecurityPolicyChange = Object.prototype.hasOwnProperty.call(updates.settings || {}, 'security');
+    if (wantsSecurityPolicyChange && !['super_admin', 'admin'].includes(role)) {
+      const err = new Error('Only company admins can update organization password policy');
+      err.statusCode = 403;
+      err.code = 'FORBIDDEN';
+      throw err;
+    }
+
     workspace.settings = {
       ...(workspace.settings?.toObject?.() || workspace.settings || {}),
       ...updates.settings,
