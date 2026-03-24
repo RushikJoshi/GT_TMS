@@ -12,6 +12,7 @@ import workspacesRoutes from './modules/workspaces.routes.js';
 import companiesRoutes from './modules/companies.routes.js';
 import settingsRoutes from './modules/settings.routes.js';
 import misRoutes from './modules/mis.routes.js';
+import reportsRoutes from './modules/reports.routes.js';
 
 const router = express.Router();
 
@@ -27,6 +28,7 @@ router.use('/notifications', notificationsRoutes);
 router.use('/activity', activityRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/mis', misRoutes);
+router.use('/reports', reportsRoutes);
 
 export default router;
 

@@ -21,8 +21,11 @@ import ReportsPage from '../pages/reports/Reports';
 import QuickTasksPage from '../pages/quicktasks/QuickTasks';
 import QuickTaskDetailPage from '../pages/quicktasks/QuickTaskDetail';
 import MyTasksPage from '../pages/tasks/MyTasks';
+import TasksManagement from '../pages/tasks/TasksManagement';
+import MISEntry from '../pages/mis/MISEntry';
+import MISManager from '../pages/mis/MISManager';
+import MISReports from '../pages/mis/MISReports';
 import NotificationsPage from '../pages/notifications/Notifications';
-import MISDashboard from '../pages/mis/MISDashboard';
 import UserSettingsPage from '../pages/settings/Settings';
 
 // Admin pages
@@ -110,11 +113,14 @@ export const router = createBrowserRouter([
       { path: 'calendar', element: <CalendarPage /> },
       { path: 'teams', element: <TeamsPage /> },
       { path: 'reports', element: <ReportsPage /> },
-      { path: 'mis-dashboard', element: <MISDashboard /> },
+      { path: 'mis-entry', element: <MISEntry /> },
+      { path: 'mis-manager', element: <RequireRole roles={['super_admin', 'admin', 'manager', 'team_leader']}><MISManager /></RequireRole> },
+      { path: 'mis-reports', element: <MISReports /> },
       { path: 'notifications', element: <NotificationsPage /> },
       { path: 'quick-tasks', element: <QuickTasksPage /> },
       { path: 'quick-tasks/:id', element: <QuickTaskDetailPage /> },
       { path: 'my-tasks', element: <MyTasksPage /> },
+      { path: 'tasks', element: <TasksManagement /> },
 
       // Super Admin Modules (Separate routes)
       { path: 'companies', element: <SACompanies /> },
@@ -139,10 +145,15 @@ export const router = createBrowserRouter([
       { path: 'admin/permissions', element: <AdminPermissionsPage /> },
       { path: 'admin/billing', element: <AdminBillingPage /> },
 
-      // Catch-all redirect
+     // Catch-all redirect
       { path: '*', element: <Navigate to="/dashboard" replace /> },
     ],
   },
-]);
+], {
+  future: {
+    v7_startTransition: true,
+    v7_relativeSplatPath: true,
+  },
+});
 
 export default router;

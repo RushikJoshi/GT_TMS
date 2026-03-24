@@ -19,14 +19,25 @@ interface NavItem {
   path: string;
   roles?: Role[];
   badge?: number;
+  subItems?: { label: string; path: string; roles?: Role[] }[];
 }
 
 const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
   { label: 'Projects', icon: FolderKanban, path: '/projects' },
+  { label: 'All Tasks', icon: ListTodo, path: '/tasks' },
   { label: 'Calendar', icon: Calendar, path: '/calendar' },
   { label: 'Teams', icon: Users, path: '/teams', roles: ['super_admin', 'admin', 'manager', 'team_leader'] },
-  { label: 'MIS Dashboard', icon: BarChart3, path: '/mis-dashboard', roles: ['super_admin', 'admin', 'manager'] },
+  { 
+    label: 'MIS', 
+    icon: BarChart3, 
+    path: '#',
+    subItems: [
+      { label: 'Entry', path: '/mis-entry' },
+      { label: 'Reviews', path: '/mis-manager', roles: ['super_admin', 'admin', 'manager', 'team_leader'] },
+      { label: 'Reports', path: '/mis-reports', roles: ['super_admin', 'admin', 'manager'] },
+    ]
+  },
   { label: 'Activity Logs', icon: Activity, path: '/logs', roles: ['super_admin', 'admin', 'manager', 'team_leader'] },
   { label: 'Notifications', icon: Bell, path: '/notifications' },
 ];
@@ -34,19 +45,39 @@ const NAV_ITEMS: NavItem[] = [
 const SUPER_ADMIN_NAV: NavItem[] = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
   { label: 'Projects', icon: FolderKanban, path: '/projects' },
+  { label: 'All Tasks', icon: ListTodo, path: '/tasks' },
   { label: 'Calendar', icon: Calendar, path: '/calendar' },
   { label: 'Teams', icon: Users, path: '/teams' },
-  { label: 'MIS Dashboard', icon: BarChart3, path: '/mis-dashboard' },
+  { 
+    label: 'MIS', 
+    icon: BarChart3, 
+    path: '#',
+    subItems: [
+      { label: 'Entry', path: '/mis-entry' },
+      { label: 'Reviews', path: '/mis-manager' },
+      { label: 'Reports', path: '/mis-reports' },
+    ]
+  },
   { label: 'Activity Logs', icon: Activity, path: '/logs' },
   { label: 'Notifications', icon: Bell, path: '/notifications' },
 ];
 
 const PLATFORM_ADMIN_NAV: NavItem[] = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+  { label: 'All Tasks', icon: ListTodo, path: '/tasks' },
   { label: 'Companies', icon: Building2, path: '/companies' },
   { label: 'Users List', icon: UserCircle, path: '/users' },
   { label: 'Reports & Analytics', icon: BarChart3, path: '/reports' },
-  { label: 'MIS Dashboard', icon: Zap, path: '/mis-dashboard' },
+  { 
+    label: 'MIS', 
+    icon: Zap, 
+    path: '#',
+    subItems: [
+      { label: 'Entry', path: '/mis-entry' },
+      { label: 'Reviews', path: '/mis-manager' },
+      { label: 'Reports', path: '/mis-reports' },
+    ]
+  },
   { label: 'Settings', icon: Settings, path: '/settings' },
   { label: 'System Logs', icon: Briefcase, path: '/logs' },
   { label: 'Notifications', icon: Bell, path: '/notifications' },
@@ -78,6 +109,7 @@ export const Sidebar: React.FC = () => {
   const [openProjectTodos, setOpenProjectTodos] = useState<Record<string, boolean>>({});
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const [misExpanded, setMisExpanded] = useState(pathname.startsWith('/mis'));
 
   const unread = unreadNotificationsCount();
   const workspace = workspaces[0];
@@ -227,14 +259,19 @@ export const Sidebar: React.FC = () => {
             <React.Fragment key={item.path}>
               <NavLink
                 to={item.path}
-                className={({ isActive }) =>
-                  cn(
-                    isActive ? 'nav-item-active' : 'nav-item-inactive',
+                className={({ isActive }) => {
+                  const subItemActive = item.subItems?.some(sub => pathname === sub.path);
+                  return cn(
+                    (isActive && item.path !== '#') || subItemActive ? 'nav-item-active' : 'nav-item-inactive',
                     isCollapsed && 'justify-center px-0'
-                  )
-                }
+                  );
+                }}
                 title={isCollapsed ? item.label : undefined}
                 onClick={(e) => {
+                  if (item.subItems) {
+                    e.preventDefault();
+                    if (item.label === 'MIS') setMisExpanded(!misExpanded);
+                  }
                   if (item.label === 'Projects' && !isCollapsed) {
                     // Stay on page but toggle if needed, or just let both happen
                     setProjectsExpanded(!projectsExpanded);
@@ -259,14 +296,51 @@ export const Sidebar: React.FC = () => {
                         />
                       </div>
                     )}
+                    {item.subItems && (
+                      <ChevronDown
+                        size={14}
+                        className={cn('text-surface-400 transition-transform ml-auto mr-1', (item.label === 'MIS' && misExpanded) && 'rotate-180')}
+                      />
+                    )}
                     {badge && badge > 0 && (
-                      <span className="ml-auto w-5 h-5 bg-brand-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                      <span className="ml-auto flex-shrink-0 w-5 h-5 bg-brand-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
                         {badge > 9 ? '9+' : badge}
                       </span>
                     )}
                   </>
                 )}
               </NavLink>
+
+              {item.subItems && !isCollapsed && (
+                <AnimatePresence>
+                  {((item.label === 'MIS' && misExpanded)) && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="space-y-0.5 ml-6 mt-1 border-l-2 border-surface-100 dark:border-surface-800"
+                    >
+                      {item.subItems
+                        .filter(sub => !sub.roles || (user && sub.roles.includes(user.role)))
+                        .map(sub => (
+                          <div key={sub.path} className="px-2">
+                            <NavLink
+                              to={sub.path}
+                              className={({ isActive }) =>
+                                cn(
+                                  isActive ? 'bg-surface-100 dark:bg-surface-800 text-surface-900 border-l-2 border-brand-500 font-medium' : 'text-surface-600 hover:text-surface-800 hover:bg-surface-50 border-l-2 border-transparent',
+                                  'block px-4 py-2 text-xs rounded-r-lg transition-all w-full truncate'
+                                )
+                              }
+                            >
+                              {sub.label}
+                            </NavLink>
+                          </div>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              )}
 
               {item.label === 'Projects' && !isCollapsed && (
                 <AnimatePresence>
@@ -564,9 +638,9 @@ export const Sidebar: React.FC = () => {
         {!isCollapsed && user?.role !== 'super_admin' && (
           <div className="pt-3">
             <p className="section-title px-3 py-1 mb-1">Quick Links</p>
-            <NavLink to="/my-tasks" className={({ isActive }) => isActive ? 'nav-item-active' : 'nav-item-inactive'}>
+            <NavLink to="/tasks" className={({ isActive }) => isActive ? 'nav-item-active' : 'nav-item-inactive'}>
               <Hash size={18} className="flex-shrink-0" />
-              <span>My Tasks</span>
+              <span>All Tasks</span>
             </NavLink>
           </div>
         )}
