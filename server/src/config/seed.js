@@ -1,6 +1,6 @@
 import Company from '../models/Company.js';
 import AuthLookup from '../models/AuthLookup.js';
-import { getTenantModels } from '../config/tenantDb.js';
+import { buildTenantDatabaseName, getTenantModels } from '../config/tenantDb.js';
 import { hashPassword } from '../utils/password.js';
 import { formatGeneratedId, getCompanyIdConfig } from '../services/settings.service.js';
 
@@ -23,8 +23,6 @@ export async function ensureBootstrapSuperAdmin() {
   const superAdminPassword = process.env.BOOTSTRAP_SUPER_ADMIN_PASSWORD || 'Gitakshmi@123';
   const workspaceName = process.env.BOOTSTRAP_SUPER_ADMIN_WORKSPACE || 'Gitakshmi Technologies';
 
-  const { User, Workspace, Membership } = getTenantModels();
-
   let company = await Company.findOne({ email: superAdminEmail });
   if (!company) {
     const organizationId = await reserveOrganizationId();
@@ -32,10 +30,13 @@ export async function ensureBootstrapSuperAdmin() {
       organizationId,
       name: workspaceName,
       email: superAdminEmail,
+      databaseName: buildTenantDatabaseName({ companyName: workspaceName, organizationId }),
       status: 'active',
       color: '#3366ff',
     });
   }
+
+  const { User, Workspace, Membership } = await getTenantModels(company._id);
 
   await AuthLookup.updateOne(
     { email: superAdminEmail },
@@ -90,6 +91,7 @@ export async function ensureDevSeed() {
       organizationId,
       name: 'Gitakshmi Technologies',
       email: superAdminEmail,
+      databaseName: buildTenantDatabaseName({ companyName: 'Gitakshmi Technologies', organizationId }),
       status: 'active',
       color: '#3366ff',
     });
@@ -101,7 +103,7 @@ export async function ensureDevSeed() {
     { upsert: true }
   );
 
-  const { User, Workspace, Membership } = getTenantModels();
+  const { User, Workspace, Membership } = await getTenantModels(company._id);
 
   let superAdmin = await User.findOne({ tenantId: company._id, email: superAdminEmail }).select('+passwordHash');
   // Pre-migration docs may still have companyId instead of tenantId — avoid duplicate User.create.

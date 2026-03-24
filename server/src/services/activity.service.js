@@ -6,7 +6,7 @@ function escapeRegExp(value) {
 
 export async function listActivity({ companyId, workspaceId, limit = 50, q, type, entityType, days }) {
   const tenantId = companyId;
-  const { ActivityLog, User } = getTenantModels();
+  const { ActivityLog, User } = await getTenantModels(companyId);
 
   const filter = { tenantId, workspaceId };
 

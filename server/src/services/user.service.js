@@ -34,13 +34,13 @@ function formatEmployeeId(config, sequence) {
 
 export async function getMe({ companyId, userId }) {
   const tenantId = companyId;
-  const { User } = getTenantModels();
+  const { User } = await getTenantModels(companyId);
   const user = await User.findOne({ _id: userId, tenantId });
   return user;
 }
 
 export async function listUsers({ companyId, actorRole }) {
-  const { User } = getTenantModels();
+  const { User } = await getTenantModels(companyId);
   let filter = { tenantId: companyId };
 
   if (actorRole === 'super_admin') {
@@ -53,14 +53,14 @@ export async function listUsers({ companyId, actorRole }) {
 
 export async function getUser({ companyId, id }) {
   const tenantId = companyId;
-  const { User } = getTenantModels();
+  const { User } = await getTenantModels(companyId);
   const user = await User.findOne({ _id: id, tenantId });
   return user;
 }
 
 export async function getUserPerformance({ companyId, workspaceId, targetUserId }) {
   const tenantId = companyId;
-  const { User, Task, QuickTask, Project } = getTenantModels();
+  const { User, Task, QuickTask, Project } = await getTenantModels(companyId);
   const user = await User.findOne({ _id: targetUserId, tenantId }).lean();
   if (!user) return null;
 
@@ -190,7 +190,7 @@ export async function getUserPerformance({ companyId, workspaceId, targetUserId 
 export async function createUser({ companyId, workspaceId, actorRole, input }) {
   let tenantId = companyId;
   let targetWorkspaceId = workspaceId;
-  const { User, Membership, Workspace } = getTenantModels();
+  const { User, Membership, Workspace } = await getTenantModels(companyId);
   if (!['super_admin', 'admin'].includes(actorRole)) {
     const err = new Error('Only company admins can create users');
     err.statusCode = 403;
@@ -358,7 +358,7 @@ export async function importUsersBulk({ companyId, workspaceId, actorRole, rows 
 
 export async function updateUser({ companyId, workspaceId, actorRole, userId, targetUserId, updates }) {
   const tenantId = companyId;
-  const { User, Membership } = getTenantModels();
+  const { User, Membership } = await getTenantModels(companyId);
   if (!['super_admin', 'admin'].includes(actorRole)) {
     const err = new Error('Only company admins can update users');
     err.statusCode = 403;
@@ -432,7 +432,7 @@ export async function updateUser({ companyId, workspaceId, actorRole, userId, ta
 
 export async function deleteUser({ companyId, actorRole, userId, targetUserId }) {
   const tenantId = companyId;
-  const { User, Membership } = getTenantModels();
+  const { User, Membership } = await getTenantModels(companyId);
   if (!['super_admin', 'admin'].includes(actorRole)) {
     const err = new Error('Only company admins can delete users');
     err.statusCode = 403;
@@ -457,7 +457,7 @@ export async function deleteUser({ companyId, actorRole, userId, targetUserId })
 
 export async function updateMe({ companyId, userId, updates }) {
   const tenantId = companyId;
-  const { User } = getTenantModels();
+  const { User } = await getTenantModels(companyId);
   const payload = {};
 
   if (typeof updates.name === 'string') payload.name = updates.name.trim();
@@ -476,7 +476,7 @@ export async function updateMe({ companyId, userId, updates }) {
 
 export async function updateMyPreferences({ companyId, userId, preferences }) {
   const tenantId = companyId;
-  const { User } = getTenantModels();
+  const { User } = await getTenantModels(companyId);
 
   const setPayload = {};
   for (const [groupKey, groupValue] of Object.entries(preferences || {})) {
@@ -496,7 +496,7 @@ export async function updateMyPreferences({ companyId, userId, preferences }) {
 
 export async function updateMyPassword({ companyId, userId, currentPassword, newPassword }) {
   const tenantId = companyId;
-  const { User } = getTenantModels();
+  const { User } = await getTenantModels(companyId);
   const user = await User.findOne({ _id: userId, tenantId }).select('+passwordHash');
   if (!user) return null;
 

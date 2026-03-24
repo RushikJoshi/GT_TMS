@@ -84,7 +84,7 @@ app.get('/healthz', (_req, res) => res.json({ ok: true }));
 app.get('/readyz', (_req, res) => {
   const ready = mongoose.connection.readyState === 1;
   if (ready) return res.json({ ok: true, db: 'connected' });
-  res.status(503).json({ ok: false });
+  res.status(503).json({ ok: false, db: 'disconnected' });
 });
 
 // ✅ STATIC FILES (MOST IMPORTANT)

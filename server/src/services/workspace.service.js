@@ -2,7 +2,7 @@ import { getTenantModels } from '../config/tenantDb.js';
 
 export async function listWorkspacesForUser({ userId, companyId }) {
   const tenantId = companyId;
-  const { Workspace, Membership } = getTenantModels();
+  const { Workspace, Membership } = await getTenantModels(companyId);
   const memberships = await Membership.find({ userId, tenantId, status: 'active' }).select('workspaceId');
   const ids = memberships.map((m) => m.workspaceId);
   const items = await Workspace.find({ _id: { $in: ids }, tenantId }).sort({ createdAt: -1 });
@@ -15,7 +15,7 @@ export async function listWorkspacesForUser({ userId, companyId }) {
 
 export async function updateWorkspace({ companyId, workspaceId, userId, role, updates }) {
   const tenantId = companyId;
-  const { Workspace } = getTenantModels();
+  const { Workspace } = await getTenantModels(companyId);
   const workspace = await Workspace.findOne({ _id: workspaceId, tenantId });
   if (!workspace) return null;
 
@@ -42,7 +42,7 @@ export async function updateWorkspace({ companyId, workspaceId, userId, role, up
 
 export async function exportWorkspaceData({ companyId, workspaceId, userId, role }) {
   const tenantId = companyId;
-  const { Workspace, Membership, Project, Task, Team, QuickTask, Notification, ActivityLog, User } = getTenantModels();
+  const { Workspace, Membership, Project, Task, Team, QuickTask, Notification, ActivityLog, User } = await getTenantModels(companyId);
   const workspace = await Workspace.findOne({ _id: workspaceId, tenantId });
   if (!workspace) return null;
 
