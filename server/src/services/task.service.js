@@ -125,11 +125,12 @@ function canReviewProjectTask({ role, userId, task, reviewerIds }) {
   return reviewerIds.includes(uid);
 }
 
-export async function assertProjectAccess({ tenantId, workspaceId, userId, role, projectId }) {
-  const allowed = await getAccessibleProjectIds({ tenantId, workspaceId, userId, role });
-  if (allowed === null) return true;
-  return allowed.some((id) => strId(id) === strId(projectId));
-}
+ export async function assertProjectAccess({ tenantId, workspaceId, userId, role, projectId }) {
+   if (!projectId) return true; // Allow access to workspace-level tasks that don't belong to a project
+   const allowed = await getAccessibleProjectIds({ tenantId, workspaceId, userId, role });
+   if (allowed === null) return true;
+   return allowed.some((id) => strId(id) === strId(projectId));
+ }
 
 export async function listTasks({
   companyId,
@@ -245,31 +246,63 @@ export async function createTask({ companyId, workspaceId, userId, role, data })
   return task;
 }
 
-export async function getTaskById({ companyId, workspaceId, userId, role, taskId }) {
-  const tenantId = companyId;
-  const { Task } = getTenantModels();
-  const task = await Task.findOne({
-    _id: taskId,
-    tenantId,
-    workspaceId,
-    $or: [{ parentTaskId: null }, { parentTaskId: { $exists: false } }],
-  });
-  if (!task) return null;
-  const ok = await assertProjectAccess({ tenantId, workspaceId, userId, role, projectId: task.projectId });
-  if (!ok) return null;
-  return task;
-}
+ export async function getTaskById({ companyId, workspaceId, userId, role, taskId }) {
+   const tenantId = companyId;
+   const { Task } = getTenantModels();
+   
+   // Try strict lookup first
+   let task = await Task.findOne({ _id: taskId, tenantId, workspaceId });
+   
+   // Admin fallback: handle metadata/workspace mismatches
+   if (!task && (role === 'admin' || role === 'super_admin')) {
+     task = await Task.findOne({ _id: taskId, tenantId });
+   }
+   
+   if (!task) return null;
+   
+   // Use the task's actual workspaceId for project access check
+   const ok = await assertProjectAccess({ tenantId, workspaceId: task.workspaceId, userId, role, projectId: task.projectId });
+   if (!ok) return null;
+   return task;
+ }
+
+ export async function getAnyTaskById({ companyId, workspaceId, userId, role, taskId }) {
+   if (!mongoose.Types.ObjectId.isValid(taskId)) return null;
+   
+   // Try project task
+   const task = await getTaskById({ companyId, workspaceId, userId, role, taskId });
+   if (task) {
+     const t = task.toJSON();
+     t.type = 'project';
+     return t;
+   }
+   
+   // Try quick task
+   const { QuickTask } = getTenantModels();
+   // Fallback: search by ID and tenant only to avoid workspace metadata mismatches
+   const quickTask = await QuickTask.findOne({ _id: taskId, tenantId: companyId });
+   
+   if (quickTask) {
+     const qt = quickTask.toJSON();
+     qt.type = 'quick';
+     console.log(`[TaskService] QuickTask found for ID: ${taskId}`);
+     return qt;
+   }
+   
+   console.warn(`[TaskService] No task found in any collection for ID: ${taskId}`);
+   return null;
+ }
 
 export async function updateTask({ companyId, workspaceId, userId, role, taskId, updates }) {
   const tenantId = companyId;
-  const { Task, ActivityLog } = getTenantModels();
-  const existing = await Task.findOne({
-    _id: taskId,
-    tenantId,
-    workspaceId,
-    $or: [{ parentTaskId: null }, { parentTaskId: { $exists: false } }],
-  });
-  if (!existing) return null;
+   const { Task, ActivityLog } = getTenantModels();
+   let existing = await Task.findOne({ _id: taskId, tenantId, workspaceId });
+   
+   if (!existing && (role === 'admin' || role === 'super_admin')) {
+     existing = await Task.findOne({ _id: taskId, tenantId });
+   }
+   
+   if (!existing) return null;
   if (!taskModifyRoles(role, existing, userId)) {
     const err = new Error('Forbidden');
     err.statusCode = 403;
@@ -338,11 +371,9 @@ export async function reviewTaskCompletion({ companyId, workspaceId, userId, rol
   const tenantId = companyId;
   const { Task, ActivityLog } = getTenantModels();
   const task = await Task.findOne({
-    _id: taskId,
-    tenantId,
-    workspaceId,
-    $or: [{ parentTaskId: null }, { parentTaskId: { $exists: false } }],
-  });
+      _id: taskId,
+      tenantId,
+    });
   if (!task) return null;
 
   const reviewerIds = await getTaskReviewUsers({
@@ -430,11 +461,9 @@ export async function deleteTask({ companyId, workspaceId, userId, role, taskId 
   const tenantId = companyId;
   const { Task, Project, ActivityLog } = getTenantModels();
   const existing = await Task.findOne({
-    _id: taskId,
-    tenantId,
-    workspaceId,
-    $or: [{ parentTaskId: null }, { parentTaskId: { $exists: false } }],
-  });
+      _id: taskId,
+      tenantId,
+    });
   if (!existing) return null;
   if (!['super_admin', 'admin', 'manager', 'team_leader'].includes(role)) {
     const err = new Error('Forbidden');
@@ -466,11 +495,9 @@ export async function addSubtask({ companyId, workspaceId, userId, role, taskId,
   const tenantId = companyId;
   const { Task } = getTenantModels();
   const task = await Task.findOne({
-    _id: taskId,
-    tenantId,
-    workspaceId,
-    $or: [{ parentTaskId: null }, { parentTaskId: { $exists: false } }],
-  });
+      _id: taskId,
+      tenantId,
+    });
   if (!task) return null;
   if (!taskModifyRoles(role, task, userId)) {
     const err = new Error('Forbidden');
@@ -489,11 +516,9 @@ export async function updateSubtask({ companyId, workspaceId, userId, role, task
   const tenantId = companyId;
   const { Task } = getTenantModels();
   const task = await Task.findOne({
-    _id: taskId,
-    tenantId,
-    workspaceId,
-    $or: [{ parentTaskId: null }, { parentTaskId: { $exists: false } }],
-  });
+      _id: taskId,
+      tenantId,
+    });
   if (!task) return null;
   if (!taskModifyRoles(role, task, userId)) {
     const err = new Error('Forbidden');
@@ -515,11 +540,9 @@ export async function removeSubtask({ companyId, workspaceId, userId, role, task
   const tenantId = companyId;
   const { Task } = getTenantModels();
   const task = await Task.findOne({
-    _id: taskId,
-    tenantId,
-    workspaceId,
-    $or: [{ parentTaskId: null }, { parentTaskId: { $exists: false } }],
-  });
+      _id: taskId,
+      tenantId,
+    });
   if (!task) return null;
   if (!taskModifyRoles(role, task, userId)) {
     const err = new Error('Forbidden');
@@ -535,34 +558,61 @@ export async function removeSubtask({ companyId, workspaceId, userId, role, task
   return task;
 }
 
-export async function addTaskAttachments({ companyId, workspaceId, userId, role, taskId, files, requestBaseUrl }) {
-  const tenantId = companyId;
-  const { Task } = getTenantModels();
-
-  const task = await Task.findOne({
-    _id: taskId,
-    tenantId,
-    workspaceId,
-  });
-  if (!task) return null;
-
-  if (!taskModifyRoles(role, task, userId)) {
-    const err = new Error('Forbidden');
-    err.statusCode = 403;
-    err.code = 'FORBIDDEN';
-    throw err;
-  }
-
-  const attachments = (files || []).map((f) => ({
-    name: f.originalname,
-    url: `${requestBaseUrl}/uploads/${f.filename}`,
-    size: f.size,
-    type: f.mimetype,
-    uploadedBy: userId,
-  }));
-
-  if (!attachments.length) return task;
-
-  await Task.updateOne({ _id: taskId, tenantId, workspaceId }, { $push: { attachments } });
-  return Task.findOne({ _id: taskId, tenantId, workspaceId });
-}
+ export async function addTaskAttachments({ companyId, workspaceId, userId, role, taskId, files, requestBaseUrl }) {
+   const tenantId = companyId;
+   const { Task } = getTenantModels();
+ 
+   const task = await Task.findOne({
+      _id: taskId,
+      tenantId,
+    });
+   if (!task) return null;
+ 
+   if (!taskModifyRoles(role, task, userId)) {
+     const err = new Error('Forbidden');
+     err.statusCode = 403;
+     err.code = 'FORBIDDEN';
+     throw err;
+   }
+ 
+   const attachments = (files || []).map((f) => ({
+     name: f.originalname,
+     url: `${requestBaseUrl}/uploads/${f.filename}`,
+     size: f.size,
+     type: f.mimetype,
+     uploadedBy: userId,
+   }));
+ 
+   if (!attachments.length) return task;
+ 
+   await Task.updateOne({ _id: taskId, tenantId, workspaceId }, { $push: { attachments } });
+   return Task.findOne({ _id: taskId, tenantId, workspaceId });
+ }
+ 
+ export async function addTaskComment({ companyId, workspaceId, userId, role, taskId, content }) {
+   const tenantId = companyId;
+   const { Task } = getTenantModels();
+ 
+   const task = await Task.findOne({
+      _id: taskId,
+      tenantId,
+    });
+   if (!task) return null;
+ 
+   if (!taskModifyRoles(role, task, userId)) {
+     const err = new Error('Forbidden');
+     err.statusCode = 403;
+     err.code = 'FORBIDDEN';
+     throw err;
+   }
+ 
+   const comment = {
+     content,
+     authorId: userId,
+     createdAt: new Date(),
+     updatedAt: new Date(),
+   };
+ 
+   await Task.updateOne({ _id: taskId, tenantId, workspaceId }, { $push: { comments: comment } });
+   return Task.findOne({ _id: taskId, tenantId, workspaceId });
+ }

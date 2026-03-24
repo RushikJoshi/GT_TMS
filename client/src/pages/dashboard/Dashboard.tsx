@@ -11,6 +11,7 @@ import { useAuthStore } from '../../context/authStore';
 import { useAppStore } from '../../context/appStore';
 import { PRIORITY_CONFIG, STATUS_CONFIG } from '../../app/constants';
 import { companiesService, activityService } from '../../services/api';
+import api from '../../services/api';
 import { UserAvatar, AvatarGroup } from '../../components/UserAvatar';
 import { ProgressBar } from '../../components/ui';
 import { TaskCard } from '../../components/TaskCard';
@@ -82,6 +83,8 @@ export const DashboardPage: React.FC = () => {
   const [platformActivity, setPlatformActivity] = useState<ActivityRow[]>([]);
   const [companiesLoading, setCompaniesLoading] = useState(false);
   const [activityLoading, setActivityLoading] = useState(false);
+  const [overviewTasks, setOverviewTasks] = useState<any[]>([]);
+  const [overviewLoading, setOverviewLoading] = useState(false);
 
   const isSuperAdmin = user?.role === 'super_admin';
 
@@ -99,14 +102,25 @@ export const DashboardPage: React.FC = () => {
   }, [isSuperAdmin]);
 
   useEffect(() => {
-    setActivityLoading(true);
-    activityService.getRecent(20)
-      .then((res) => {
-        const data = res.data?.data ?? res.data ?? [];
-        setPlatformActivity(Array.isArray(data) ? data : []);
-      })
-      .catch(() => setPlatformActivity([]))
-      .finally(() => setActivityLoading(false));
+     const canViewActivity = ['super_admin', 'admin', 'manager', 'team_leader'].includes(user?.role || '');
+     if (canViewActivity) {
+       setActivityLoading(true);
+       activityService.getRecent(20)
+         .then((res) => {
+           const data = res.data?.data ?? res.data ?? [];
+           setPlatformActivity(Array.isArray(data) ? data : []);
+         })
+         .catch(() => setPlatformActivity([]))
+         .finally(() => setActivityLoading(false));
+     }
+
+    if (!isSuperAdmin) {
+      setOverviewLoading(true);
+      api.get('/tasks/overview')
+        .then(res => setOverviewTasks(res.data?.data || []))
+        .catch(console.error)
+        .finally(() => setOverviewLoading(false));
+    }
   }, []);
 
   const chartData = useMemo(() => buildChartDataFromTasks(tasks), [tasks]);
@@ -459,40 +473,72 @@ export const DashboardPage: React.FC = () => {
 
         {/* Right: My tasks + Activity Feed */}
         <div className="space-y-6">
-          {/* Plan Distribution */}
+          {/* Team Tasks Overview */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="card p-5"
+            className="bg-white border text-gray-800 border-gray-200 rounded-lg overflow-hidden flex flex-col shadow-sm"
           >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-display font-semibold text-surface-900 dark:text-white">
-                Company Status Distribution
+            <div className="bg-[#fcfdff] px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-widest">
+                Team Tasks Overview
               </h3>
-              <span className="badge-blue">Total: {companiesLoading ? '...' : companies.length}</span>
+              <span className="text-[10px] text-gray-500 font-semibold bg-gray-100 px-2 py-0.5 rounded-full">
+                In-Progress
+              </span>
             </div>
-            <div className="space-y-4">
-              {(planCounts || [
-                { label: 'Active', count: 0, color: 'bg-indigo-500', percent: 0 },
-                { label: 'Trial', count: 0, color: 'bg-brand-500', percent: 0 },
-                { label: 'Suspended', count: 0, color: 'bg-amber-500', percent: 0 },
-              ]).map((plan, i) => (
-                <div key={i} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs font-medium">
-                    <span className="text-surface-600 dark:text-surface-400">{plan.label}</span>
-                    <span className="text-surface-900 dark:text-white">{plan.count}</span>
-                  </div>
-                  <div className="h-1.5 w-full bg-surface-100 dark:bg-surface-800 rounded-full overflow-hidden">
-                    <motion.div 
-                      initial={{ width: 0 }}
-                      animate={{ width: `${plan.percent}%` }}
-                      transition={{ duration: 1, delay: 0.5 + (i * 0.1) }}
-                      className={cn("h-full rounded-full", plan.color)} 
-                    />
-                  </div>
-                </div>
-              ))}
+            
+            <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-[#f9fafb] text-gray-500 font-semibold tracking-wide uppercase text-[10px] sticky top-0 border-b border-gray-100">
+                  <tr>
+                    <th className="px-3 py-2 font-semibold">Employee</th>
+                    <th className="px-3 py-2 font-semibold">Task</th>
+                    <th className="px-3 py-2 font-semibold">Project</th>
+                    <th className="px-3 py-2 font-semibold">Type</th>
+                    <th className="px-3 py-2 font-semibold text-center">Status</th>
+                    <th className="px-3 py-2 font-semibold text-right">Due Date</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {overviewLoading ? (
+                    <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-400">Loading tasks...</td></tr>
+                  ) : overviewTasks.length > 0 ? (
+                    overviewTasks.map((task) => (
+                      <tr key={task.id} className="hover:bg-gray-50/50 transition-colors">
+                        <td className="px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap">{task.assignedTo}</td>
+                        <td className="px-3 py-2.5 text-gray-800 font-medium truncate max-w-[150px]">{task.title}</td>
+                        <td className="px-3 py-2.5 text-gray-600 truncate max-w-[100px]">{task.projectName}</td>
+                        <td className="px-3 py-2.5 text-gray-500 capitalize">{task.type}</td>
+                        <td className="px-3 py-2.5 text-center">
+                          <span className={`px-2 py-0.5 rounded-[4px] text-[10px] font-bold uppercase tracking-wide
+                            ${task.status === 'in_progress' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200/50' : ''}
+                            ${task.status === 'done' || task.status === 'completed' ? 'bg-green-50 text-green-700 border border-green-200/50' : ''}
+                            ${task.status === 'todo' || task.status === 'pending' || task.status === 'backlog' ? 'bg-red-50 text-red-700 border border-red-200/50' : ''}
+                          `}>
+                            {task.status.replace('_', ' ')}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-right text-gray-500 whitespace-nowrap">
+                          {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : '—'}
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr><td colSpan={6} className="px-3 py-6 text-center text-gray-400">No in-progress tasks found.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            
+            <div className="p-3 border-t border-gray-100 flex justify-end bg-[#fcfdff]">
+              <button 
+                onClick={() => navigate('/tasks')}
+                className="text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors flex items-center gap-1"
+              >
+                View All Tasks &rarr;
+              </button>
             </div>
           </motion.div>
 

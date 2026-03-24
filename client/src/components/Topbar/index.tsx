@@ -25,6 +25,9 @@ const BREADCRUMB_MAP: Record<string, string> = {
   billing: 'Billing',
   'my-tasks': 'My Tasks',
   'mis-dashboard': 'MIS Dashboard',
+  'mis-entry': 'MIS Entry',
+  'mis-manager': 'Manager Reviews',
+  'mis-reports': 'MIS Reports',
 };
 
 export const Topbar: React.FC = () => {
