@@ -199,7 +199,7 @@ export const AdminTaskModal = () => {
                             </button>
                             {repeatEvent && (
                                 <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl shadow-xl z-50 p-2 animate-in fade-in slide-in-from-top-2 duration-200">
-                                    {['daily', 'weekly', 'monthly', 'yearly'].map((freq) => (
+                                    {['day', 'weekly', 'monthly', 'yearly'].map((freq) => (
                                         <button
                                             key={freq}
                                             type="button"
@@ -287,7 +287,7 @@ export const AdminTaskModal = () => {
                                     <option className="bg-white dark:bg-surface-800">Teams</option>
                                     <option className="bg-white dark:bg-surface-800">None</option>
                                 </select>
-                                <ChevronDown size={14} className="text-surface-400 dark:text-surface-500" />
+                                {/* <ChevronDown size={14} className="text-surface-400 dark:text-surface-500" /> */}
                             </div>
                             <span className="text-[13px] text-surface-500 dark:text-surface-400 font-medium">{meetingLinkHint}</span>
                         </div>
