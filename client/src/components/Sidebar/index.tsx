@@ -620,13 +620,13 @@ export const Sidebar: React.FC = () => {
                     <span className="truncate">Quick Tasks</span>
                   </NavLink>
 
-                  <button
+                  {/* <button
                     onClick={() => navigate('/quick-tasks?new=1')}
                     className="nav-item-inactive text-xs w-full"
                   >
                     <Plus size={14} />
                     <span>New Quick Task</span>
-                  </button>
+                  </button> */}
                 </motion.div>
               )}
             </AnimatePresence>
