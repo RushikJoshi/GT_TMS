@@ -28,6 +28,7 @@ const BREADCRUMB_MAP: Record<string, string> = {
   'mis-entry': 'MIS Entry',
   'mis-manager': 'Manager Reviews',
   'mis-reports': 'MIS Reports',
+  'quick-tasks': 'Quick Tasks',
 };
 
 export const Topbar: React.FC = () => {
@@ -39,8 +40,10 @@ export const Topbar: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [notifOpen, setNotifOpen] = useState(false);
 
-  const unread = unreadNotificationsCount();
-  const searchRef = useRef<HTMLDivElement>(null);
+   const { conversations } = useAdminChatStore();
+   const unread = unreadNotificationsCount();
+   const hasUnreadChat = conversations.some(c => (c.unreadCount || 0) > 0);
+   const searchRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -140,14 +143,16 @@ export const Topbar: React.FC = () => {
 
       {/* Messenger Toggle */}
       {user && (
-        <button
-          onClick={() => useAdminChatStore.getState().toggleSidebar()}
-          className="btn-ghost btn-sm w-9 h-9 rounded-xl flex-shrink-0 relative group"
-          title="Messenger"
-        >
-          <MessageCircle size={17} className="group-hover:text-brand-500 transition-colors" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-500 rounded-full ring-2 ring-white dark:ring-surface-900 animate-pulse" />
-        </button>
+         <button
+           onClick={() => useAdminChatStore.getState().toggleSidebar()}
+           className="btn-ghost btn-sm w-9 h-9 rounded-xl flex-shrink-0 relative group"
+           title="Messenger"
+         >
+           <MessageCircle size={17} className="group-hover:text-brand-500 transition-colors" />
+           {hasUnreadChat && (
+             <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-500 rounded-full ring-2 ring-white dark:ring-surface-900 animate-pulse" />
+           )}
+         </button>
       )}
 
       {/* Notifications */}
@@ -171,10 +176,10 @@ export const Topbar: React.FC = () => {
       {/* Profile */}
       {user && (
         <button
-          onClick={() => navigate('/settings')}
+          onClick={() => navigate('/profile')}
           className="flex-shrink-0 hover:opacity-80 transition-opacity"
         >
-          <UserAvatar name={user.name} color={user.color} size="sm" isOnline />
+          <UserAvatar name={user.name} avatar={user.avatar} color={user.color} size="sm" isOnline />
         </button>
       )}
 

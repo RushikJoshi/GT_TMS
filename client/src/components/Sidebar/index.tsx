@@ -593,13 +593,6 @@ export const Sidebar: React.FC = () => {
 
               <p className="section-title flex-1 text-left">Quick tasks</p>
 
-              {/* Quick Task Plus Button */}
-              <button
-                className="flex items-center justify-center w-5 h-5 rounded-md hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors cursor-pointer"
-                onClick={(e) => { e.stopPropagation(); navigate('/quick-tasks?new=1'); }}
-              >
-                <Plus size={14} className="text-surface-500" />
-              </button>
 
               <ChevronDown size={12} className={cn('text-surface-400 transition-transform', quickTasksExpanded && 'rotate-180')} />
             </div>
@@ -620,13 +613,7 @@ export const Sidebar: React.FC = () => {
                     <span className="truncate">Quick Tasks</span>
                   </NavLink>
 
-                  <button
-                    onClick={() => navigate('/quick-tasks?new=1')}
-                    className="nav-item-inactive text-xs w-full"
-                  >
-                    <Plus size={14} />
-                    <span>New Quick Task</span>
-                  </button>
+
                 </motion.div>
               )}
             </AnimatePresence>
@@ -634,33 +621,26 @@ export const Sidebar: React.FC = () => {
         )}
 
 
-        {/* Hash/Direct links for team members */}
-        {!isCollapsed && user?.role !== 'super_admin' && (
-          <div className="pt-3">
-            <p className="section-title px-3 py-1 mb-1">Quick Links</p>
-            <NavLink to="/tasks" className={({ isActive }) => isActive ? 'nav-item-active' : 'nav-item-inactive'}>
-              <Hash size={18} className="flex-shrink-0" />
-              <span>All Tasks</span>
-            </NavLink>
-          </div>
-        )}
       </nav>
 
       {/* Bottom Section */}
       <div className="border-t border-surface-100 dark:border-surface-800 p-2 space-y-0.5">
         <NavLink
-          to="/settings"
+          to="/profile"
           className={({ isActive }) => cn(isActive ? 'nav-item-active' : 'nav-item-inactive', isCollapsed && 'justify-center px-0')}
-          title={isCollapsed ? 'Settings' : undefined}
+          title={isCollapsed ? 'Account Settings' : undefined}
         >
           <Settings size={18} className="flex-shrink-0" />
-          {!isCollapsed && <span>Settings</span>}
+          {!isCollapsed && <span>Account Settings</span>}
         </NavLink>
 
         {/* User Profile */}
         {!isCollapsed && user && (
-          <div className="flex items-center gap-2 px-2 py-2 rounded-xl hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors cursor-pointer group">
-            <UserAvatar name={user.name} color={user.color} size="sm" isOnline={true} />
+          <div 
+            onClick={() => navigate('/profile')}
+            className="flex items-center gap-2 px-2 py-2 rounded-xl hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors cursor-pointer group"
+          >
+            <UserAvatar name={user.name} avatar={user.avatar} color={user.color} size="sm" isOnline={true} />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-surface-800 dark:text-surface-200 truncate">{user.name}</p>
               <p className="text-xs text-surface-400 truncate capitalize">{user.role.replace('_', ' ')}</p>
