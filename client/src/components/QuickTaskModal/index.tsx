@@ -175,7 +175,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({ open, onClose, t
 
   return (
     <Modal open={open} onClose={onClose} size="lg" showClose={false}>
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         <div className="flex items-start gap-3">
           <div className="flex-1 min-w-0">
             <h2 className="font-display font-semibold text-lg text-surface-900 dark:text-white">
@@ -223,7 +223,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({ open, onClose, t
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">Status</label>
               <div className="relative">

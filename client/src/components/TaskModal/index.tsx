@@ -269,9 +269,9 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => 
 
   return (
     <Modal open={open} onClose={onClose} size="xl" showClose={false}>
-      <div className="flex h-full max-h-[85vh]">
+      <div className="flex h-full max-h-[85vh] flex-col lg:flex-row">
         <div className="flex-1 flex flex-col min-w-0">
-          <div className="flex items-start gap-3 p-6 pb-4 border-b border-surface-100 dark:border-surface-800">
+          <div className="flex items-start gap-3 p-4 sm:p-6 pb-4 border-b border-surface-100 dark:border-surface-800">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 mb-2 text-xs text-surface-400">
                 <span className="w-3 h-3 rounded flex-shrink-0" style={{ backgroundColor: project?.color }} />
@@ -312,7 +312,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => 
             </div>
           </div>
 
-          <div className="flex gap-1 px-6 pt-3 border-b border-surface-100 dark:border-surface-800">
+          <div className="flex gap-1 px-4 sm:px-6 pt-3 border-b border-surface-100 dark:border-surface-800 overflow-x-auto">
             {(['details', 'activity'] as const).map(tab => (
               <button
                 key={tab}
@@ -327,7 +327,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => 
             ))}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6 pt-4">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 pt-4">
             {activeTab === 'details' ? (
               <div className="space-y-5">
                 <div>
@@ -544,7 +544,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => 
           </div>
         </div>
 
-        <div className="w-64 border-l border-surface-100 dark:border-surface-800 p-5 flex flex-col gap-4 flex-shrink-0 bg-surface-50/50 dark:bg-surface-950/30 overflow-y-auto">
+        <div className="w-full lg:w-64 border-t lg:border-t-0 lg:border-l border-surface-100 dark:border-surface-800 p-4 sm:p-5 flex flex-col gap-4 flex-shrink-0 bg-surface-50/50 dark:bg-surface-950/30 overflow-y-auto">
           <div>
             <label className="label">Status</label>
             <div className="relative">

@@ -482,7 +482,7 @@ export const ProjectsPage: React.FC = () => {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="label">Start date</label>
               <input {...register('startDate')} type="date" className="input" min={new Date().toISOString().split('T')[0]} defaultValue={new Date().toISOString().split('T')[0]} />
@@ -494,7 +494,7 @@ export const ProjectsPage: React.FC = () => {
 
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="label">Project budget</label>
               <input
