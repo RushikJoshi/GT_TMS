@@ -387,7 +387,7 @@ export async function createTask({ companyId, workspaceId, userId, role, data })
 
 export async function updateTask({ companyId, workspaceId, userId, role, taskId, updates }) {
   const tenantId = companyId;
-<<<<<<< dev-dhiren
+<<<<<<< HEAD
    const { Task, ActivityLog, Notification, Project } = getTenantModels(tenantId);
 =======
    const { Task, ActivityLog } = await getTenantModels(companyId);
