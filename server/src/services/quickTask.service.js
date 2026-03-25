@@ -2,6 +2,7 @@ import { getTenantModels } from '../config/tenantDb.js';
 import fs from 'fs';
 import path from 'path';
 import mongoose from 'mongoose';
+import { sendTemplatedEmailSafe } from './mail.service.js';
 
 const DEBUG_LOG_FILE = path.join(process.cwd(), 'debug-e243b9.log');
 function fileAgentLog(payload) {
@@ -71,6 +72,55 @@ async function attachQuickTaskActivity({ companyId, workspaceId, tasks }) {
   );
 }
 
+<<<<<<< dev-dhiren
+function formatMailDate(value) {
+  if (!value) return 'Not set';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not set';
+  return date.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+async function sendQuickTaskAssignmentEmails({ tenantId, assigneeIds, actorId, quickTask }) {
+  const uniqueAssigneeIds = Array.from(new Set((assigneeIds || []).map(String))).filter(Boolean);
+  if (!uniqueAssigneeIds.length) return;
+
+  const { User } = await getTenantModels(tenantId);
+  const [users, actor] = await Promise.all([
+    User.find({ tenantId, _id: { $in: uniqueAssigneeIds } }).select('name email').lean(),
+    actorId ? User.findOne({ tenantId, _id: actorId }).select('name email').lean() : Promise.resolve(null),
+  ]);
+
+  await Promise.allSettled(
+    users
+      .filter((user) => user?.email)
+      .map((user) =>
+        sendTemplatedEmailSafe({
+          to: user.email,
+          templateKey: 'quickTaskAssigned',
+          variables: {
+            userName: user.name || 'User',
+            taskTitle: quickTask.title,
+            priority: quickTask.priority || 'medium',
+            dueDate: formatMailDate(quickTask.dueDate),
+            assignedBy: actor?.name || 'Administrator',
+            taskUrl: `/quick-tasks/${quickTask._id}`,
+          },
+        })
+      )
+  );
+}
+
+export async function listQuickTasks({ companyId, workspaceId }) {
+  const tenantId = companyId;
+  const { QuickTask } = await getTenantModels(companyId);
+  const tasks = await QuickTask.find({ tenantId, workspaceId }).sort({ updatedAt: -1 });
+  return attachQuickTaskActivity({ companyId, workspaceId, tasks });
+}
+=======
   export async function createQuickTask({ companyId, workspaceId, userId, data }) {
     const tenantId = companyId;
     const { QuickTask, ActivityLog, Notification } = await getTenantModels(companyId);
@@ -99,6 +149,7 @@ async function attachQuickTaskActivity({ companyId, workspaceId, tasks }) {
     if (assigneeIds.length > 0 && !isSelfAssigned) {
       isPrivate = false;
     }
+>>>>>>> main
 
     let qt = await QuickTask.create({
       tenantId,
@@ -502,6 +553,22 @@ async function attachQuickTaskActivity({ companyId, workspaceId, tasks }) {
         activityEntries.push({
           tenantId,
           workspaceId,
+<<<<<<< dev-dhiren
+          userId: reviewerId,
+          type: 'project_update',
+          title: 'Quick task completed and awaiting review',
+          message: `"${qt.title}" was marked complete and needs review.`,
+          isRead: false,
+          relatedId: String(qt._id),
+        }))
+      );
+      await sendQuickTaskAssignmentEmails({
+        tenantId,
+        assigneeIds: newlyAssigned,
+        actorId: userId,
+        quickTask: qt,
+      });
+=======
           userId,
           type: 'quick_task_assignees_changed',
           description: `Updated assignees for "${qt.title}"`,
@@ -513,6 +580,7 @@ async function attachQuickTaskActivity({ companyId, workspaceId, tasks }) {
           },
         });
       }
+>>>>>>> main
     }
 
     await ActivityLog.insertMany(activityEntries);
@@ -605,9 +673,48 @@ async function attachQuickTaskActivity({ companyId, workspaceId, tasks }) {
       reviewStatus: action === 'approve' ? 'approved' : 'changes_requested',
       rating: action === 'approve' ? rating : null,
       reviewRemark: reviewRemark || '',
+<<<<<<< dev-dhiren
+    },
+  });
+
+  const notifyUserIds = Array.from(
+    new Set([
+      ...((qt.assigneeIds || []).map((a) => String(a)) || []),
+      String(qt.reporterId || ''),
+    ])
+  ).filter((notifyId) => notifyId && notifyId !== uid);
+
+  if (notifyUserIds.length) {
+    await Notification.insertMany(
+      notifyUserIds.map((notifyUserId) => ({
+        tenantId,
+        workspaceId,
+        userId: notifyUserId,
+        type: 'project_update',
+        title: action === 'approve' ? 'Quick task review approved' : 'Quick task changes requested',
+        message:
+          action === 'approve'
+            ? `Review approved for "${qt.title}".`
+            : `Changes were requested for "${qt.title}".`,
+        isRead: false,
+        relatedId: String(qt._id),
+      }))
+    );
+    await sendQuickTaskAssignmentEmails({
+      tenantId,
+      assigneeIds,
+      actorId: userId,
+      quickTask: qt,
+    });
+  }
+
+  return attachQuickTaskActivity({ companyId, workspaceId, tasks: [qt] }).then((items) => items[0] || mapQuickTaskWithActivity(qt, []));
+}
+=======
       reviewedAt: new Date(),
       reviewedBy: userId,
     };
+>>>>>>> main
 
     if (action === 'changes_requested') {
       qt.status = 'in_progress';
