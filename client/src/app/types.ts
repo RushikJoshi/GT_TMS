@@ -306,6 +306,7 @@ export interface Team {
   description?: string;
   workspaceId: string;
   leaderId: string;
+  leaderIds?: string[];
   members: string[];
   projectIds: string[];
   color: string;

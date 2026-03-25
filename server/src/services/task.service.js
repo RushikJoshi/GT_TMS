@@ -26,7 +26,13 @@ export async function getAccessibleProjectIds({ tenantId, workspaceId, userId, r
     }
     if (p.teamId) {
       const team = await Team.findOne({ _id: p.teamId, tenantId, workspaceId }).lean();
-      if (team && (strId(team.leaderId) === uid || (team.members || []).some((m) => strId(m) === uid))) {
+      if (
+        team && (
+          strId(team.leaderId) === uid ||
+          (team.leaderIds || []).some((leaderId) => strId(leaderId) === uid) ||
+          (team.members || []).some((m) => strId(m) === uid)
+        )
+      ) {
         allowed.push(pid);
       }
     }

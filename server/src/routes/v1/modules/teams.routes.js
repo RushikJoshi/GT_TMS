@@ -13,6 +13,7 @@ const teamCreateSchema = z.object({
   name: z.string().trim().min(2).max(200),
   description: z.string().trim().max(2000).optional(),
   leaderId: z.string().optional(),
+  leaderIds: z.array(z.string()).optional(),
   members: z.array(z.string()).optional(),
   projectIds: z.array(z.string()).optional(),
   color: z.string().trim().min(3).max(32),

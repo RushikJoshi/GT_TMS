@@ -7,6 +7,7 @@ const teamSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true, maxlength: 200 },
     description: { type: String, trim: true, maxlength: 2000 },
     leaderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    leaderIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true }],
     members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true }],
     projectIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Project' }],
     color: { type: String, required: true, trim: true, maxlength: 32 },
@@ -21,6 +22,11 @@ teamSchema.set('toJSON', {
     ret.id = String(ret._id);
     ret.workspaceId = String(ret.workspaceId);
     ret.leaderId = String(ret.leaderId);
+    ret.leaderIds = Array.isArray(ret.leaderIds)
+      ? ret.leaderIds.map((leader) => String(leader))
+      : ret.leaderId
+        ? [String(ret.leaderId)]
+        : [];
     ret.members = Array.isArray(ret.members) ? ret.members.map((m) => String(m)) : [];
     ret.projectIds = Array.isArray(ret.projectIds) ? ret.projectIds.map((p) => String(p)) : [];
     ret.createdAt = ret.createdAt?.toISOString?.() || ret.createdAt;

@@ -299,7 +299,7 @@ export const AdminCalendarBoard: React.FC<{ searchQuery?: string }> = ({ searchQ
                                 {/* Tag dropdown visual placeholder */}
                                 <button className="flex h-[26px] items-center justify-center gap-1 rounded bg-surface-100 dark:bg-surface-800 px-2 text-surface-500 hover:bg-surface-200 dark:hover:bg-surface-700">
                                     <ChevronDown size={14} strokeWidth={3} />
-                                </button>/but                                 {/* User picker */}
+                                </button>                                 {/* User picker */}
                                 <label title={inlineUser || "Assign User"} className="relative flex h-[26px] w-[26px] cursor-pointer items-center justify-center rounded-full bg-brand-500 text-white shadow-sm border-[1.5px] border-white dark:border-surface-800 hover:brightness-95">
                                     <User size={13} strokeWidth={3} />
                                     <select 

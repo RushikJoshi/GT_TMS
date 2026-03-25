@@ -24,6 +24,7 @@ import {
 import { cn } from '../../utils/helpers';
 import { useAuthStore } from '../../context/authStore';
 import { useAppStore } from '../../context/appStore';
+import { ColorPicker } from '../../components/ColorPicker';
 import { UserAvatar } from '../../components/UserAvatar';
 import { ProfilePhotoUpload } from '../../components/ProfilePhotoUpload';
 import { Tabs, TabsContent } from '../../components/ui';
@@ -430,17 +431,12 @@ export const SettingsPage: React.FC = () => {
                 </div>
                 <div>
                   <p className="mb-2 text-center text-xs text-surface-500">Profile color</p>
-                  <div className="flex flex-wrap justify-center gap-1.5">
-                    {PROJECT_COLORS.map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        onClick={() => setSelectedColor(color)}
-                        className={cn('h-6 w-6 rounded-lg transition-all', selectedColor === color && 'scale-110 ring-2 ring-brand-500 ring-offset-2')}
-                        style={{ backgroundColor: color }}
-                      />
-                    ))}
-                  </div>
+                  <ColorPicker
+                    value={selectedColor}
+                    onChange={setSelectedColor}
+                    palette={PROJECT_COLORS}
+                    helperText="Used for your avatar and profile accents."
+                  />
                 </div>
               </div>
 

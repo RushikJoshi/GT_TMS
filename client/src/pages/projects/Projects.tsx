@@ -10,6 +10,7 @@ import { cn, formatDate, getProgressColor, generateId } from '../../utils/helper
 import { useAppStore } from '../../context/appStore';
 import { useAuthStore } from '../../context/authStore';
 import { PROJECT_COLORS, STATUS_CONFIG } from '../../app/constants';
+import { ColorPicker } from '../../components/ColorPicker';
 import { UserAvatar, AvatarGroup } from '../../components/UserAvatar';
 import { ProgressBar, EmptyState, Dropdown } from '../../components/ui';
 import { Modal } from '../../components/Modal';
@@ -473,20 +474,12 @@ export const ProjectsPage: React.FC = () => {
 
           <div>
             <label className="label">Color</label>
-            <div className="flex gap-2 flex-wrap">
-              {PROJECT_COLORS.map(color => (
-                <button
-                  key={color}
-                  type="button"
-                  onClick={() => setSelectedColor(color)}
-                  className={cn(
-                    'w-7 h-7 rounded-lg transition-all',
-                    selectedColor === color && 'ring-2 ring-offset-2 ring-brand-500 scale-110'
-                  )}
-                  style={{ backgroundColor: color }}
-                />
-              ))}
-            </div>
+            <ColorPicker
+              value={selectedColor}
+              onChange={setSelectedColor}
+              palette={PROJECT_COLORS}
+              helperText="Pick a color accent for project cards and progress."
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
