@@ -443,7 +443,7 @@ export const SettingsPage: React.FC = () => {
               <div className="card p-5 lg:col-span-2">
                 <h3 className="mb-4 font-display font-semibold text-surface-900 dark:text-white">Personal Information</h3>
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="label">Full name</label>
                       <input {...registerProfile('name', { required: true })} className="input" />
@@ -453,7 +453,7 @@ export const SettingsPage: React.FC = () => {
                       <input {...registerProfile('email')} type="email" className="input bg-surface-50 dark:bg-surface-800" readOnly />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="label">Job title</label>
                       <input {...registerProfile('jobTitle')} placeholder="e.g. Frontend Developer" className="input" />
@@ -857,7 +857,7 @@ export const SettingsPage: React.FC = () => {
 
             <div className="card p-5">
               <h3 className="mb-4 font-display font-semibold text-surface-900 dark:text-white">Language & Region</h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="label">Language</label>
                   <select value={appearanceSettings.language} onChange={(e) => setAppearanceSettings((prev) => ({ ...prev, language: e.target.value }))} className="input">

@@ -433,7 +433,7 @@ export const ProjectDetailPage: React.FC = () => {
             <label className="label">Description</label>
             <textarea {...register('description')} placeholder="Optional description" className="input h-auto py-2 resize-none" rows={2} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">Priority</label>
               <Dropdown 
@@ -459,7 +459,7 @@ export const ProjectDetailPage: React.FC = () => {
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">Assignee</label>
               <Dropdown 

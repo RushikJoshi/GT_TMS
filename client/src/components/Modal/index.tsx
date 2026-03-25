@@ -66,10 +66,10 @@ export const Modal: React.FC<ModalProps> = ({
                 {!title && <Dialog.Title className="sr-only">Dialog</Dialog.Title>}
                 {!description && <Dialog.Description className="sr-only">Dialog content</Dialog.Description>}
                 {(title || showClose) && (
-                  <div className="flex items-start justify-between p-6 border-b border-surface-100 dark:border-surface-800 flex-shrink-0">
+                  <div className="flex items-start justify-between p-4 sm:p-6 border-b border-surface-100 dark:border-surface-800 flex-shrink-0">
                     <div>
                       {title && (
-                        <Dialog.Title className="font-display font-semibold text-lg text-surface-900 dark:text-white">
+                        <Dialog.Title className="font-display font-semibold text-base sm:text-lg text-surface-900 dark:text-white">
                           {title}
                         </Dialog.Title>
                       )}
