@@ -110,6 +110,25 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({ open, onClose, t
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [assigneeOpen]);
 
+  const assignableUsers = users
+    .filter(u => u.isActive)
+    .filter(u => ASSIGNABLE_ROLES.includes(u.role));
+
+  const selectedAssigneeIds = watch('assigneeIds') || [];
+  const currentUserId = String(user?.id || (user as { _id?: string } | null)?._id || '');
+  const canUsePrivateTask =
+    selectedAssigneeIds.length === 1 &&
+    String(selectedAssigneeIds[0] || '') === currentUserId;
+  const selectedAssignees = selectedAssigneeIds
+    .map((id) => assignableUsers.find((u) => u.id === id))
+    .filter(Boolean);
+
+  useEffect(() => {
+    if (!canUsePrivateTask) {
+      setValue('isPrivate', false, { shouldDirty: true });
+    }
+  }, [canUsePrivateTask, setValue]);
+
   const filteredAssignableUsers = useMemo(() => {
     const query = assigneeQuery.trim().toLowerCase();
     if (!query) return assignableUsers;
