@@ -38,9 +38,18 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401) {
+    const status = error.response?.status;
+
+    if (status === 401) {
       localStorage.removeItem('flowboard-auth');
       window.location.href = '/login';
+      return Promise.reject(error);
+    }
+
+    if (status >= 500) {
+      if (window.location.pathname !== '/500') {
+        window.location.href = '/500';
+      }
       return Promise.reject(error);
     }
 
@@ -186,6 +195,8 @@ export const systemSettingsService = {
 export const timelineService = {
   get: (projectId: string) => api.get(`/timeline/${projectId}`),
   upsert: (projectId: string, data: unknown) => api.post(`/timeline/${projectId}`, data),
+  patchTask: (taskId: string, data: unknown) => api.patch(`/timeline/task/${taskId}`, data),
+  createDependency: (data: unknown) => api.post('/timeline/dependency', data),
   lock: (projectId: string) => api.patch(`/timeline/${projectId}/lock`),
   unlock: (projectId: string) => api.patch(`/timeline/${projectId}/unlock`),
 };

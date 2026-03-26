@@ -148,9 +148,15 @@ export const router = createBrowserRouter([
       { path: 'admin/billing', element: <AdminBillingPage /> },
       { path: 'planner', element: <PlannerPage /> },
 
-     // Catch-all redirect
-      { path: '*', element: <Navigate to="/dashboard" replace /> },
     ],
+  },
+  {
+    path: '/500',
+    element: <Error500Page />,
+  },
+  {
+    path: '*',
+    element: <NotFound404 />,
   },
 ], {
   future: {

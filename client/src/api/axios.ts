@@ -35,9 +35,18 @@ API.interceptors.request.use((config) => {
 API.interceptors.response.use(
     (response) => response,
     async (error) => {
-        if (error.response?.status === 401) {
+        const status = error.response?.status;
+
+        if (status === 401) {
             localStorage.removeItem('flowboard-auth');
             window.location.href = '/login';
+            return Promise.reject(error);
+        }
+
+        if (status >= 500) {
+            if (window.location.pathname !== '/500') {
+                window.location.href = '/500';
+            }
             return Promise.reject(error);
         }
 

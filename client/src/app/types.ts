@@ -243,6 +243,9 @@ export interface Task {
   assigneeIds: string[];
   reporterId: string;
   parentTaskId?: string;
+  phaseId?: string;
+  dependencies?: string[];
+  type?: 'task' | 'milestone';
   /** Embedded checklist items (GW-style subtask bar) */
   subtasks?: TaskSubtask[];
   subtaskCompleted?: number;
@@ -250,6 +253,7 @@ export interface Task {
   labels?: string[];
   startDate?: string;
   dueDate?: string;
+  endDate?: string;
   estimatedHours?: number;
   trackedHours?: number;
   comments?: Comment[];
@@ -396,34 +400,72 @@ export interface Report {
 
 export interface TimelineTask {
   id: string;
-  taskName: string;
-  startDate: string; // Maintain backward compatibility (Legacy)
-  endDate: string;   // Maintain backward compatibility (Legacy)
-  duration: number;  // Maintain backward compatibility (Legacy)
-
-  // BASELINE (PLANNED)
-  plannedStartDate: string;
-  plannedEndDate: string;
-  plannedDuration: number;
-
-  // ACTUAL (REAL)
-  actualStartDate?: string;
-  actualEndDate?: string;
-  actualDuration?: number;
-
-  assignedRole?: string;
-  dependencyTaskId?: string;
+  title: string;
+  projectId: string;
+  phaseId?: string | null;
+  startDate: string;
+  endDate: string;
+  startOffset: number;
+  endOffset: number;
+  durationInDays: number;
+  dependencies: string[];
+  predecessorIds?: string[];
+  type: 'task' | 'milestone';
+  assigneeIds: string[];
+  assignee?: string | null;
+  status: string;
+  priority?: Priority;
   progress: number;
-  status: 'not_started' | 'in_progress' | 'completed' | 'delayed';
-  
-  varianceDays?: number; // actualDuration - plannedDuration
-  delayDays?: number;    // if actualEndDate > plannedEndDate
+  isCritical?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface TimelinePhase {
+  id: string;
+  projectId: string;
+  name: string;
+  order: number;
+  color?: string;
+  tasks: TimelineTask[];
+}
+
+export interface TimelineDependency {
+  id: string;
+  fromTaskId: string;
+  toTaskId: string;
+  type: 'finish_to_start';
+}
+
+export interface TimelineConflict {
+  assigneeId: string;
+  taskIds: string[];
+  startDate: string;
+  endDate: string;
 }
 
 export interface ProjectTimeline {
   projectId: string;
-  tasks: TimelineTask[];
   status: 'Draft' | 'Approved';
-  createdAt: string;
-  updatedAt: string;
+  settings: {
+    zoom: 'day' | 'week' | 'month';
+    baselineVisible?: boolean;
+    showCriticalPath?: boolean;
+  };
+  projectWindow: {
+    startDate: string;
+    endDate: string;
+    totalDays: number;
+    todayOffset: number;
+  };
+  phases: TimelinePhase[];
+  tasks: TimelineTask[];
+  dependencies: TimelineDependency[];
+  resourceConflicts: TimelineConflict[];
+  summary: {
+    totalTasks: number;
+    criticalTasks: number;
+    overdueTasks: number;
+    milestoneCount: number;
+  };
 }

@@ -12,6 +12,7 @@ const subtaskSchema = new mongoose.Schema(
 const taskStatuses = ['backlog', 'todo', 'scheduled', 'in_progress', 'in_review', 'blocked', 'done'];
 const taskTypes = ['operational', 'design', 'important'];
 const reviewStatuses = ['pending', 'approved', 'changes_requested'];
+const timelineItemTypes = ['task', 'milestone'];
 
 const taskSchema = new mongoose.Schema(
   {
@@ -29,6 +30,9 @@ const taskSchema = new mongoose.Schema(
     reporterId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
 
     parentTaskId: { type: mongoose.Schema.Types.ObjectId, ref: 'Task', default: null },
+    phaseId: { type: mongoose.Schema.Types.ObjectId, ref: 'Phase', default: null, index: true },
+    dependencies: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Task', index: true }],
+    timelineType: { type: String, enum: timelineItemTypes, default: 'task', index: true },
     subtasks: [subtaskSchema],
     labels: [{ type: String, trim: true, maxlength: 40 }],
     startDate: { type: Date, default: null },
@@ -106,6 +110,8 @@ taskSchema.set('toJSON', {
     ret.assigneeIds = Array.isArray(ret.assigneeIds) ? ret.assigneeIds.map((a) => String(a)) : [];
     ret.reporterId = String(ret.reporterId);
     ret.parentTaskId = ret.parentTaskId ? String(ret.parentTaskId) : undefined;
+    ret.phaseId = ret.phaseId ? String(ret.phaseId) : undefined;
+    ret.dependencies = Array.isArray(ret.dependencies) ? ret.dependencies.map((value) => String(value)) : [];
     const rawSubs = Array.isArray(_doc.subtasks) ? _doc.subtasks : [];
     ret.subtasks = mapSubtasks(rawSubs);
     const sp = subtaskProgress(rawSubs);
@@ -115,6 +121,8 @@ taskSchema.set('toJSON', {
     ret.updatedAt = ret.updatedAt?.toISOString?.() || ret.updatedAt;
     ret.startDate = ret.startDate ? new Date(ret.startDate).toISOString().split('T')[0] : undefined;
     ret.dueDate = ret.dueDate ? new Date(ret.dueDate).toISOString().split('T')[0] : undefined;
+    ret.endDate = ret.dueDate;
+    ret.type = ret.timelineType || 'task';
     ret.startTime = ret.startTime?.toISOString?.() || ret.startTime;
     ret.endTime = ret.endTime?.toISOString?.() || ret.endTime;
     ret.comments = Array.isArray(ret.comments)
@@ -167,4 +175,4 @@ export function getTaskModel(conn) {
   return conn.models.Task || conn.model('Task', taskSchema);
 }
 
-export { taskSchema, taskStatuses, taskTypes };
+export { taskSchema, taskStatuses, taskTypes, timelineItemTypes };

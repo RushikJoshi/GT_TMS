@@ -165,7 +165,7 @@ export const Sidebar: React.FC = () => {
       <div className="flex items-center gap-3 p-4 border-b border-surface-100 dark:border-surface-800">
         <div className="w-8 h-8 bg-white-to-br from-brand-500 to-brand-700 rounded-xl flex items-center justify-center flex-shrink-0 shadow-glow">
           {/* <Zap size={16} className="text-white" /> */}
-          <img src='/logo.png' />
+          <img src='/1.png' />
         </div>
         <AnimatePresence>
           {!isCollapsed && (

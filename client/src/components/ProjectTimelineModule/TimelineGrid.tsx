@@ -1,0 +1,148 @@
+import React from 'react';
+import type { ProjectTimeline } from '../../app/types';
+import Header from './Header';
+import TaskBar from './TaskBar';
+import type { TimelineRow } from './utils';
+
+interface TimelineGridProps {
+  timeline: ProjectTimeline;
+  rows: TimelineRow[];
+  allRows: TimelineRow[];
+  totalHeight: number;
+  dayWidth: number;
+  extraRightPadding?: number;
+  onTaskCommit: (taskId: string, nextStartDate: string, nextEndDate: string) => void;
+}
+
+export const TimelineGrid: React.FC<TimelineGridProps> = ({
+  timeline,
+  rows,
+  allRows,
+  totalHeight,
+  dayWidth,
+  extraRightPadding = 80,
+  onTaskCommit,
+}) => {
+  const gridWidth = timeline.projectWindow.totalDays * dayWidth;
+  const width = gridWidth + extraRightPadding;
+  const phaseColorByTaskId = new Map(
+    timeline.phases.flatMap((phase) => phase.tasks.map((task) => [task.id, phase.color || '#2563eb'] as const))
+  );
+  const conflictIds = new Set(timeline.resourceConflicts.flatMap((conflict) => conflict.taskIds));
+  const rowByTaskId = new Map(allRows.filter((row) => row.kind === 'task').map((row) => [row.task.id, row]));
+  const connectorInset = Math.max(12, Math.round(dayWidth * 0.7));
+  const connectorLaneGap = 12;
+
+  return (
+    <div className="relative">
+      <Header
+        startDate={timeline.projectWindow.startDate}
+        totalDays={timeline.projectWindow.totalDays}
+        dayWidth={dayWidth}
+        extraRightPadding={extraRightPadding}
+      />
+      <div className="relative" style={{ width, height: totalHeight }}>
+        <div className="absolute inset-y-0 left-0" style={{ width: gridWidth }}>
+          {Array.from({ length: timeline.projectWindow.totalDays }).map((_, index) => (
+            <div
+              key={index}
+              className={`absolute top-0 h-full border-r border-surface-100 dark:border-surface-900 ${Math.floor(index / 7) % 2 === 0 ? 'bg-white dark:bg-surface-950' : 'bg-surface-50/55 dark:bg-surface-900/30'}`}
+              style={{ left: index * dayWidth, width: dayWidth }}
+            />
+          ))}
+        </div>
+
+        <div
+          className="absolute top-0 z-10 h-full border-l-2 border-rose-500/80"
+          style={{ left: Math.max(0, timeline.projectWindow.todayOffset) * dayWidth }}
+        >
+          <span className="absolute -top-6 -left-3 rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-semibold text-white">
+            Today
+          </span>
+        </div>
+
+        <svg className="pointer-events-none absolute inset-0 z-[12] overflow-visible" width={width} height={totalHeight}>
+          <defs>
+            <marker id="timeline-arrow" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto" markerUnits="strokeWidth">
+              <path d="M 0 0 L 9 4.5 L 0 9 z" fill="#2563eb" />
+            </marker>
+          </defs>
+          {timeline.dependencies.map((dependency) => {
+            const fromRow = rowByTaskId.get(dependency.fromTaskId);
+            const toRow = rowByTaskId.get(dependency.toTaskId);
+            if (!fromRow || !toRow || fromRow.kind !== 'task' || toRow.kind !== 'task') return null;
+
+            const fromX = (fromRow.task.endOffset + 1) * dayWidth;
+            const fromY = fromRow.top + fromRow.height / 2;
+            const toX = toRow.task.startOffset * dayWidth;
+            const toY = toRow.top + toRow.height / 2;
+            const sourceX = fromX + 2;
+            const destinationX = Math.max(8, toX - 6);
+            const fromBarTop = fromRow.top + 10;
+            const toBarTop = toRow.top + 10;
+            const laneY = Math.max(
+              10,
+              Math.min(fromBarTop, toBarTop) - connectorLaneGap - ((Math.abs(fromRow.top - toRow.top) / Math.max(1, fromRow.height)) % 3) * 6
+            );
+            const routeX = Math.min(width - 20, sourceX + connectorInset);
+            const d = [
+              `M ${sourceX} ${fromY}`,
+              `L ${routeX} ${fromY}`,
+              `L ${routeX} ${laneY}`,
+              `L ${destinationX} ${laneY}`,
+              `L ${destinationX} ${toY}`,
+            ].join(' ');
+
+            return (
+              <g key={dependency.id}>
+                <path
+                  d={d}
+                  fill="none"
+                  stroke="rgba(255,255,255,0.96)"
+                  strokeWidth="6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d={d}
+                  fill="none"
+                  stroke="#2563eb"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeDasharray="5 4"
+                  markerEnd="url(#timeline-arrow)"
+                />
+                <circle cx={sourceX} cy={fromY} r="3" fill="#ffffff" stroke="#2563eb" strokeWidth="2" />
+              </g>
+            );
+          })}
+        </svg>
+
+        {rows.map((row) => (
+          <div
+            key={row.id}
+            className={row.kind === 'phase'
+              ? 'absolute inset-x-0 border-b border-surface-200 bg-surface-100/70 dark:border-surface-800 dark:bg-surface-900/55'
+              : 'absolute inset-x-0 z-[18] border-b border-surface-100/80 dark:border-surface-900'}
+            style={{ top: row.top, height: row.height }}
+          >
+            {row.kind === 'task' ? (
+              <TaskBar
+                task={row.task}
+                phaseColor={phaseColorByTaskId.get(row.task.id) || '#2563eb'}
+                dayWidth={dayWidth}
+                rowTop={row.top}
+                rowHeight={row.height}
+                hasConflict={conflictIds.has(row.task.id)}
+                onCommit={onTaskCommit}
+              />
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+export default TimelineGrid;
