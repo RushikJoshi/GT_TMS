@@ -269,7 +269,8 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   const [taskStepOverrides, setTaskStepOverrides] = useState<Record<string, string>>({});
 
   const tasks = tasksOverride ?? storeTasks;
-  const projectTasks = tasks.filter((task) => task.projectId === projectId);
+  const filteredTasks = projectId ? tasks.filter((task) => task.projectId === projectId) : tasks;
+  const projectTasks = filteredTasks;
 
   const allColumns = useMemo<BoardColumn[]>(
     () => [

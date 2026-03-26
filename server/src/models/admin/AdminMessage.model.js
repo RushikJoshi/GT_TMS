@@ -24,5 +24,8 @@ const adminMessageSchema = new mongoose.Schema({
     isRead: { type: Boolean, default: false }
 }, { timestamps: true });
 
-const AdminMessage = mongoose.model('AdminMessage', adminMessageSchema);
-export default AdminMessage;
+export function getAdminMessageModel(conn) {
+    return conn.models.AdminMessage || conn.model('AdminMessage', adminMessageSchema);
+}
+
+export default adminMessageSchema;
