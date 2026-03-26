@@ -25,6 +25,8 @@ export const TimelineGrid: React.FC<TimelineGridProps> = ({
 }) => {
   const gridWidth = timeline.projectWindow.totalDays * dayWidth;
   const width = gridWidth + extraRightPadding;
+  const taskBarInsetY = 10;
+  const milestoneSize = 20;
   const phaseColorByTaskId = new Map(
     timeline.phases.flatMap((phase) => phase.tasks.map((task) => [task.id, phase.color || '#2563eb'] as const))
   );
@@ -32,6 +34,26 @@ export const TimelineGrid: React.FC<TimelineGridProps> = ({
   const rowByTaskId = new Map(allRows.filter((row) => row.kind === 'task').map((row) => [row.task.id, row]));
   const connectorInset = Math.max(12, Math.round(dayWidth * 0.7));
   const connectorLaneGap = 12;
+
+  const getTaskAnchor = (row: Extract<TimelineRow, { kind: 'task' }>, side: 'start' | 'end') => {
+    const centerY = row.top + row.height / 2;
+
+    if (row.task.type === 'milestone') {
+      const centerX = row.task.startOffset * dayWidth + dayWidth / 2;
+      const edgeOffset = milestoneSize / 2;
+      return {
+        x: side === 'start' ? centerX - edgeOffset : centerX + edgeOffset,
+        y: centerY,
+      };
+    }
+
+    const barLeft = row.task.startOffset * dayWidth;
+    const barWidth = Math.max(dayWidth, row.task.durationInDays * dayWidth);
+    return {
+      x: side === 'start' ? barLeft : barLeft + barWidth,
+      y: row.top + taskBarInsetY + (row.height - taskBarInsetY * 2) / 2,
+    };
+  };
 
   return (
     <div className="relative">
@@ -72,26 +94,35 @@ export const TimelineGrid: React.FC<TimelineGridProps> = ({
             const toRow = rowByTaskId.get(dependency.toTaskId);
             if (!fromRow || !toRow || fromRow.kind !== 'task' || toRow.kind !== 'task') return null;
 
-            const fromX = (fromRow.task.endOffset + 1) * dayWidth;
-            const fromY = fromRow.top + fromRow.height / 2;
-            const toX = toRow.task.startOffset * dayWidth;
-            const toY = toRow.top + toRow.height / 2;
-            const sourceX = fromX + 2;
-            const destinationX = Math.max(8, toX - 6);
-            const fromBarTop = fromRow.top + 10;
-            const toBarTop = toRow.top + 10;
+            const source = getTaskAnchor(fromRow, 'end');
+            const target = getTaskAnchor(toRow, 'start');
+            const sourceX = source.x + 2;
+            const sourceY = source.y;
+            const targetX = Math.max(8, target.x - 6);
+            const targetY = target.y;
+            const fromBarTop = fromRow.top + taskBarInsetY;
+            const toBarTop = toRow.top + taskBarInsetY;
+            const hasForwardRoom = targetX - sourceX > connectorInset * 2;
+            const sameRow = Math.abs(sourceY - targetY) < 2;
             const laneY = Math.max(
               10,
               Math.min(fromBarTop, toBarTop) - connectorLaneGap - ((Math.abs(fromRow.top - toRow.top) / Math.max(1, fromRow.height)) % 3) * 6
             );
-            const routeX = Math.min(width - 20, sourceX + connectorInset);
-            const d = [
-              `M ${sourceX} ${fromY}`,
-              `L ${routeX} ${fromY}`,
-              `L ${routeX} ${laneY}`,
-              `L ${destinationX} ${laneY}`,
-              `L ${destinationX} ${toY}`,
-            ].join(' ');
+            const d = sameRow || hasForwardRoom
+              ? [
+                `M ${sourceX} ${sourceY}`,
+                `L ${Math.max(sourceX + connectorInset, targetX - connectorInset)} ${sourceY}`,
+                `L ${Math.max(sourceX + connectorInset, targetX - connectorInset)} ${targetY}`,
+                `L ${targetX} ${targetY}`,
+              ].join(' ')
+              : [
+                `M ${sourceX} ${sourceY}`,
+                `L ${sourceX + connectorInset} ${sourceY}`,
+                `L ${sourceX + connectorInset} ${laneY}`,
+                `L ${targetX - connectorInset} ${laneY}`,
+                `L ${targetX - connectorInset} ${targetY}`,
+                `L ${targetX} ${targetY}`,
+              ].join(' ');
 
             return (
               <g key={dependency.id}>
@@ -113,7 +144,7 @@ export const TimelineGrid: React.FC<TimelineGridProps> = ({
                   strokeDasharray="5 4"
                   markerEnd="url(#timeline-arrow)"
                 />
-                <circle cx={sourceX} cy={fromY} r="3" fill="#ffffff" stroke="#2563eb" strokeWidth="2" />
+                <circle cx={sourceX} cy={sourceY} r="3" fill="#ffffff" stroke="#2563eb" strokeWidth="2" />
               </g>
             );
           })}

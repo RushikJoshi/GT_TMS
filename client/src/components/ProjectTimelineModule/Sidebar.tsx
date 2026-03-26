@@ -1,4 +1,5 @@
 import React from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { User } from '../../app/types';
 import type { TimelineRow } from './utils';
 
@@ -11,6 +12,8 @@ interface SidebarProps {
   users: User[];
   selectedDependencyFrom: string;
   onSelectDependencyFrom: (taskId: string) => void;
+  collapsedPhaseIds: Set<string>;
+  onTogglePhase: (phaseId: string) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -22,6 +25,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   users,
   selectedDependencyFrom,
   onSelectDependencyFrom,
+  collapsedPhaseIds,
+  onTogglePhase,
 }) => {
   const userMap = new Map(users.map((user) => [user.id, user]));
   const contentHeight = Math.max(0, viewportHeight - 56);
@@ -41,13 +46,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
             style={{ top: row.top - scrollTop, height: row.height }}
           >
             {row.kind === 'phase' ? (
-              <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 text-left"
+                onClick={() => onTogglePhase(row.phase.id)}
+              >
+                {collapsedPhaseIds.has(row.phase.id) ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                 <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: row.phase.color || '#64748b' }} />
                 <span>{row.phase.name}</span>
                 <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-medium text-surface-400 dark:bg-surface-950">
                   {row.phase.tasks.length}
                 </span>
-              </div>
+              </button>
             ) : (
               <div className="flex w-full items-center justify-between gap-3">
                 <div className="min-w-0">

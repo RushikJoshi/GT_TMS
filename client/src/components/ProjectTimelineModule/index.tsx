@@ -32,6 +32,7 @@ import Sidebar from './Sidebar';
 import TimelineGrid from './TimelineGrid';
 import {
   SIDEBAR_WIDTH,
+  addDays,
   flattenTimelineRows,
   getDayWidth,
   getVisibleRows,
@@ -85,10 +86,13 @@ export const ProjectTimelineModule: React.FC<ProjectTimelineModuleProps> = ({ pr
   const [loadError, setLoadError] = useState<{ title: string; description: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [collapsedPhaseIds, setCollapsedPhaseIds] = useState<Set<string>>(new Set());
   const [selectedDependencyFrom, setSelectedDependencyFrom] = useState('');
   const [createMode, setCreateMode] = useState<CreateMode>(null);
   const [draftName, setDraftName] = useState('');
   const [draftTaskPhaseId, setDraftTaskPhaseId] = useState('');
+  const [draftTaskStartDate, setDraftTaskStartDate] = useState('');
+  const [draftTaskDurationDays, setDraftTaskDurationDays] = useState(1);
   const [isCreating, setIsCreating] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -104,6 +108,7 @@ export const ProjectTimelineModule: React.FC<ProjectTimelineModuleProps> = ({ pr
   const baseDayWidth = getDayWidth(zoom);
   const dayWidth = isFullscreen ? Math.max(baseDayWidth + 14, Math.round(baseDayWidth * 2.1)) : baseDayWidth;
   const selectablePhases = (activeTimeline?.phases || []).filter((phase) => phase.id !== 'ungrouped');
+  const collapsiblePhases = (activeTimeline?.phases || []).map((phase) => phase.id);
 
   const fetchTimeline = useCallback(async () => {
     try {
@@ -151,6 +156,14 @@ export const ProjectTimelineModule: React.FC<ProjectTimelineModuleProps> = ({ pr
   }, [fetchTimeline]);
 
   useEffect(() => {
+    setCollapsedPhaseIds((current) => {
+      if (!activeTimeline) return current;
+      const validIds = new Set(activeTimeline.phases.map((phase) => phase.id));
+      return new Set(Array.from(current).filter((phaseId) => validIds.has(phaseId)));
+    });
+  }, [activeTimeline]);
+
+  useEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
 
@@ -161,8 +174,8 @@ export const ProjectTimelineModule: React.FC<ProjectTimelineModuleProps> = ({ pr
   }, [isFullscreen]);
 
   const { rows, totalHeight } = useMemo(
-    () => deferredTimeline ? flattenTimelineRows(deferredTimeline.phases) : { rows: [], totalHeight: 0 },
-    [deferredTimeline]
+    () => deferredTimeline ? flattenTimelineRows(deferredTimeline.phases, collapsedPhaseIds) : { rows: [], totalHeight: 0 },
+    [collapsedPhaseIds, deferredTimeline]
   );
   const visibleRows = useMemo(
     () => getVisibleRows(rows, scrollTop, viewportHeight),
@@ -174,6 +187,8 @@ export const ProjectTimelineModule: React.FC<ProjectTimelineModuleProps> = ({ pr
     setCreateMode(null);
     setDraftName('');
     setDraftTaskPhaseId('');
+    setDraftTaskStartDate('');
+    setDraftTaskDurationDays(1);
   }, []);
 
   const downloadBlob = useCallback((blob: Blob, filename: string) => {
@@ -443,6 +458,23 @@ export const ProjectTimelineModule: React.FC<ProjectTimelineModuleProps> = ({ pr
     }));
   };
 
+  const togglePhase = useCallback((phaseId: string) => {
+    setCollapsedPhaseIds((current) => {
+      const next = new Set(current);
+      if (next.has(phaseId)) next.delete(phaseId);
+      else next.add(phaseId);
+      return next;
+    });
+  }, []);
+
+  const collapseAllPhases = useCallback(() => {
+    setCollapsedPhaseIds(new Set(collapsiblePhases));
+  }, [collapsiblePhases]);
+
+  const expandAllPhases = useCallback(() => {
+    setCollapsedPhaseIds(new Set());
+  }, []);
+
   const openCreatePhaseModal = () => {
     if (!activeTimeline || isReadOnly) return;
     setDraftName(`New Phase ${selectablePhases.length + 1}`);
@@ -453,6 +485,8 @@ export const ProjectTimelineModule: React.FC<ProjectTimelineModuleProps> = ({ pr
     if (!project || isReadOnly) return;
     setDraftName('');
     setDraftTaskPhaseId(selectablePhases[0]?.id || '');
+    setDraftTaskStartDate(project.startDate || activeTimeline?.projectWindow.startDate || new Date().toISOString().split('T')[0]);
+    setDraftTaskDurationDays(1);
     setCreateMode('task');
   };
 
@@ -491,6 +525,11 @@ export const ProjectTimelineModule: React.FC<ProjectTimelineModuleProps> = ({ pr
 
       if (createMode === 'task') {
         if (!project) return;
+        if (!draftTaskStartDate) {
+          emitErrorToast('Please choose a start date.', 'Timeline');
+          return;
+        }
+        const durationDays = Math.max(1, Number(draftTaskDurationDays) || 1);
 
         let timelineForTask = activeTimeline;
         if (draftTimeline?.phases.some((phase) => phase.id.startsWith('phase-temp-'))) {
@@ -504,8 +543,9 @@ export const ProjectTimelineModule: React.FC<ProjectTimelineModuleProps> = ({ pr
         await tasksService.create({
           projectId,
           title: trimmedName,
-          startDate: project.startDate,
-          dueDate: project.endDate || project.startDate,
+          startDate: draftTaskStartDate,
+          dueDate: addDays(draftTaskStartDate, durationDays - 1),
+          durationDays,
           phaseId: selectedPhase?.id,
           type: 'task',
           assigneeIds: [],
@@ -611,6 +651,8 @@ export const ProjectTimelineModule: React.FC<ProjectTimelineModuleProps> = ({ pr
             <button type="button" disabled={isReadOnly} onClick={() => handleZoom('month')} className={`rounded-xl px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${zoom === 'month' ? 'bg-brand-600 text-white' : 'bg-surface-100 text-surface-500 dark:bg-surface-900 dark:text-surface-400'}`}>Month</button>
             <button type="button" disabled={isReadOnly} onClick={openCreatePhaseModal} className="rounded-xl bg-surface-100 px-3 py-2 text-xs font-semibold text-surface-600 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-surface-900 dark:text-surface-300">Add Phase</button>
             <button type="button" disabled={isReadOnly} onClick={handleAddTask} className="rounded-xl bg-surface-100 px-3 py-2 text-xs font-semibold text-surface-600 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-surface-900 dark:text-surface-300">Add Task</button>
+            <button type="button" onClick={expandAllPhases} className="rounded-xl bg-surface-100 px-3 py-2 text-xs font-semibold text-surface-600 dark:bg-surface-900 dark:text-surface-300">Open Phases</button>
+            <button type="button" onClick={collapseAllPhases} className="rounded-xl bg-surface-100 px-3 py-2 text-xs font-semibold text-surface-600 dark:bg-surface-900 dark:text-surface-300">Close Phases</button>
             <button type="button" disabled={isExporting} onClick={() => void handleExportTimeline('excel')} className="rounded-xl bg-surface-100 px-3 py-2 text-xs font-semibold text-surface-600 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-surface-900 dark:text-surface-300">
               <FileSpreadsheet size={14} className="mr-1 inline-block" />
               Excel
@@ -678,6 +720,8 @@ export const ProjectTimelineModule: React.FC<ProjectTimelineModuleProps> = ({ pr
             users={users}
             selectedDependencyFrom={selectedDependencyFrom}
             onSelectDependencyFrom={handleSelectDependency}
+            collapsedPhaseIds={collapsedPhaseIds}
+            onTogglePhase={togglePhase}
           />
           <div
             ref={scrollRef}
@@ -778,20 +822,42 @@ export const ProjectTimelineModule: React.FC<ProjectTimelineModuleProps> = ({ pr
           </div>
 
           {createMode === 'task' ? (
-            <div>
-              <label className="label">Phase</label>
-              <select
-                value={draftTaskPhaseId}
-                onChange={(event) => setDraftTaskPhaseId(event.target.value)}
-                className="input"
-              >
-                <option value="">No phase</option>
-                {selectablePhases.map((phase) => (
-                  <option key={phase.id} value={phase.id}>
-                    {phase.name}
-                  </option>
-                ))}
-              </select>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="label">Phase</label>
+                <select
+                  value={draftTaskPhaseId}
+                  onChange={(event) => setDraftTaskPhaseId(event.target.value)}
+                  className="input"
+                >
+                  <option value="">No phase</option>
+                  {selectablePhases.map((phase) => (
+                    <option key={phase.id} value={phase.id}>
+                      {phase.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label">Start Date</label>
+                <input
+                  value={draftTaskStartDate}
+                  onChange={(event) => setDraftTaskStartDate(event.target.value)}
+                  type="date"
+                  className="input"
+                />
+              </div>
+              <div>
+                <label className="label">Duration (days)</label>
+                <input
+                  value={draftTaskDurationDays}
+                  onChange={(event) => setDraftTaskDurationDays(Math.max(1, Number(event.target.value) || 1))}
+                  type="number"
+                  min={1}
+                  step={1}
+                  className="input"
+                />
+              </div>
             </div>
           ) : null}
 

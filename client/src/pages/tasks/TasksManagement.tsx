@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
 import { useAuthStore } from '../../context/authStore';
 import { useAppStore } from '../../context/appStore';
-import { cn, formatDate } from '../../utils/helpers';
+import { addDaysToDateKey, cn, formatDate } from '../../utils/helpers';
 import { UserAvatar } from '../../components/UserAvatar';
 import { KanbanBoard } from '../../components/KanbanBoard';
 
@@ -592,6 +592,8 @@ const CreateTaskOverlay: React.FC<{ onClose: () => void; onCreated: () => void }
     projectId: '',
     status: 'todo',
     priority: 'normal',
+    startDate: new Date().toISOString().split('T')[0],
+    durationDays: 1,
     dueDate: '',
     assignedToId: '',
     description: ''
@@ -603,9 +605,15 @@ const CreateTaskOverlay: React.FC<{ onClose: () => void; onCreated: () => void }
       setLoading(true);
       const isQuickTask = !formData.projectId;
       const endpoint = isQuickTask ? '/quick-tasks' : '/tasks';
+      const normalizedPriority = formData.priority === 'normal' ? 'medium' : formData.priority;
       const payload = isQuickTask 
-        ? { title: formData.title, priority: formData.priority, assigneeIds: formData.assignedToId ? [formData.assignedToId] : [], status: 'todo' }
-        : { ...formData, assigneeIds: formData.assignedToId ? [formData.assignedToId] : [] };
+        ? { title: formData.title, priority: normalizedPriority, assigneeIds: formData.assignedToId ? [formData.assignedToId] : [], status: 'todo' }
+        : {
+            ...formData,
+            priority: normalizedPriority,
+            dueDate: addDaysToDateKey(formData.startDate, formData.durationDays - 1),
+            assigneeIds: formData.assignedToId ? [formData.assignedToId] : [],
+          };
 
       const res = await api.post(endpoint, payload);
       if (res.data?.success) {
@@ -671,13 +679,27 @@ const CreateTaskOverlay: React.FC<{ onClose: () => void; onCreated: () => void }
                     </select>
                  </div>
                 <div className="space-y-2">
-                   <label className="text-[11px] font-bold uppercase tracking-widest text-gray-400 ml-1">Due Date</label>
+                   <label className="text-[11px] font-bold uppercase tracking-widest text-gray-400 ml-1">
+                     {formData.projectId ? 'Start Date' : 'Due Date'}
+                   </label>
                    <input 
                      type="date" 
                      className="w-full bg-[#f8f9fc] border border-gray-100 rounded-2xl p-4 text-[13px] font-semibold focus:outline-none"
                      min={new Date().toISOString().split('T')[0]}
-                     value={formData.dueDate}
-                     onChange={e => setFormData({ ...formData, dueDate: e.target.value })}
+                     value={formData.projectId ? formData.startDate : formData.dueDate}
+                     onChange={e => setFormData({ ...formData, [formData.projectId ? 'startDate' : 'dueDate']: e.target.value })}
+                   />
+                </div>
+                <div className="space-y-2">
+                   <label className="text-[11px] font-bold uppercase tracking-widest text-gray-400 ml-1">Duration (days)</label>
+                   <input 
+                     type="number" 
+                     min={1}
+                     step={1}
+                     disabled={!formData.projectId}
+                     className="w-full bg-[#f8f9fc] border border-gray-100 rounded-2xl p-4 text-[13px] font-semibold focus:outline-none disabled:opacity-50"
+                     value={formData.durationDays}
+                     onChange={e => setFormData({ ...formData, durationDays: Math.max(1, Number(e.target.value) || 1) })}
                    />
                 </div>
                 <div className="space-y-2">

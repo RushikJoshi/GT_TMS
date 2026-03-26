@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useForm } from 'react-hook-form';
@@ -6,7 +6,7 @@ import {
   LayoutDashboard, List, BarChart3, Settings2, Plus, ListTodo,
   Users, Calendar, Flag, ChevronDown, ArrowLeft, Edit3
 } from 'lucide-react';
-import { cn, formatDate, getProgressColor, generateId } from '../../utils/helpers';
+import { addDaysToDateKey, cn, formatDate, getProgressColor, generateId } from '../../utils/helpers';
 import { useAppStore } from '../../context/appStore';
 import { useAuthStore } from '../../context/authStore';
 import { PRIORITY_CONFIG, STATUS_CONFIG } from '../../app/constants';
@@ -16,8 +16,8 @@ import { TaskCard } from '../../components/TaskCard';
 import { UserAvatar, AvatarGroup } from '../../components/UserAvatar';
 import { ProgressBar, EmptyState, Tabs, TabsContent, Dropdown } from '../../components/ui';
 import { Modal } from '../../components/Modal';
-import type { Task, TaskStatus, Priority } from '../../app/types';
-import { projectsService, tasksService } from '../../services/api';
+import type { Task, TaskStatus, Priority, TimelinePhase } from '../../app/types';
+import { projectsService, tasksService, timelineService } from '../../services/api';
 import { emitErrorToast, emitSuccessToast } from '../../context/toastBus';
 import { ProjectTimelineModule } from '../../components/ProjectTimelineModule';
 
@@ -26,7 +26,9 @@ interface TaskFormData {
   title: string;
   description: string;
   priority: Priority;
-  dueDate: string;
+  startDate: string;
+  durationDays: number;
+  phaseId: string;
   assigneeId: string;
   status: TaskStatus;
   estimatedHours: number;
@@ -43,18 +45,34 @@ export const ProjectDetailPage: React.FC = () => {
   const [showAddTask, setShowAddTask] = useState(false);
   const [defaultStatus, setDefaultStatus] = useState<TaskStatus>('todo');
   const [editingName, setEditingName] = useState(false);
+  const [timelinePhases, setTimelinePhases] = useState<TimelinePhase[]>([]);
+  const [newPhaseName, setNewPhaseName] = useState('');
+  const [isCreatingPhase, setIsCreatingPhase] = useState(false);
 
   const project = projects.find(p => p.id === id);
   const projectTasks = tasks.filter(t => t.projectId === id);
   const members = users.filter(u => project?.members.includes(u.id));
   const reportingPersons = users.filter(u => project?.reportingPersonIds?.includes(u.id));
+  const todayDate = new Date().toISOString().split('T')[0];
 
   const { register, handleSubmit, reset, setValue, watch } = useForm<TaskFormData>({
-    defaultValues: { priority: 'medium', status: defaultStatus }
+    defaultValues: { priority: 'medium', status: defaultStatus, startDate: todayDate, durationDays: 1, phaseId: '' }
   });
 
   const watchPriority = watch('priority');
   const watchAssignee = watch('assigneeId');
+
+  useEffect(() => {
+    if (!project?.id) return;
+    void (async () => {
+      try {
+        const response = await timelineService.get(project.id);
+        setTimelinePhases((response.data?.data?.phases || []).filter((phase: TimelinePhase) => phase.id !== 'ungrouped'));
+      } catch {
+        setTimelinePhases([]);
+      }
+    })();
+  }, [project?.id]);
 
   if (!project) {
     return (
@@ -74,7 +92,42 @@ export const ProjectDetailPage: React.FC = () => {
 
   const handleAddTask = (status: TaskStatus = 'todo') => {
     setDefaultStatus(status);
+    setValue('startDate', project?.startDate || todayDate);
+    setValue('durationDays', 1);
+    setValue('phaseId', '');
     setShowAddTask(true);
+  };
+
+  const handleCreatePhase = async () => {
+    const trimmedName = newPhaseName.trim();
+    if (!trimmedName || !project?.id) return;
+
+    try {
+      setIsCreatingPhase(true);
+      const palette = ['#2563eb', '#0f766e', '#7c3aed', '#ea580c', '#dc2626', '#0891b2'];
+      await timelineService.upsert(project.id, {
+        phases: [
+          ...timelinePhases.map(({ id, name, order, color }) => ({ id, name, order, color })),
+          {
+            name: trimmedName,
+            order: timelinePhases.length,
+            color: palette[timelinePhases.length % palette.length],
+          },
+        ],
+      });
+      const response = await timelineService.get(project.id);
+      const phases = (response.data?.data?.phases || []).filter((phase: TimelinePhase) => phase.id !== 'ungrouped');
+      setTimelinePhases(phases);
+      const createdPhase = phases.find((phase: TimelinePhase) => phase.name === trimmedName);
+      if (createdPhase) {
+        setValue('phaseId', createdPhase.id);
+      }
+      setNewPhaseName('');
+    } catch (error: any) {
+      emitErrorToast(error?.response?.data?.error?.message || error?.response?.data?.message || 'Phase could not be created.', 'Phase');
+    } finally {
+      setIsCreatingPhase(false);
+    }
   };
 
   const handleProjectNameUpdate = async (nextName: string) => {
@@ -102,6 +155,8 @@ export const ProjectDetailPage: React.FC = () => {
 
   const onCreateTask = async (data: TaskFormData) => {
     try {
+      const startDate = data.startDate || project.startDate || todayDate;
+      const durationDays = Math.max(1, Number(data.durationDays) || 1);
       const response = await tasksService.create({
         title: data.title,
         description: data.description || undefined,
@@ -109,7 +164,10 @@ export const ProjectDetailPage: React.FC = () => {
         status: defaultStatus,
         projectId: project.id,
         assigneeIds: data.assigneeId ? [data.assigneeId] : [],
-        dueDate: data.dueDate || undefined,
+        startDate,
+        dueDate: addDaysToDateKey(startDate, durationDays - 1),
+        durationDays,
+        phaseId: data.phaseId || undefined,
         estimatedHours: data.estimatedHours || undefined,
         order: projectTasks.filter((task) => task.status === defaultStatus).length,
       });
@@ -474,13 +532,39 @@ export const ProjectDetailPage: React.FC = () => {
               />
             </div>
             <div>
-              <label className="label">Due Date</label>
-              <input {...register('dueDate')} type="date" className="input" min={new Date().toISOString().split('T')[0]} />
+              <label className="label">Phase</label>
+              <select {...register('phaseId')} className="input">
+                <option value="">Ungrouped</option>
+                {timelinePhases.map((phase) => (
+                  <option key={phase.id} value={phase.id}>{phase.name}</option>
+                ))}
+              </select>
             </div>
           </div>
-          <div>
-            <label className="label">Estimated hours</label>
-            <input {...register('estimatedHours', { valueAsNumber: true })} type="number" placeholder="0" className="input" />
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end">
+            <div>
+              <label className="label">Add New Phase</label>
+              <input value={newPhaseName} onChange={(e) => setNewPhaseName(e.target.value)} placeholder="e.g. Development" className="input" />
+            </div>
+            <button type="button" onClick={() => void handleCreatePhase()} disabled={isCreatingPhase || !newPhaseName.trim()} className="btn-secondary btn-md">
+              {isCreatingPhase ? 'Adding...' : 'Add Phase'}
+            </button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="label">Start Date *</label>
+              <input {...register('startDate', { required: true })} type="date" className="input" min={todayDate} />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="label">Duration (days) *</label>
+              <input {...register('durationDays', { required: true, valueAsNumber: true, min: 1 })} type="number" min={1} step={1} className="input" />
+            </div>
+            <div>
+              <label className="label">Estimated hours</label>
+              <input {...register('estimatedHours', { valueAsNumber: true })} type="number" placeholder="0" className="input" />
+            </div>
           </div>
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={() => setShowAddTask(false)} className="btn-secondary btn-md flex-1">Cancel</button>

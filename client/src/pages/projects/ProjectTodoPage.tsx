@@ -18,17 +18,17 @@ import {
   ChevronDown,
   ChevronRight,
 } from 'lucide-react';
-import { cn, formatDate } from '../../utils/helpers';
+import { addDaysToDateKey, cn, formatDate } from '../../utils/helpers';
 import { useAppStore } from '../../context/appStore';
 import { useAuthStore } from '../../context/authStore';
-import { tasksService } from '../../services/api';
+import { tasksService, timelineService } from '../../services/api';
 import { STATUS_CONFIG, TASK_TYPE_CONFIG } from '../../app/constants';
 import { SubtaskBar } from '../../components/SubtaskBar';
 import { KanbanBoard } from '../../components/KanbanBoard';
 import { Modal } from '../../components/Modal';
 import { UserAvatar } from '../../components/UserAvatar';
 import { EmptyState } from '../../components/ui';
-import type { Task, TaskStatus, TaskType, TaskSubtask } from '../../app/types';
+import type { Task, TaskStatus, TaskType, TaskSubtask, TimelinePhase } from '../../app/types';
 
 function mapApiTask(x: Record<string, unknown>): Task {
   const subs = (Array.isArray(x.subtasks) ? x.subtasks : []) as TaskSubtask[];
@@ -109,7 +109,12 @@ export const ProjectTodoPage: React.FC = () => {
   const [newTitle, setNewTitle] = useState('');
   const [newTaskType, setNewTaskType] = useState<TaskType>('operational');
   const [newStatus, setNewStatus] = useState<TaskStatus>('todo');
-  const [newDue, setNewDue] = useState('');
+  const [newStartDate, setNewStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newDurationDays, setNewDurationDays] = useState(1);
+  const [newPhaseId, setNewPhaseId] = useState('');
+  const [timelinePhases, setTimelinePhases] = useState<TimelinePhase[]>([]);
+  const [newPhaseName, setNewPhaseName] = useState('');
+  const [isCreatingPhase, setIsCreatingPhase] = useState(false);
   const [newAssigneeIds, setNewAssigneeIds] = useState<string[]>([]);
   const [newTaskFiles, setNewTaskFiles] = useState<File[]>([]);
   const [subDraft, setSubDraft] = useState<Record<string, string>>({});
@@ -144,6 +149,47 @@ export const ProjectTodoPage: React.FC = () => {
   useEffect(() => {
     loadTasks();
   }, [loadTasks]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    void (async () => {
+      try {
+        const response = await timelineService.get(projectId);
+        setTimelinePhases((response.data?.data?.phases || []).filter((phase: TimelinePhase) => phase.id !== 'ungrouped'));
+      } catch {
+        setTimelinePhases([]);
+      }
+    })();
+  }, [projectId]);
+
+  const handleCreatePhase = async () => {
+    const trimmedName = newPhaseName.trim();
+    if (!trimmedName || !projectId) return;
+    try {
+      setIsCreatingPhase(true);
+      const palette = ['#2563eb', '#0f766e', '#7c3aed', '#ea580c', '#dc2626', '#0891b2'];
+      await timelineService.upsert(projectId, {
+        phases: [
+          ...timelinePhases.map(({ id, name, order, color }) => ({ id, name, order, color })),
+          {
+            name: trimmedName,
+            order: timelinePhases.length,
+            color: palette[timelinePhases.length % palette.length],
+          },
+        ],
+      });
+      const response = await timelineService.get(projectId);
+      const phases = (response.data?.data?.phases || []).filter((phase: TimelinePhase) => phase.id !== 'ungrouped');
+      setTimelinePhases(phases);
+      const createdPhase = phases.find((phase: TimelinePhase) => phase.name === trimmedName);
+      if (createdPhase) {
+        setNewPhaseId(createdPhase.id);
+      }
+      setNewPhaseName('');
+    } finally {
+      setIsCreatingPhase(false);
+    }
+  };
 
   const activeTasks = useMemo(() => tasks.filter((t) => t.status !== 'done'), [tasks]);
   const completedTasks = useMemo(() => tasks.filter((t) => t.status === 'done'), [tasks]);
@@ -216,7 +262,10 @@ export const ProjectTodoPage: React.FC = () => {
         title: newTitle.trim(),
         taskType: newTaskType,
         status: newStatus,
-        dueDate: newDue || undefined,
+        startDate: newStartDate,
+        dueDate: addDaysToDateKey(newStartDate, newDurationDays - 1),
+        durationDays: newDurationDays,
+        phaseId: newPhaseId || undefined,
         assigneeIds: newAssigneeIds,
       });
       const created = res.data?.data ?? res.data;
@@ -227,7 +276,9 @@ export const ProjectTodoPage: React.FC = () => {
       }
       setShowCreate(false);
       setNewTitle('');
-      setNewDue('');
+      setNewStartDate(project?.startDate || new Date().toISOString().split('T')[0]);
+      setNewDurationDays(1);
+      setNewPhaseId('');
       setNewAssigneeIds([]);
       setNewTaskFiles([]);
       await loadTasks();
@@ -559,9 +610,35 @@ export const ProjectTodoPage: React.FC = () => {
               </select>
             </div>
           </div>
-          <div>
-            <label className="text-xs font-semibold text-surface-500">Due date</label>
-            <input className="input w-full mt-1" type="date" value={newDue} onChange={(e) => setNewDue(e.target.value)} />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-surface-500">Start date</label>
+              <input className="input w-full mt-1" type="date" value={newStartDate} onChange={(e) => setNewStartDate(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-surface-500">Duration (days)</label>
+              <input className="input w-full mt-1" type="number" min={1} step={1} value={newDurationDays} onChange={(e) => setNewDurationDays(Math.max(1, Number(e.target.value) || 1))} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-surface-500">Phase</label>
+              <select className="input w-full mt-1" value={newPhaseId} onChange={(e) => setNewPhaseId(e.target.value)}>
+                <option value="">Ungrouped</option>
+                {timelinePhases.map((phase) => (
+                  <option key={phase.id} value={phase.id}>{phase.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-surface-500">Add phase</label>
+              <div className="mt-1 flex gap-2">
+                <input className="input w-full" value={newPhaseName} onChange={(e) => setNewPhaseName(e.target.value)} placeholder="Phase name" />
+                <button type="button" className="btn-secondary btn-md whitespace-nowrap" onClick={() => void handleCreatePhase()} disabled={isCreatingPhase || !newPhaseName.trim()}>
+                  {isCreatingPhase ? 'Adding...' : 'Add'}
+                </button>
+              </div>
+            </div>
           </div>
           <div>
             <label className="text-xs font-semibold text-surface-500">Assignees</label>

@@ -217,13 +217,17 @@ export function recomputeTimeline(base: ProjectTimeline): ProjectTimeline {
   };
 }
 
-export function flattenTimelineRows(phases: TimelinePhase[]) {
+export function flattenTimelineRows(phases: TimelinePhase[], collapsedPhaseIds: Set<string> = new Set()) {
   const rows: TimelineRow[] = [];
   let top = 0;
 
   for (const phase of phases.sort((a, b) => a.order - b.order)) {
     rows.push({ kind: 'phase', id: `phase-${phase.id}`, top, height: PHASE_ROW_HEIGHT, phase });
     top += PHASE_ROW_HEIGHT;
+
+    if (collapsedPhaseIds.has(phase.id)) {
+      continue;
+    }
 
     for (const task of phase.tasks) {
       rows.push({ kind: 'task', id: task.id, top, height: TASK_ROW_HEIGHT, phase, task });

@@ -152,6 +152,11 @@ function formatMailDate(value) {
   });
 }
 
+function addDaysUtc(date, days) {
+  const base = date instanceof Date ? date : new Date(date);
+  return new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate() + days));
+}
+
 async function sendTaskAssignmentEmails({ tenantId, assigneeIds, actorId, task, projectName }) {
   const uniqueAssigneeIds = Array.from(new Set(mapIdList(assigneeIds))).filter(Boolean);
   if (!uniqueAssigneeIds.length) return;
@@ -288,6 +293,17 @@ export async function createTask({ companyId, workspaceId, userId, role, data })
 
   const { Task, Project, ActivityLog, Notification } = await getTenantModels(companyId);
   const project = await Project.findOne({ _id: data.projectId, tenantId, workspaceId }).select('name').lean();
+  const rawDurationDays = Number(data.durationDays);
+  if (!Number.isFinite(rawDurationDays) || rawDurationDays < 1) {
+    const err = new Error('Task duration is required.');
+    err.statusCode = 400;
+    err.code = 'TASK_DURATION_REQUIRED';
+    throw err;
+  }
+  const durationDays = Math.max(1, Math.round(rawDurationDays));
+
+  const startDate = data.startDate ? new Date(data.startDate) : new Date();
+  const dueDate = addDaysUtc(startDate, durationDays - 1);
   const task = await Task.create({
     tenantId,
     workspaceId,
@@ -299,8 +315,9 @@ export async function createTask({ companyId, workspaceId, userId, role, data })
     priority: data.priority || 'medium',
     assigneeIds: data.assigneeIds || [],
     reporterId: userId,
-    startDate: data.startDate ? new Date(data.startDate) : null,
-    dueDate: data.dueDate ? new Date(data.dueDate) : null,
+    startDate,
+    dueDate,
+    duration: durationDays * 24 * 60,
     phaseId: data.phaseId || null,
     dependencies: Array.isArray(data.dependencies) ? data.dependencies : [],
     timelineType: data.type || 'task',
