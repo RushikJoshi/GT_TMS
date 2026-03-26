@@ -3,7 +3,6 @@ import fs from 'fs';
 import path from 'path';
 import mongoose from 'mongoose';
 import { logger } from '../utils/logger.js';
-import AdminConversation from '../models/admin/AdminConversation.model.js';
 
 const DEBUG_LOG_FILE = path.join(process.cwd(), 'debug-e243b9.log');
 function fileAgentLog(payload) {
@@ -92,6 +91,7 @@ export async function createProject({ companyId, workspaceId, userId, data }) {
   });
 
   try {
+    const { AdminConversation } = await getTenantModels(companyId);
     const conversation = await AdminConversation.create({
       participants: members,
       isGroup: true,
@@ -185,6 +185,7 @@ export async function updateProject({ companyId, workspaceId, userId, projectId,
   if (!project) return null;
 
   try {
+    const { AdminConversation } = await getTenantModels(companyId);
     const chatPayload = {};
     if (normalizedUpdates.name) chatPayload.groupName = `${normalizedUpdates.name} (Project)`;
     if (normalizedUpdates.department) chatPayload.department = normalizedUpdates.department;
@@ -237,6 +238,7 @@ export async function deleteProject({ companyId, workspaceId, userId, projectId 
 
   if (project.chatId) {
     try {
+      const { AdminConversation } = await getTenantModels(companyId);
       await AdminConversation.findByIdAndDelete(project.chatId);
     } catch (error) {
       logger.error('project_chat_delete_failed', {

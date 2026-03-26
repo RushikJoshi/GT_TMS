@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Search, Filter, List, LayoutGrid, Plus, MoreHorizontal, 
   Calendar, Clock, User, ChevronDown, Check, Mail, AlertCircle,
-  Hash, Paperclip, MessageSquare, Tag, Repeat, Users, X as XIcon
+  Hash, Paperclip, MessageSquare, Tag, Repeat, X as XIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../../services/api';
@@ -43,8 +43,11 @@ export const TasksManagement: React.FC = () => {
    const [fullTaskData, setFullTaskData] = useState<any>(null);
    const [fullTaskLoading, setFullTaskLoading] = useState(false);
    const [isAddingTask, setIsAddingTask] = useState(false);
-   const [groupBy, setGroupBy] = useState<'none' | 'status' | 'project'>('none');
    const [filterStatus, setFilterStatus] = useState('all');
+   const [currentPage, setCurrentPage] = useState(1);
+   const [projectsPage, setProjectsPage] = useState(1);
+   const [quickPage, setQuickPage] = useState(1);
+   const [tasksPerPage] = useState(10);
    const [activeSections, setActiveSections] = useState<string[]>(['active', 'projects', 'quick']);
    const [openDropdown, setOpenDropdown] = useState<string | null>(null);
  
@@ -55,6 +58,12 @@ export const TasksManagement: React.FC = () => {
        setFullTaskData(null);
      }
    }, [selectedTask]);
+
+    useEffect(() => {
+      setCurrentPage(1);
+      setProjectsPage(1);
+      setQuickPage(1);
+    }, [searchTerm, filterStatus]);
 
    useEffect(() => {
      const handleClickOutside = (e: MouseEvent) => {
@@ -254,28 +263,7 @@ export const TasksManagement: React.FC = () => {
              />
            </div>
           
-           <div className="relative">
-             <div 
-               onClick={() => setOpenDropdown(openDropdown === 'group' ? null : 'group')}
-               className="flex items-center gap-2 bg-white dark:bg-surface-900 border border-gray-200 dark:border-surface-800 rounded-lg px-3 py-2 shadow-sm text-xs font-bold text-gray-600 dark:text-surface-400 cursor-pointer hover:bg-gray-50 dark:hover:bg-surface-800 uppercase tracking-tight transition-all"
-             >
-               <Users size={14} />
-               Group: {groupBy === 'none' ? 'None' : groupBy}
-             </div>
-             {openDropdown === 'group' && (
-               <div className="absolute top-full mt-2 right-0 bg-white dark:bg-surface-900 border border-gray-100 dark:border-surface-800 rounded-xl shadow-xl p-2 z-50 min-w-[120px] animate-in fade-in zoom-in-95 duration-100">
-                  {['none', 'status', 'project'].map(g => (
-                    <div 
-                      key={g} 
-                      onClick={() => { setGroupBy(g as any); setOpenDropdown(null); }} 
-                      className="px-3 py-2 text-[11px] font-bold text-gray-600 dark:text-surface-400 hover:bg-gray-50 dark:hover:bg-surface-800 rounded-lg cursor-pointer capitalize transition-colors"
-                    >
-                      {g}
-                    </div>
-                  ))}
-               </div>
-             )}
-           </div>
+
           
            <div className="relative">
              <div 
@@ -355,7 +343,9 @@ export const TasksManagement: React.FC = () => {
                            {loading ? (
                              <tr><td colSpan={7} className="px-5 py-10 text-center text-gray-400">Loading your tasks...</td></tr>
                            ) : allFilteredTasks.length > 0 ? (
-                             allFilteredTasks.map((task, idx) => (
+                             allFilteredTasks
+                                .slice((currentPage - 1) * tasksPerPage, currentPage * tasksPerPage)
+                                .map((task, idx) => (
                                <TaskRowComponent key={task.id || idx} task={task} onClick={() => setSelectedTask(task)} />
                              ))
                            ) : (
@@ -363,6 +353,31 @@ export const TasksManagement: React.FC = () => {
                            )}
                          </tbody>
                        </table>
+
+                        {/* Pagination Controls */}
+                        {allFilteredTasks.length > tasksPerPage && (
+                          <div className="px-5 py-4 flex items-center justify-between border-t border-gray-100 dark:border-surface-800 bg-gray-50/30 dark:bg-surface-950/20">
+                            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">
+                               Showing {Math.min(allFilteredTasks.length, (currentPage - 1) * tasksPerPage + 1)}-{Math.min(allFilteredTasks.length, currentPage * tasksPerPage)} of {allFilteredTasks.length}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              {Array.from({ length: Math.ceil(allFilteredTasks.length / tasksPerPage) }, (_, i) => i + 1).map(page => (
+                                <button
+                                  key={page}
+                                  onClick={() => setCurrentPage(page)}
+                                  className={cn(
+                                    "w-8 h-8 rounded-lg text-xs font-bold transition-all",
+                                    currentPage === page 
+                                      ? "bg-[#00a3ff] text-white shadow-lg shadow-blue-500/20" 
+                                      : "bg-white dark:bg-surface-900 text-gray-500 dark:text-surface-400 hover:bg-gray-100 dark:hover:bg-surface-800 border border-gray-100 dark:border-surface-800"
+                                  )}
+                                >
+                                  {page}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                      </div>
                    )}
                  </div>
@@ -393,18 +408,61 @@ export const TasksManagement: React.FC = () => {
                                    if (!groups[t.projectName]) groups[t.projectName] = [];
                                    groups[t.projectName].push(t);
                                  });
-                                 return Object.entries(groups).map(([groupName, tasks]) => (
-                                   <React.Fragment key={groupName}>
-                                      <tr className="bg-gray-50/50 dark:bg-surface-950/30">
-                                        <td colSpan={7} className="px-5 py-2 text-[10px] font-bold text-gray-400 dark:text-surface-500 uppercase tracking-widest border-y border-gray-100 dark:border-surface-800">
-                                          {groupName} — {tasks.length} tasks
-                                        </td>
-                                      </tr>
-                                      {tasks.map((task, idx) => (
-                                        <TaskRowComponent key={task.id || idx} task={task} onClick={() => setSelectedTask(task)} />
-                                      ))}
-                                   </React.Fragment>
-                                 ));
+                                 
+                                 const pTasks = allFilteredTasks.filter(t => t.projectName !== '-');
+                                 const paginatedPTasks = pTasks.slice((projectsPage - 1) * tasksPerPage, projectsPage * tasksPerPage);
+                                 
+                                 // Re-group paginated tasks
+                                 const paginatedGroups: Record<string, TaskRow[]> = {};
+                                 paginatedPTasks.forEach(t => {
+                                   if (!paginatedGroups[t.projectName]) paginatedGroups[t.projectName] = [];
+                                   paginatedGroups[t.projectName].push(t);
+                                 });
+
+                                 return (
+                                   <>
+                                     {Object.entries(paginatedGroups).map(([groupName, tasks]) => (
+                                       <React.Fragment key={groupName}>
+                                          <tr className="bg-gray-50/50 dark:bg-surface-950/30">
+                                            <td colSpan={7} className="px-5 py-2 text-[10px] font-bold text-gray-400 dark:text-surface-500 uppercase tracking-widest border-y border-gray-100 dark:border-surface-800">
+                                              {groupName} — {tasks.length} tasks
+                                            </td>
+                                          </tr>
+                                          {tasks.map((task, idx) => (
+                                            <TaskRowComponent key={task.id || idx} task={task} onClick={() => setSelectedTask(task)} />
+                                          ))}
+                                       </React.Fragment>
+                                     ))}
+                                     
+                                     {pTasks.length > tasksPerPage && (
+                                       <tr>
+                                         <td colSpan={7} className="px-5 py-4 border-t border-gray-100 dark:border-surface-800 bg-gray-50/30 dark:bg-surface-950/20">
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">
+                                                Showing {Math.min(pTasks.length, (projectsPage - 1) * tasksPerPage + 1)}-{Math.min(pTasks.length, projectsPage * tasksPerPage)} of {pTasks.length}
+                                              </span>
+                                              <div className="flex items-center gap-2">
+                                                {Array.from({ length: Math.ceil(pTasks.length / tasksPerPage) }, (_, i) => i + 1).map(page => (
+                                                  <button
+                                                    key={page}
+                                                    onClick={() => setProjectsPage(page)}
+                                                    className={cn(
+                                                      "w-8 h-8 rounded-lg text-xs font-bold transition-all",
+                                                      projectsPage === page 
+                                                        ? "bg-[#00a3ff] text-white shadow-lg shadow-blue-500/20" 
+                                                        : "bg-white dark:bg-surface-900 text-gray-500 dark:text-surface-400 hover:bg-gray-100 dark:hover:bg-surface-800 border border-gray-100 dark:border-surface-800"
+                                                    )}
+                                                  >
+                                                    {page}
+                                                  </button>
+                                                ))}
+                                              </div>
+                                            </div>
+                                         </td>
+                                       </tr>
+                                     )}
+                                   </>
+                                 );
                                })()
                              )}
                           </tbody>
@@ -433,9 +491,44 @@ export const TasksManagement: React.FC = () => {
                              {allFilteredTasks.filter(t => t.projectName === '-').length === 0 ? (
                                <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">No quick tasks found.</td></tr>
                              ) : (
-                               allFilteredTasks.filter(t => t.projectName === '-').map((task, idx) => (
-                                 <TaskRowComponent key={task.id || idx} task={task} onClick={() => setSelectedTask(task)} />
-                               ))
+                               (() => {
+                                 const qTasks = allFilteredTasks.filter(t => t.projectName === '-');
+                                 const paginatedQTasks = qTasks.slice((quickPage - 1) * tasksPerPage, quickPage * tasksPerPage);
+                                 return (
+                                   <>
+                                     {paginatedQTasks.map((task, idx) => (
+                                       <TaskRowComponent key={task.id || idx} task={task} onClick={() => setSelectedTask(task)} />
+                                     ))}
+                                     {qTasks.length > tasksPerPage && (
+                                       <tr>
+                                          <td colSpan={7} className="px-5 py-4 border-t border-gray-100 dark:border-surface-800 bg-gray-50/30 dark:bg-surface-950/20">
+                                             <div className="flex items-center justify-between">
+                                                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">
+                                                  Showing {Math.min(qTasks.length, (quickPage - 1) * tasksPerPage + 1)}-{Math.min(qTasks.length, quickPage * tasksPerPage)} of {qTasks.length}
+                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                  {Array.from({ length: Math.ceil(qTasks.length / tasksPerPage) }, (_, i) => i + 1).map(page => (
+                                                    <button
+                                                      key={page}
+                                                      onClick={() => setQuickPage(page)}
+                                                      className={cn(
+                                                        "w-8 h-8 rounded-lg text-xs font-bold transition-all",
+                                                        quickPage === page 
+                                                          ? "bg-[#00a3ff] text-white shadow-lg shadow-blue-500/20" 
+                                                          : "bg-white dark:bg-surface-900 text-gray-500 dark:text-surface-400 hover:bg-gray-100 dark:hover:bg-surface-800 border border-gray-100 dark:border-surface-800"
+                                                      )}
+                                                    >
+                                                      {page}
+                                                    </button>
+                                                  ))}
+                                                </div>
+                                             </div>
+                                          </td>
+                                       </tr>
+                                     )}
+                                   </>
+                                 );
+                               })()
                              )}
                           </tbody>
                         </table>
@@ -454,7 +547,7 @@ export const TasksManagement: React.FC = () => {
             >
                {/* Fixed KanbanBoard props if they differ */}
                <KanbanBoard 
-                 tasksOverride={kanbanTasks as any} 
+                 tasksOverride={allFilteredTasks as any} 
                  projectId="" 
                  onOpenTask={(t) => setSelectedTask(t as any)}
                />

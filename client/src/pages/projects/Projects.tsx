@@ -306,13 +306,6 @@ export const ProjectsPage: React.FC = () => {
   return (
     <div className="max-w-full mx-auto">
       {/* Header Actions */}
-      <div className="flex justify-end pt-2">
-        <button onClick={() => setShowModal(true)} className="btn-primary btn-md">
-          <Plus size={16} />
-          New Project
-        </button>
-      </div>
-
       {/* Filters */}
       <div className="flex items-center gap-3 mb-6 flex-wrap">
         <div className="relative flex-1 min-w-[200px] max-w-xs">
@@ -343,8 +336,8 @@ export const ProjectsPage: React.FC = () => {
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          <button className="btn-secondary btn-sm">
-            <SortAsc size={14} /> Sort
+          <button onClick={() => setShowModal(true)} className="btn-primary btn-sm px-4">
+            <Plus size={14} /> New Project
           </button>
           <div className="flex items-center bg-surface-100 dark:bg-surface-800 rounded-xl p-1">
             <button
@@ -369,11 +362,6 @@ export const ProjectsPage: React.FC = () => {
           icon={<FolderKanban size={28} />}
           title="No projects found"
           description={search ? `No projects matching "${search}"` : 'Create your first project to get started'}
-          action={
-            <button onClick={() => setShowModal(true)} className="btn-primary btn-md">
-              <Plus size={15} /> Create Project
-            </button>
-          }
         />
       ) : (
         <div className="space-y-8 pb-10">
