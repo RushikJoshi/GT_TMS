@@ -698,15 +698,20 @@ export const AdminChatSidebar = () => {
                                          </button>
                                          <div className="w-14 h-14 rounded-full bg-gradient-to-br from-surface-50 to-surface-100 dark:from-surface-800 dark:to-surface-900 border border-surface-200 dark:border-surface-700 flex items-center justify-center text-brand-600 dark:text-brand-400 relative shrink-0 shadow-inner">
                                              {isGroupConversation(activeConvo) ? <Users size={24} /> : <span className="text-lg font-semibold">{currentRecipient ? currentRecipient[0] : 'U'}</span>}
-                                             <div className="absolute bottom-1 right-1 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white dark:border-surface-900" />
+                                             {!isGroupConversation(activeConvo) && activeConvo && (
+                                                <div className="absolute bottom-1 right-1 w-3.5 h-3.5 bg-brand-500 rounded-full border-2 border-white dark:border-surface-900" />
+                                             )}
                                          </div>
                                          <div className="flex-1 min-w-0">
                                               <div className="text-[15px] font-semibold text-surface-900 dark:text-white leading-tight truncate">
                                                   {currentRecipient}
                                               </div>
-                                              <span className="text-[12px] text-emerald-500 dark:text-emerald-400 font-semibold block mt-0.5 truncate">
-                                                  {isGroupConversation(activeConvo) ? `@${activeConvo?.participants.length || 0} members` : 'Online'}
-                                              </span>
+                                               <span className={cn(
+                                                   "text-[12px] font-semibold block mt-0.5 truncate",
+                                                   isGroupConversation(activeConvo) ? "text-surface-500 dark:text-surface-400" : "text-emerald-500 dark:text-emerald-400"
+                                               )}>
+                                                   {isGroupConversation(activeConvo) ? `${activeConvo?.participants.length || 0} members` : 'Online'}
+                                               </span>
                                          </div>
                                      </div>
                                      <div className="flex items-center gap-1">

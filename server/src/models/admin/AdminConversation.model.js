@@ -25,5 +25,8 @@ const adminConversationSchema = new mongoose.Schema({
     department: String
 }, { timestamps: true });
 
-const AdminConversation = mongoose.model('AdminConversation', adminConversationSchema);
-export default AdminConversation;
+export function getAdminConversationModel(conn) {
+    return conn.models.AdminConversation || conn.model('AdminConversation', adminConversationSchema);
+}
+
+export default adminConversationSchema;

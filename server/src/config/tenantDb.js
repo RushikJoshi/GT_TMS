@@ -12,6 +12,8 @@ import { getNotificationModel } from '../models/Notification.js';
 import { getActivityLogModel } from '../models/ActivityLog.js';
 import { getRefreshTokenModel } from '../models/RefreshToken.js';
 import { getProjectTimelineModel } from '../models/ProjectTimeline.js';
+import { getAdminConversationModel } from '../models/admin/AdminConversation.model.js';
+import { getAdminMessageModel } from '../models/admin/AdminMessage.model.js';
 
 
 const TENANT_DB_PREFIX = process.env.TENANT_DB_PREFIX || 'GT_TMS';
@@ -94,6 +96,8 @@ export async function getTenantModels(companyId = null) {
     ActivityLog: getActivityLogModel(conn),
     RefreshToken: getRefreshTokenModel(conn),
     ProjectTimeline: getProjectTimelineModel(conn),
+    AdminConversation: getAdminConversationModel(conn),
+    AdminMessage: getAdminMessageModel(conn),
   };
 }
 

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Search, Zap, User, Calendar, CheckCircle2, Upload, Lock } from 'lucide-react';
+import { Plus, Search, Zap, User, Calendar, CheckCircle2, Upload, Lock, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn, formatDate } from '../../utils/helpers';
 import { useAuthStore } from '../../context/authStore';
 import { useAppStore } from '../../context/appStore';
@@ -197,6 +197,8 @@ export const QuickTasksPage: React.FC = () => {
   const [scope, setScope] = useState<ScopeFilter>('all');
   const [status, setStatus] = useState<StatusFilter>('all');
   const [query, setQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const tasksPerPage = 10;
   const [selected, setSelected] = useState<QuickTask | null>(null);
   const [modalOpen, setModalOpen] = useState(params.get('new') === '1');
   const [importOpen, setImportOpen] = useState(false);
@@ -241,6 +243,18 @@ export const QuickTasksPage: React.FC = () => {
         return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
       });
   }, [quickTasks, scope, status, query, user?.id]);
+  
+  // Reset to first page when filters change
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [query, scope, status]);
+
+  const paginatedTasks = useMemo(() => {
+    const start = (currentPage - 1) * tasksPerPage;
+    return filtered.slice(start, start + tasksPerPage);
+  }, [filtered, currentPage]);
+
+  const totalPages = Math.ceil(filtered.length / tasksPerPage);
 
   const counts = useMemo(() => {
     const uid = user?.id ?? '';
@@ -414,7 +428,7 @@ export const QuickTasksPage: React.FC = () => {
             </div>
           </div>
 
-          {filtered.length === 0 ? (
+          {paginatedTasks.length === 0 ? (
             <EmptyState
               icon={<CheckCircle2 size={28} />}
               title="No quick tasks found"
@@ -422,86 +436,127 @@ export const QuickTasksPage: React.FC = () => {
               // action={<button className="btn-primary btn-sm hidden md:flex" onClick={openNew}><Plus size={16} /> New Quick Task</button>}
             />
           ) : (
-            <div className="space-y-2">
-              {filtered.map((t: QuickTask, i) => {
-                const assigneeIds = t.assigneeIds || [];
-                const assignees = assigneeIds
-                  .map((id) => users.find((u) => u.id === id))
-                  .filter((u): u is (typeof users)[number] => Boolean(u));
-                const reporter = users.find(u => u.id === t.reporterId);
-                const priority = PRIORITY_CONFIG[t.priority];
-                const statusCfg =
-                  t.status === 'todo' ? STATUS_CONFIG.todo :
-                  t.status === 'in_progress' ? STATUS_CONFIG.in_progress :
-                  STATUS_CONFIG.done;
-
-                return (
-                  <motion.div
-                    key={t.id}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.02 }}
-                    onClick={() => navigate(`/quick-tasks/${t.id}`)}
-                    className={cn(
-                      'card p-4 cursor-pointer hover:shadow-card-hover transition-shadow',
-                      isOverdue(t) && 'border-rose-200 dark:border-rose-900/50'
-                    )}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                          <span className={cn('badge text-[10px]', priority.bg, priority.text)}>
-                            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: priority.color }} />
-                            {priority.label}
-                          </span>
-                          <span className={cn('badge text-[10px]', statusCfg.bg, statusCfg.text)}>
-                            {statusCfg.label}
-                          </span>
-                          {isOverdue(t) && (
-                            <span className="badge text-[10px] bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-300">
-                              Overdue
+            <>
+              <div className="space-y-2">
+                {paginatedTasks.map((t: QuickTask, i) => {
+                  const assigneeIds = t.assigneeIds || [];
+                  const assignees = assigneeIds
+                    .map((id) => users.find((u) => u.id === id))
+                    .filter((u): u is (typeof users)[number] => Boolean(u));
+                  const reporter = users.find(u => u.id === t.reporterId);
+                  const priority = PRIORITY_CONFIG[t.priority];
+                  const statusCfg =
+                    t.status === 'todo' ? STATUS_CONFIG.todo :
+                    t.status === 'in_progress' ? STATUS_CONFIG.in_progress :
+                    STATUS_CONFIG.done;
+  
+                  return (
+                    <motion.div
+                      key={t.id}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.02 }}
+                      onClick={() => navigate(`/quick-tasks/${t.id}`)}
+                      className={cn(
+                        'card p-4 cursor-pointer hover:shadow-card-hover transition-shadow',
+                        isOverdue(t) && 'border-rose-200 dark:border-rose-900/50'
+                      )}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                            <span className={cn('badge text-[10px]', priority.bg, priority.text)}>
+                              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: priority.color }} />
+                              {priority.label}
                             </span>
-                          )}
-                          {(t as any).isPrivate && (
-                            <span className="badge text-[10px] bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-300 flex items-center gap-1">
-                              <Lock size={10} />
-                              Private
+                            <span className={cn('badge text-[10px]', statusCfg.bg, statusCfg.text)}>
+                              {statusCfg.label}
                             </span>
-                          )}
-                        </div>
-
-                        <p className="text-sm font-medium text-surface-800 dark:text-surface-200 truncate">
-                          {t.title}
-                        </p>
-                        {t.description && (
-                          <p className="text-xs text-surface-400 mt-1 line-clamp-2">
-                            {t.description}
+                            {isOverdue(t) && (
+                              <span className="badge text-[10px] bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-300">
+                                Overdue
+                              </span>
+                            )}
+                            {(t as any).isPrivate && (
+                              <span className="badge text-[10px] bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-300 flex items-center gap-1">
+                                <Lock size={10} />
+                                Private
+                              </span>
+                            )}
+                          </div>
+  
+                          <p className="text-sm font-medium text-surface-800 dark:text-surface-200 truncate">
+                            {t.title}
                           </p>
+                          {t.description && (
+                            <p className="text-xs text-surface-400 mt-1 line-clamp-2">
+                              {t.description}
+                            </p>
+                          )}
+                        </div>
+  
+                        <div className="flex items-center gap-4 text-xs text-surface-400 flex-shrink-0">
+                          <div className="hidden sm:flex items-center gap-1.5">
+                            <User size={12} />
+                            <span className="max-w-[140px] truncate">
+                              {assignees.length ? assignees.map((a) => a.name).slice(0, 2).join(', ') + (assignees.length > 2 ? ` +${assignees.length - 2}` : '') : 'Unassigned'}
+                            </span>
+                          </div>
+                          <div className="hidden md:flex items-center gap-1.5">
+                            <Calendar size={12} />
+                            <span>{t.dueDate ? formatDate(t.dueDate, 'MMM d') : 'No due date'}</span>
+                          </div>
+                          <div className="hidden lg:block">
+                            <span className="text-[11px] text-surface-400">
+                              Created by {reporter?.name ?? '—'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+  
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="mt-6 flex items-center justify-between border-t border-surface-100 dark:border-surface-800 pt-4 px-1">
+                  <p className="text-xs font-medium text-surface-500">
+                    Showing <span className="text-surface-900 dark:text-white">{(currentPage - 1) * tasksPerPage + 1}</span> to <span className="text-surface-900 dark:text-white">{Math.min(currentPage * tasksPerPage, filtered.length)}</span> of <span className="text-surface-900 dark:text-white">{filtered.length}</span> results
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="p-1.5 rounded-lg border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page)}
+                        className={cn(
+                          "w-8 h-8 rounded-lg text-xs font-semibold flex items-center justify-center transition-all",
+                          currentPage === page
+                            ? "bg-brand-600 text-white shadow-sm"
+                            : "hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-600 dark:text-surface-400"
                         )}
-                      </div>
-
-                      <div className="flex items-center gap-4 text-xs text-surface-400 flex-shrink-0">
-                        <div className="hidden sm:flex items-center gap-1.5">
-                          <User size={12} />
-                          <span className="max-w-[140px] truncate">
-                            {assignees.length ? assignees.map((a) => a.name).slice(0, 2).join(', ') + (assignees.length > 2 ? ` +${assignees.length - 2}` : '') : 'Unassigned'}
-                          </span>
-                        </div>
-                        <div className="hidden md:flex items-center gap-1.5">
-                          <Calendar size={12} />
-                          <span>{t.dueDate ? formatDate(t.dueDate, 'MMM d') : 'No due date'}</span>
-                        </div>
-                        <div className="hidden lg:block">
-                          <span className="text-[11px] text-surface-400">
-                            Created by {reporter?.name ?? '—'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </div>
+                      >
+                        {page}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      className="p-1.5 rounded-lg border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </TabsContent>
       </Tabs>
