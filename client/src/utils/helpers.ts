@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { format, formatDistanceToNow, isToday, isYesterday, parseISO } from 'date-fns';
+import { addDays, format, formatDistanceToNow, isToday, isYesterday, parseISO } from 'date-fns';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -21,6 +21,15 @@ export function formatRelativeTime(date: string | Date): string {
     if (isToday(d)) return formatDistanceToNow(d, { addSuffix: true });
     if (isYesterday(d)) return 'Yesterday';
     return format(d, 'MMM d, yyyy');
+  } catch {
+    return '';
+  }
+}
+
+export function addDaysToDateKey(date: string | Date, days: number): string {
+  try {
+    const base = typeof date === 'string' ? parseISO(date) : date;
+    return format(addDays(base, days), 'yyyy-MM-dd');
   } catch {
     return '';
   }
