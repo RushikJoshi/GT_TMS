@@ -31,6 +31,7 @@ const upload = multer({ storage });
 
 const statusEnum = z.enum(['backlog', 'todo', 'scheduled', 'in_progress', 'in_review', 'blocked', 'done']);
 const taskTypeEnum = z.enum(['operational', 'design', 'important']);
+const timelineTypeEnum = z.enum(['task', 'milestone']);
 
 const subtaskInputSchema = z.object({
   title: z.string().trim().min(1).max(300),
@@ -47,6 +48,10 @@ const taskCreateSchema = z.object({
   priority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
   assigneeIds: z.array(z.string()).optional(),
   dueDate: z.string().optional(),
+  startDate: z.string().optional(),
+  phaseId: z.string().optional(),
+  dependencies: z.array(z.string()).optional(),
+  type: timelineTypeEnum.optional(),
   estimatedHours: z.number().optional(),
   order: z.number().optional(),
   labels: z.array(z.string()).optional(),
@@ -63,6 +68,9 @@ const taskUpdateSchema = z
     assigneeIds: z.array(z.string()).optional(),
     dueDate: z.string().nullable().optional(),
     startDate: z.string().nullable().optional(),
+    phaseId: z.string().nullable().optional(),
+    dependencies: z.array(z.string()).optional(),
+    type: timelineTypeEnum.optional(),
     estimatedHours: z.number().nullable().optional(),
     order: z.number().optional(),
     labels: z.array(z.string()).optional(),
@@ -103,6 +111,7 @@ router.get('/', TasksController.list);
  router.get('/:id', TasksController.getOne);
 router.post('/', validateBody(taskCreateSchema), TasksController.create);
 router.put('/:id', validateBody(taskUpdateSchema), TasksController.update);
+router.patch('/:id', validateBody(taskUpdateSchema), TasksController.update);
 router.delete('/:id', TasksController.remove);
 router.patch('/:id/status', validateBody(moveStatusSchema), TasksController.moveStatus);
 router.post('/:id/review', validateBody(reviewTaskSchema), TasksController.reviewCompletion);

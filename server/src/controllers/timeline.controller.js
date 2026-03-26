@@ -1,94 +1,144 @@
-import { getTenantModels } from '../config/tenantDb.js';
+import * as TimelineService from '../services/timeline.service.js';
 
 export const getTimeline = async (req, res, next) => {
   try {
-    const { companyId } = req.user || req.auth;
+    const auth = req.user || req.auth;
+    const companyId = auth.companyId;
+    const workspaceId = auth.workspaceId;
+    const userId = auth.sub || auth.id;
     const { projectId } = req.params;
-    const { ProjectTimeline } = await getTenantModels(companyId);
 
-    const timeline = await ProjectTimeline.findOne({ projectId });
-    if (!timeline) {
-      return res.status(200).json({ success: true, data: null });
-    }
-    res.status(200).json({ success: true, data: timeline });
+    const timeline = await TimelineService.getProjectTimeline({ companyId, workspaceId, projectId, userId });
+    return res.status(200).json({ success: true, data: timeline });
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
 
 export const upsertTimeline = async (req, res, next) => {
   try {
-    const { companyId, id: userId, role } = req.user || req.auth;
+    const auth = req.user || req.auth;
+    const companyId = auth.companyId;
+    const workspaceId = auth.workspaceId;
+    const userId = auth.sub || auth.id;
+    const role = auth.role;
     const { projectId } = req.params;
-    const { tasks, status } = req.body;
-    const { ProjectTimeline } = await getTenantModels(companyId);
 
-    const existing = await ProjectTimeline.findOne({ projectId });
+    const timeline = await TimelineService.upsertProjectTimeline({
+      companyId,
+      workspaceId,
+      projectId,
+      userId,
+      role,
+      data: req.body,
+    });
 
-    if (existing && existing.status === 'Approved' && role !== 'admin' && role !== 'super_admin') {
-      return res.status(403).json({ success: false, message: 'Timeline is approved and locked. Only admins can edit.' });
-    }
-
-    const updatedTimeline = await ProjectTimeline.findOneAndUpdate(
-      { projectId },
-      { projectId, tasks, status, createdBy: userId },
-      { upsert: true, new: true, runValidators: true }
-    );
-
-    res.status(200).json({ success: true, data: updatedTimeline });
+    return res.status(200).json({ success: true, data: timeline });
   } catch (error) {
-    next(error);
+    return next(error);
+  }
+};
+
+export const patchTaskTimeline = async (req, res, next) => {
+  try {
+    const auth = req.user || req.auth;
+    const companyId = auth.companyId;
+    const workspaceId = auth.workspaceId;
+    const userId = auth.sub || auth.id;
+    const role = auth.role;
+    const { id } = req.params;
+    const { projectId } = req.body;
+
+    const timeline = await TimelineService.updateTaskTimeline({
+      companyId,
+      workspaceId,
+      projectId,
+      taskId: id,
+      updates: req.body,
+      userId,
+      role,
+    });
+
+    return res.status(200).json({ success: true, data: timeline });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const createDependency = async (req, res, next) => {
+  try {
+    const auth = req.user || req.auth;
+    const companyId = auth.companyId;
+    const workspaceId = auth.workspaceId;
+    const userId = auth.sub || auth.id;
+    const role = auth.role;
+
+    const timeline = await TimelineService.createTaskDependency({
+      companyId,
+      workspaceId,
+      projectId: req.body.projectId,
+      fromTaskId: req.body.fromTaskId,
+      toTaskId: req.body.toTaskId,
+      userId,
+      role,
+    });
+
+    return res.status(201).json({ success: true, data: timeline });
+  } catch (error) {
+    return next(error);
   }
 };
 
 export const lockTimeline = async (req, res, next) => {
   try {
-    const { companyId, role } = req.user || req.auth;
+    const auth = req.user || req.auth;
+    const companyId = auth.companyId;
+    const workspaceId = auth.workspaceId;
+    const userId = auth.sub || auth.id;
+    const role = auth.role;
     const { projectId } = req.params;
-    const { ProjectTimeline } = await getTenantModels(companyId);
 
-    if (role !== 'admin' && role !== 'super_admin') {
+    if (!['admin', 'super_admin'].includes(role)) {
       return res.status(403).json({ success: false, message: 'Only admins can approve/lock the timeline.' });
     }
 
-    const timeline = await ProjectTimeline.findOneAndUpdate(
-      { projectId },
-      { status: 'Approved' },
-      { new: true }
-    );
+    const timeline = await TimelineService.setTimelineLock({
+      companyId,
+      workspaceId,
+      projectId,
+      userId,
+      locked: true,
+    });
 
-    if (!timeline) {
-      return res.status(404).json({ success: false, message: 'Timeline not found.' });
-    }
-
-    res.status(200).json({ success: true, data: timeline });
+    return res.status(200).json({ success: true, data: timeline });
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
 
 export const unlockTimeline = async (req, res, next) => {
   try {
-    const { companyId, role } = req.user || req.auth;
+    const auth = req.user || req.auth;
+    const companyId = auth.companyId;
+    const workspaceId = auth.workspaceId;
+    const userId = auth.sub || auth.id;
+    const role = auth.role;
     const { projectId } = req.params;
-    const { ProjectTimeline } = await getTenantModels(companyId);
 
-    if (role !== 'admin' && role !== 'super_admin') {
+    if (!['admin', 'super_admin'].includes(role)) {
       return res.status(403).json({ success: false, message: 'Only admins can unlock the timeline.' });
     }
 
-    const timeline = await ProjectTimeline.findOneAndUpdate(
-      { projectId },
-      { status: 'Draft' },
-      { new: true }
-    );
+    const timeline = await TimelineService.setTimelineLock({
+      companyId,
+      workspaceId,
+      projectId,
+      userId,
+      locked: false,
+    });
 
-    if (!timeline) {
-      return res.status(404).json({ success: false, message: 'Timeline not found.' });
-    }
-
-    res.status(200).json({ success: true, data: timeline });
+    return res.status(200).json({ success: true, data: timeline });
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };

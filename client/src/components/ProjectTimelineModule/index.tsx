@@ -1,730 +1,812 @@
-import React, { useMemo, useState, useEffect } from 'react';
-import { 
-  Calendar, List, Table as TableIcon, 
-  ChevronLeft, ChevronRight, Lock, Unlock,
-  Plus, Trash2, AlertCircle, CheckCircle2,
-  Clock, Flag, User, MapPin, Target
+import React, {
+  startTransition,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import {
+  AlertTriangle,
+  Calendar,
+  Expand,
+  FileSpreadsheet,
+  GitBranchPlus,
+  Image as ImageIcon,
+  Lock,
+  Minimize2,
+  RefreshCcw,
+  Save,
+  Sparkles,
+  Target,
+  Unlock,
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  format, addDays, differenceInDays, 
-  startOfMonth, endOfMonth, eachDayOfInterval,
-  isSameDay, isWithinInterval, parseISO,
-  isBefore, isAfter, min as minDate, max as maxDate
-} from 'date-fns';
-import { cn } from '../../utils/helpers';
-import { EmptyState, ProgressBar, Dropdown } from '../../components/ui';
-import { Modal } from '../../components/Modal';
-
-import { timelineService, projectsService } from '../../services/api';
-
-import { emitSuccessToast, emitErrorToast } from '../../context/toastBus';
-import type { TimelineTask, ProjectTimeline } from '../../app/types';
+import { projectsService, tasksService, timelineService } from '../../services/api';
+import { emitErrorToast, emitSuccessToast } from '../../context/toastBus';
+import { useAppStore } from '../../context/appStore';
 import { useAuthStore } from '../../context/authStore';
-import { UserAvatar, AvatarGroup } from '../UserAvatar';
-import { getProgressColor, formatDate } from '../../utils/helpers';
+import type { Project, ProjectTimeline } from '../../app/types';
+import { Modal } from '../Modal';
+import Sidebar from './Sidebar';
+import TimelineGrid from './TimelineGrid';
+import {
+  SIDEBAR_WIDTH,
+  flattenTimelineRows,
+  getDayWidth,
+  getVisibleRows,
+  recomputeTimeline,
+} from './utils';
 
 interface ProjectTimelineModuleProps {
   projectId: string;
-  isLocked?: boolean;
-  canEdit?: boolean;
 }
 
-const ROLES = ['Frontend Developer', 'Backend Developer', 'UI/UX Designer', 'Project Manager', 'QA Engineer', 'DevOps'];
+type CreateMode = 'phase' | 'task' | null;
 
-export const ProjectTimelineModule: React.FC<ProjectTimelineModuleProps> = ({ 
-  projectId, 
-  isLocked: propLocked,
-  canEdit: propCanEdit 
-}) => {
+function sameArray(a: string[] = [], b: string[] = []) {
+  if (a.length !== b.length) return false;
+  return a.every((value, index) => value === b[index]);
+}
+
+function canReachTask(startTaskId: string, targetTaskId: string, edges: Array<{ fromTaskId: string; toTaskId: string }>) {
+  if (startTaskId === targetTaskId) return true;
+
+  const outgoing = new Map<string, string[]>();
+  for (const edge of edges) {
+    const items = outgoing.get(edge.fromTaskId) || [];
+    items.push(edge.toTaskId);
+    outgoing.set(edge.fromTaskId, items);
+  }
+
+  const queue = [startTaskId];
+  const visited = new Set<string>();
+
+  while (queue.length) {
+    const current = queue.shift()!;
+    if (visited.has(current)) continue;
+    visited.add(current);
+
+    for (const nextTaskId of outgoing.get(current) || []) {
+      if (nextTaskId === targetTaskId) return true;
+      if (!visited.has(nextTaskId)) queue.push(nextTaskId);
+    }
+  }
+
+  return false;
+}
+
+export const ProjectTimelineModule: React.FC<ProjectTimelineModuleProps> = ({ projectId }) => {
+  const { users } = useAppStore();
   const { user } = useAuthStore();
-  const [view, setView] = useState<'table' | 'gantt'>('table');
+  const [project, setProject] = useState<Project | null>(null);
   const [timeline, setTimeline] = useState<ProjectTimeline | null>(null);
-  const [tasks, setTasks] = useState<TimelineTask[]>([]);
+  const [draftTimeline, setDraftTimeline] = useState<ProjectTimeline | null>(null);
+  const [loadError, setLoadError] = useState<{ title: string; description: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [selectedDependencyFrom, setSelectedDependencyFrom] = useState('');
+  const [createMode, setCreateMode] = useState<CreateMode>(null);
+  const [draftName, setDraftName] = useState('');
+  const [draftTaskPhaseId, setDraftTaskPhaseId] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [viewportHeight, setViewportHeight] = useState(640);
+  const [scrollTop, setScrollTop] = useState(0);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  const [project, setProject] = useState<any>(null);
+  const activeTimeline = draftTimeline || timeline;
+  const deferredTimeline = useDeferredValue(activeTimeline);
+  const canManageLockedTimeline = user?.role === 'admin' || user?.role === 'super_admin';
+  const isReadOnly = activeTimeline?.status === 'Approved' && !canManageLockedTimeline;
+  const zoom = activeTimeline?.settings.zoom || 'week';
+  const baseDayWidth = getDayWidth(zoom);
+  const dayWidth = isFullscreen ? Math.max(baseDayWidth + 14, Math.round(baseDayWidth * 2.1)) : baseDayWidth;
+  const selectablePhases = (activeTimeline?.phases || []).filter((phase) => phase.id !== 'ungrouped');
 
-  
-  // Gantt State
-  const [startDate, setStartDate] = useState(new Date());
-  const [endDate, setEndDate] = useState(addDays(new Date(), 30));
-
-
-  const days = useMemo(() => eachDayOfInterval({ start: startDate, end: endDate }), [startDate, endDate]);
-  
-  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
-  const isLocked = timeline?.status === 'Approved';
-  const canModify = !isLocked || isAdmin;
-
-  useEffect(() => {
-    fetchTimeline();
-  }, [projectId]);
-
-  const fetchTimeline = async () => {
+  const fetchTimeline = useCallback(async () => {
     try {
       setIsLoading(true);
-      // Fetch both project details and timeline in parallel
+      setLoadError(null);
       const [timelineRes, projectRes] = await Promise.all([
         timelineService.get(projectId),
-        projectsService.getById(projectId)
+        projectsService.getById(projectId),
       ]);
 
-      const data = timelineRes.data.data;
-      const proj = projectRes.data.data ?? projectRes.data;
-      
-      setProject(proj);
+      setTimeline(timelineRes.data.data);
+      setDraftTimeline(null);
+      setSelectedDependencyFrom('');
+      setProject(projectRes.data.data ?? projectRes.data);
+    } catch (error: any) {
+      const status = error?.response?.status;
+      const code = error?.response?.data?.error?.code;
+      const message =
+        error?.response?.data?.error?.message ||
+        error?.response?.data?.message ||
+        'Failed to load timeline';
 
-      if (proj && proj.startDate) {
-        const pStart = parseISO(proj.startDate);
-        setStartDate(pStart);
-        // If the project has an end date, use it, otherwise use start + 30 days
-        if (proj.endDate) {
-           setEndDate(addDays(parseISO(proj.endDate), 30));
-        } else {
-           setEndDate(addDays(pStart, 30));
-        }
+      if (status === 400 && code === 'TIMELINE_CYCLE') {
+        setLoadError({
+          title: 'Timeline has a circular dependency',
+          description: 'One or more tasks depend on each other in a loop. Remove the conflicting dependency chain before reopening the timeline view.',
+        });
+      } else {
+        setLoadError({
+          title: 'Timeline could not be loaded',
+          description: message,
+        });
       }
 
-      if (data) {
-        setTimeline(data);
-        setTasks(data.tasks || []);
-      }
-    } catch (err) {
-      console.error(err);
+      setTimeline(null);
+      setDraftTimeline(null);
+      emitErrorToast(message, 'Timeline');
     } finally {
       setIsLoading(false);
     }
+  }, [projectId]);
+
+  useEffect(() => {
+    void fetchTimeline();
+  }, [fetchTimeline]);
+
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+
+    const syncSize = () => setViewportHeight(element.clientHeight);
+    syncSize();
+    window.addEventListener('resize', syncSize);
+    return () => window.removeEventListener('resize', syncSize);
+  }, [isFullscreen]);
+
+  const { rows, totalHeight } = useMemo(
+    () => deferredTimeline ? flattenTimelineRows(deferredTimeline.phases) : { rows: [], totalHeight: 0 },
+    [deferredTimeline]
+  );
+  const visibleRows = useMemo(
+    () => getVisibleRows(rows, scrollTop, viewportHeight),
+    [rows, scrollTop, viewportHeight]
+  );
+  const timelineCanvasHeight = Math.max(totalHeight + 56, 220);
+
+  const closeCreateModal = useCallback(() => {
+    setCreateMode(null);
+    setDraftName('');
+    setDraftTaskPhaseId('');
+  }, []);
+
+  const downloadBlob = useCallback((blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const applyDraftMutation = useCallback((mutator: (current: ProjectTimeline) => ProjectTimeline) => {
+    startTransition(() => {
+      setDraftTimeline((currentDraft) => {
+        const source = currentDraft || timeline;
+        if (!source) return currentDraft;
+        return recomputeTimeline(mutator(source));
+      });
+    });
+  }, [timeline]);
+
+  const persistTimelineStructure = useCallback(async (source: ProjectTimeline) => {
+    const response = await timelineService.upsert(projectId, {
+      status: source.status,
+      settings: source.settings,
+      phases: source.phases
+        .filter((phase) => phase.id !== 'ungrouped')
+        .map(({ id, name, order, color }) => ({
+          id: id.startsWith('phase-temp-') ? undefined : id,
+          name,
+          order,
+          color,
+        })),
+    });
+
+    return response.data.data as ProjectTimeline;
+  }, [projectId]);
+
+  const persistDraftChanges = useCallback(async (sourceTimeline: ProjectTimeline, baseTimeline: ProjectTimeline) => {
+    await persistTimelineStructure(sourceTimeline);
+
+    const baseTaskMap = new Map(baseTimeline.tasks.map((task) => [task.id, task]));
+    const changedTasks = sourceTimeline.tasks.filter((task) => {
+      const previous = baseTaskMap.get(task.id);
+      if (!previous) return true;
+      return (
+        task.startDate !== previous.startDate ||
+        task.endDate !== previous.endDate ||
+        task.phaseId !== previous.phaseId ||
+        task.type !== previous.type ||
+        !sameArray(task.dependencies, previous.dependencies)
+      );
+    });
+
+    for (const task of changedTasks) {
+      await timelineService.patchTask(task.id, {
+        projectId,
+        startDate: task.startDate,
+        endDate: task.endDate,
+        phaseId: task.phaseId || null,
+        dependencies: task.dependencies,
+        type: task.type,
+      });
+    }
+  }, [persistTimelineStructure, projectId]);
+
+  const exportTimelineExcel = useCallback(() => {
+    if (!activeTimeline || !project) return;
+
+    const rowsHtml = activeTimeline.phases
+      .flatMap((phase) => phase.tasks.map((task) => `
+        <tr>
+          <td>${phase.name}</td>
+          <td>${task.title}</td>
+          <td>${task.type}</td>
+          <td>${task.startDate}</td>
+          <td>${task.endDate}</td>
+          <td>${task.durationInDays}</td>
+          <td>${task.status}</td>
+          <td>${task.dependencies.join(', ')}</td>
+        </tr>
+      `))
+      .join('');
+
+    const workbookHtml = `
+      <html>
+        <head><meta charset="utf-8" /></head>
+        <body>
+          <table border="1">
+            <thead>
+              <tr>
+                <th>Phase</th>
+                <th>Task</th>
+                <th>Type</th>
+                <th>Start Date</th>
+                <th>End Date</th>
+                <th>Duration (days)</th>
+                <th>Status</th>
+                <th>Dependencies</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </body>
+      </html>
+    `;
+
+    downloadBlob(
+      new Blob([workbookHtml], { type: 'application/vnd.ms-excel;charset=utf-8;' }),
+      `${project.name.replace(/\s+/g, '-').toLowerCase()}-timeline.xls`
+    );
+  }, [activeTimeline, downloadBlob, project]);
+
+  const exportTimelineDiagram = useCallback(() => {
+    if (!activeTimeline || !project) return;
+
+    const headerHeight = 56;
+    const sidebarWidth = SIDEBAR_WIDTH;
+    const dayCellWidth = 22;
+    const rightPadding = 80;
+    const width = sidebarWidth + activeTimeline.projectWindow.totalDays * dayCellWidth + rightPadding;
+    const height = timelineCanvasHeight + 32;
+    const dependencyRows = new Map(rows.filter((row) => row.kind === 'task').map((row) => [row.task.id, row]));
+
+    const backgroundColumns = Array.from({ length: activeTimeline.projectWindow.totalDays }).map((_, index) => {
+      const fill = Math.floor(index / 7) % 2 === 0 ? '#ffffff' : '#f8fafc';
+      return `<rect x="${sidebarWidth + index * dayCellWidth}" y="${headerHeight}" width="${dayCellWidth}" height="${timelineCanvasHeight - headerHeight}" fill="${fill}" stroke="#e2e8f0" stroke-width="0.5" />`;
+    }).join('');
+
+    const phaseBands = rows.map((row) => {
+      if (row.kind === 'phase') {
+        return `
+          <rect x="0" y="${row.top + headerHeight}" width="${width}" height="${row.height}" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1" />
+          <text x="28" y="${row.top + headerHeight + 25}" fill="#64748b" font-size="12" font-weight="700" letter-spacing="2">${row.phase.name.toUpperCase()}</text>
+        `;
+      }
+
+      const barX = sidebarWidth + row.task.startOffset * dayCellWidth;
+      const barWidth = Math.max(dayCellWidth, row.task.durationInDays * dayCellWidth);
+      const barY = row.top + headerHeight + 10;
+      return `
+        <rect x="0" y="${row.top + headerHeight}" width="${width}" height="${row.height}" fill="#ffffff" stroke="#eef2f7" stroke-width="1" />
+        <text x="24" y="${row.top + headerHeight + 24}" fill="#0f172a" font-size="12" font-weight="700">${row.task.title}</text>
+        <text x="24" y="${row.top + headerHeight + 42}" fill="#94a3b8" font-size="10">${row.task.startDate} to ${row.task.endDate}</text>
+        <rect x="${barX}" y="${barY}" width="${barWidth}" height="${row.height - 20}" rx="10" ry="10" fill="#2563eb" opacity="0.92" />
+        <text x="${barX + 14}" y="${barY + 18}" fill="#ffffff" font-size="12" font-weight="700">${row.task.title}</text>
+      `;
+    }).join('');
+
+    const dependencyLines = activeTimeline.dependencies.map((dependency) => {
+      const fromRow = dependencyRows.get(dependency.fromTaskId);
+      const toRow = dependencyRows.get(dependency.toTaskId);
+      if (!fromRow || !toRow || fromRow.kind !== 'task' || toRow.kind !== 'task') return '';
+
+      const fromX = sidebarWidth + (fromRow.task.endOffset + 1) * dayCellWidth;
+      const fromY = headerHeight + fromRow.top + fromRow.height / 2;
+      const toX = sidebarWidth + toRow.task.startOffset * dayCellWidth;
+      const toY = headerHeight + toRow.top + toRow.height / 2;
+      const destinationX = Math.max(sidebarWidth, toX - 8);
+      const sameRow = Math.abs(fromY - toY) < 2;
+      const routeX = Math.min(width - 20, fromX + 24);
+      const d = sameRow
+        ? `M ${fromX} ${fromY} L ${routeX} ${fromY} L ${routeX} ${Math.max(14, fromY - 18)} L ${destinationX} ${Math.max(14, fromY - 18)} L ${destinationX} ${toY}`
+        : `M ${fromX} ${fromY} L ${routeX} ${fromY} L ${routeX} ${toY} L ${destinationX} ${toY}`;
+      return `<path d="${d}" fill="none" stroke="#3b82f6" stroke-width="2" stroke-dasharray="6 4" />`;
+    }).join('');
+
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+        <rect width="${width}" height="${height}" fill="#f8fafc" />
+        <rect x="0" y="0" width="${width}" height="${headerHeight}" fill="#ffffff" />
+        <rect x="0" y="0" width="${sidebarWidth}" height="${height}" fill="#ffffff" />
+        <text x="24" y="34" fill="#94a3b8" font-size="14" font-weight="700" letter-spacing="3">TIMELINE OUTLINE</text>
+        ${backgroundColumns}
+        ${phaseBands}
+        ${dependencyLines}
+      </svg>
+    `;
+
+    downloadBlob(
+      new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }),
+      `${project.name.replace(/\s+/g, '-').toLowerCase()}-timeline-diagram.svg`
+    );
+  }, [activeTimeline, downloadBlob, project, rows, timelineCanvasHeight]);
+
+  const handleExportTimeline = useCallback(async (format: 'excel' | 'diagram') => {
+    try {
+      setIsExporting(true);
+      if (format === 'excel') exportTimelineExcel();
+      else exportTimelineDiagram();
+      emitSuccessToast(`Timeline exported as ${format === 'excel' ? 'Excel' : 'diagram'}`, 'Timeline');
+    } catch (error: any) {
+      emitErrorToast(error?.message || 'Failed to export timeline', 'Timeline');
+    } finally {
+      setIsExporting(false);
+    }
+  }, [exportTimelineDiagram, exportTimelineExcel]);
+
+  const handleTaskCommit = useCallback((taskId: string, nextStartDate: string, nextEndDate: string) => {
+    if (isReadOnly) return;
+    applyDraftMutation((current) => ({
+      ...current,
+      phases: current.phases.map((phase) => ({
+        ...phase,
+        tasks: phase.tasks.map((task) => (
+          task.id === taskId
+            ? { ...task, startDate: nextStartDate, endDate: nextEndDate }
+            : task
+        )),
+      })),
+    }));
+  }, [applyDraftMutation, isReadOnly]);
+
+  const handleSelectDependency = useCallback((taskId: string) => {
+    if (!activeTimeline || isReadOnly) return;
+
+    if (selectedDependencyFrom && selectedDependencyFrom !== taskId) {
+      if (activeTimeline.dependencies.some((dependency) => (
+        dependency.fromTaskId === selectedDependencyFrom && dependency.toTaskId === taskId
+      ))) {
+        emitErrorToast('These tasks are already linked.', 'Timeline');
+        setSelectedDependencyFrom('');
+        return;
+      }
+
+      if (canReachTask(taskId, selectedDependencyFrom, activeTimeline.dependencies)) {
+        emitErrorToast('This link would create a circular dependency. Choose a later task instead.', 'Timeline');
+        setSelectedDependencyFrom('');
+        return;
+      }
+
+      const createLink = async () => {
+        try {
+          if (draftTimeline && timeline) {
+            await persistDraftChanges(draftTimeline, timeline);
+          }
+
+          await timelineService.createDependency({
+            projectId,
+            fromTaskId: selectedDependencyFrom,
+            toTaskId: taskId,
+          });
+
+          await fetchTimeline();
+          emitSuccessToast('Tasks linked', 'Timeline');
+        } catch (error: any) {
+          emitErrorToast(error?.response?.data?.message || 'Failed to link tasks', 'Timeline');
+        } finally {
+          setSelectedDependencyFrom('');
+        }
+      };
+
+      void createLink();
+      return;
+    }
+
+    setSelectedDependencyFrom((current) => current === taskId ? '' : taskId);
+  }, [activeTimeline, draftTimeline, fetchTimeline, isReadOnly, persistDraftChanges, projectId, selectedDependencyFrom, timeline]);
+
+  const handleZoom = (nextZoom: 'day' | 'week' | 'month') => {
+    if (isReadOnly) return;
+    applyDraftMutation((current) => ({
+      ...current,
+      settings: { ...current.settings, zoom: nextZoom },
+    }));
   };
 
+  const openCreatePhaseModal = () => {
+    if (!activeTimeline || isReadOnly) return;
+    setDraftName(`New Phase ${selectablePhases.length + 1}`);
+    setCreateMode('phase');
+  };
 
-  const handleSave = async (updatedTasks = tasks, updatedStatus = timeline?.status || 'Draft') => {
+  const openCreateTaskModal = () => {
+    if (!project || isReadOnly) return;
+    setDraftName('');
+    setDraftTaskPhaseId(selectablePhases[0]?.id || '');
+    setCreateMode('task');
+  };
+
+  const handleCreateSubmit = async () => {
+    const trimmedName = draftName.trim();
+    if (!trimmedName) {
+      emitErrorToast('Please enter a name first.', 'Timeline');
+      return;
+    }
+
+    if (!activeTimeline || isReadOnly) return;
+
+    setIsCreating(true);
+    try {
+      if (createMode === 'phase') {
+        const realPhases = activeTimeline.phases.filter((phase) => phase.id !== 'ungrouped');
+        const nextTimeline = recomputeTimeline({
+          ...activeTimeline,
+          phases: [
+            ...realPhases,
+            {
+              id: `phase-temp-${Date.now()}`,
+              projectId: activeTimeline.projectId,
+              name: trimmedName,
+              order: realPhases.length,
+              color: '#2563eb',
+              tasks: [],
+            },
+          ],
+        });
+
+        await persistTimelineStructure(nextTimeline);
+        await fetchTimeline();
+        emitSuccessToast('Phase added', 'Timeline');
+      }
+
+      if (createMode === 'task') {
+        if (!project) return;
+
+        let timelineForTask = activeTimeline;
+        if (draftTimeline?.phases.some((phase) => phase.id.startsWith('phase-temp-'))) {
+          timelineForTask = await persistTimelineStructure(draftTimeline);
+        }
+
+        const selectedPhase = timelineForTask?.phases.find(
+          (phase) => phase.id === draftTaskPhaseId && !phase.id.startsWith('phase-temp-')
+        );
+
+        await tasksService.create({
+          projectId,
+          title: trimmedName,
+          startDate: project.startDate,
+          dueDate: project.endDate || project.startDate,
+          phaseId: selectedPhase?.id,
+          type: 'task',
+          assigneeIds: [],
+        });
+
+        await fetchTimeline();
+        emitSuccessToast('Task created', 'Timeline');
+      }
+
+      closeCreateModal();
+    } catch (error: any) {
+      emitErrorToast(error?.response?.data?.message || `Failed to create ${createMode}`, 'Timeline');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handleAddTask = async () => {
+    if (!project || isReadOnly) return;
+    openCreateTaskModal();
+  };
+
+  const handleSave = useCallback(async () => {
+    if (!timeline || !draftTimeline || isReadOnly) return;
+
     try {
       setIsSaving(true);
-      
-      // Auto-recalculate delays for all tasks before saving
-      const finalTasks = updatedTasks.map(t => calculateTaskMetrics(t));
-
-      const res = await timelineService.upsert(projectId, { 
-        tasks: finalTasks, 
-        status: updatedStatus 
-      });
-      setTimeline(res.data.data);
-      setTasks(res.data.data.tasks || []);
-      emitSuccessToast('Timeline saved successfully', 'Success');
-    } catch (err: any) {
-      emitErrorToast(err.response?.data?.message || 'Failed to save timeline', 'Error');
+      await persistDraftChanges(draftTimeline, timeline);
+      await fetchTimeline();
+      emitSuccessToast('Timeline saved', 'Timeline');
+    } catch (error: any) {
+      emitErrorToast(error?.response?.data?.message || 'Failed to save timeline', 'Timeline');
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [draftTimeline, fetchTimeline, isReadOnly, persistDraftChanges, timeline]);
 
-  const calculateTaskMetrics = (task: TimelineTask): TimelineTask => {
-    const updated = { ...task };
-    const today = new Date();
-    const plannedEnd = parseISO(updated.plannedEndDate);
+  const handleLockToggle = async () => {
+    if (!activeTimeline || !canManageLockedTimeline) return;
 
-    // Auto-status detection for delays
-    if (updated.status !== 'completed' && isAfter(today, plannedEnd)) {
-      updated.status = 'delayed';
-    }
-
-    // Delay calculation
-    if (updated.actualEndDate) {
-      const actualEnd = parseISO(updated.actualEndDate);
-      if (isAfter(actualEnd, plannedEnd)) {
-        updated.delayDays = differenceInDays(actualEnd, plannedEnd);
-      } else {
-        updated.delayDays = 0;
-      }
-    } else if (updated.status === 'delayed') {
-       updated.delayDays = differenceInDays(today, plannedEnd);
-    } else {
-       updated.delayDays = 0;
-    }
-
-    // Variance calculation
-    if (updated.actualDuration && updated.plannedDuration) {
-      updated.varianceDays = updated.actualDuration - updated.plannedDuration;
-    }
-
-    return updated;
-  };
-
-  const addTask = () => {
-    if (!canModify) return;
-    const start = project?.startDate || format(new Date(), 'yyyy-MM-dd');
-    const end = project?.endDate || format(addDays(new Date(), 5), 'yyyy-MM-dd');
-    const dur = differenceInDays(parseISO(end), parseISO(start)) + 1;
-
-    const newTask: TimelineTask = {
-      id: `task-${Date.now()}`,
-      taskName: 'New Task',
-      startDate: start,
-      endDate: end,
-      duration: dur,
-      plannedStartDate: start,
-      plannedEndDate: end,
-      plannedDuration: dur,
-      progress: 0,
-      status: 'not_started'
-    };
-
-    setTasks([...tasks, newTask]);
-  };
-
-  const updateTask = (id: string, updates: Partial<TimelineTask>) => {
-    const newTasks = tasks.map(t => {
-      if (t.id !== id) return t;
-      
-      let updated = { ...t, ...updates };
-
-      // Baseline locking logic: can't change planned dates if approved unless admin
-      if (isLocked && !isAdmin && (updates.plannedStartDate || updates.plannedEndDate)) {
-          return t;
-      }
-      
-      // Auto-set Actual Start Date when progress starts or status changes to in_progress
-      if ((updates.progress && updates.progress > 0 && !updated.actualStartDate) || 
-          (updates.status === 'in_progress' && !updated.actualStartDate)) {
-          updated.actualStartDate = format(new Date(), 'yyyy-MM-dd');
-          if (!updated.status || updated.status === 'not_started') updated.status = 'in_progress';
-      }
-
-      // Auto-set Actual End Date when progress reaches 100% or status completed
-      if ((updates.progress === 100 && !updated.actualEndDate) || 
-          (updates.status === 'completed' && !updated.actualEndDate)) {
-          updated.actualEndDate = format(new Date(), 'yyyy-MM-dd');
-          updated.status = 'completed';
-          updated.progress = 100;
-      }
-
-      // Handle Date dependencies and duration calculations
-      if (updates.plannedStartDate || updates.plannedEndDate) {
-        const pStart = parseISO(updated.plannedStartDate);
-        const pEnd = parseISO(updated.plannedEndDate);
-        if (isBefore(pEnd, pStart)) {
-          updated.plannedEndDate = updated.plannedStartDate;
-          updated.plannedDuration = 1;
-        } else {
-          updated.plannedDuration = differenceInDays(pEnd, pStart) + 1;
-        }
-        // Sync legacy fields
-        updated.startDate = updated.plannedStartDate;
-        updated.endDate = updated.plannedEndDate;
-        updated.duration = updated.plannedDuration;
-      }
-
-      if (updated.actualStartDate && updated.actualEndDate) {
-        const aStart = parseISO(updated.actualStartDate);
-        const aEnd = parseISO(updated.actualEndDate);
-        if (isBefore(aEnd, aStart)) {
-          updated.actualEndDate = updated.actualStartDate;
-          updated.actualDuration = 1;
-        } else {
-          updated.actualDuration = differenceInDays(aEnd, aStart) + 1;
-        }
-      }
-
-      // Re-calculate metrics
-      updated = calculateTaskMetrics(updated);
-
-      return updated;
-    });
-    setTasks(newTasks);
-  };
-
-  const removeTask = (id: string) => {
-    if (!canModify) return;
-    setTasks(tasks.filter(t => t.id !== id));
-  };
-
-  const handleLockUnlock = async () => {
-    if (!isAdmin) return;
     try {
-       const res = isLocked 
-         ? await timelineService.unlock(projectId)
-         : await timelineService.lock(projectId);
-       setTimeline(res.data.data);
-       emitSuccessToast(`Timeline ${isLocked ? 'unlocked' : 'approved'}`, 'Success');
-    } catch (err: any) {
-       emitErrorToast(err.response?.data?.message || 'Action failed', 'Error');
+      if (activeTimeline.status === 'Approved') await timelineService.unlock(projectId);
+      else await timelineService.lock(projectId);
+      await fetchTimeline();
+      emitSuccessToast(activeTimeline.status === 'Approved' ? 'Timeline unlocked' : 'Timeline locked', 'Timeline');
+    } catch (error: any) {
+      emitErrorToast(error?.response?.data?.message || 'Failed to change lock state', 'Timeline');
     }
   };
-
-  const projectStats = useMemo(() => {
-    if (tasks.length === 0) return { totalDuration: 0, totalCost: 0, totalDelay: 0, avgVariance: 0 };
-    
-    const projectStart = new Date(Math.min(...tasks.map(t => parseISO(t.plannedStartDate || t.startDate).getTime())));
-    const projectEnd = new Date(Math.max(...tasks.map(t => parseISO(t.actualEndDate || t.plannedEndDate || t.endDate).getTime())));
-    
-    const totalDelay = tasks.reduce((acc, t) => acc + (t.delayDays || 0), 0);
-    const totalVariance = tasks.reduce((acc, t) => acc + (t.varianceDays || 0), 0);
-    
-    return {
-      totalDuration: differenceInDays(projectEnd, projectStart) + 1,
-      totalCost: tasks.reduce((acc, t) => acc + ((t.actualDuration || t.plannedDuration || t.duration) * 8 * 50), 0),
-      totalDelay,
-      avgVariance: totalVariance / tasks.length
-    };
-  }, [tasks]);
-
-  const filteredTasks = useMemo(() => {
-    if (filterStatus === 'all') return tasks;
-    return tasks.filter(t => {
-      if (filterStatus === 'delayed') return t.status === 'delayed';
-      if (filterStatus === 'completed') return t.status === 'completed';
-      if (filterStatus === 'in_progress') return t.status === 'in_progress';
-      return true;
-    });
-  }, [tasks, filterStatus]);
 
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 animate-pulse">
-        <Clock className="w-10 h-10 text-brand-300 mb-4" />
-        <p className="text-surface-400">Loading timeline...</p>
+      <div className="flex h-[70vh] items-center justify-center rounded-[28px] border border-surface-200 bg-white dark:border-surface-800 dark:bg-surface-950">
+        <div className="text-sm text-surface-400">Loading timeline...</div>
       </div>
     );
   }
 
-  // --- Calculations for UI ---
-  const members = project?.members ? [] : []; // We'd ideally fetch project members here, but project.members might be IDs
+  if (loadError || !activeTimeline) {
+    return (
+      <div className="flex min-h-[420px] items-center justify-center rounded-[28px] border border-rose-200 bg-white p-8 dark:border-rose-900/40 dark:bg-surface-950">
+        <div className="max-w-lg text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-300">
+            <AlertTriangle size={24} />
+          </div>
+          <h3 className="text-xl font-semibold text-surface-900 dark:text-surface-100">
+            {loadError?.title || 'Timeline is unavailable'}
+          </h3>
+          <p className="mt-3 text-sm leading-6 text-surface-500 dark:text-surface-400">
+            {loadError?.description || 'The timeline data could not be loaded for this project.'}
+          </p>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => void fetchTimeline()}
+              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const renderTimelineBody = (fullscreen: boolean) => {
+    const rowsForView = fullscreen ? rows : visibleRows;
+
+    return (
+      <>
+      <div className="rounded-[28px] border border-surface-200 bg-white p-4 shadow-sm dark:border-surface-800 dark:bg-surface-950">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-surface-400">Project Timeline</div>
+            <h3 className="mt-1 text-lg font-semibold text-surface-900 dark:text-surface-100">{project?.name}</h3>
+            <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">
+              Drag tasks to move dates, use the edge handles to resize them, and use Link to connect dependencies.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" disabled={isReadOnly} onClick={() => handleZoom('day')} className={`rounded-xl px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${zoom === 'day' ? 'bg-brand-600 text-white' : 'bg-surface-100 text-surface-500 dark:bg-surface-900 dark:text-surface-400'}`}>Day</button>
+            <button type="button" disabled={isReadOnly} onClick={() => handleZoom('week')} className={`rounded-xl px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${zoom === 'week' ? 'bg-brand-600 text-white' : 'bg-surface-100 text-surface-500 dark:bg-surface-900 dark:text-surface-400'}`}>Week</button>
+            <button type="button" disabled={isReadOnly} onClick={() => handleZoom('month')} className={`rounded-xl px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${zoom === 'month' ? 'bg-brand-600 text-white' : 'bg-surface-100 text-surface-500 dark:bg-surface-900 dark:text-surface-400'}`}>Month</button>
+            <button type="button" disabled={isReadOnly} onClick={openCreatePhaseModal} className="rounded-xl bg-surface-100 px-3 py-2 text-xs font-semibold text-surface-600 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-surface-900 dark:text-surface-300">Add Phase</button>
+            <button type="button" disabled={isReadOnly} onClick={handleAddTask} className="rounded-xl bg-surface-100 px-3 py-2 text-xs font-semibold text-surface-600 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-surface-900 dark:text-surface-300">Add Task</button>
+            <button type="button" disabled={isExporting} onClick={() => void handleExportTimeline('excel')} className="rounded-xl bg-surface-100 px-3 py-2 text-xs font-semibold text-surface-600 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-surface-900 dark:text-surface-300">
+              <FileSpreadsheet size={14} className="mr-1 inline-block" />
+              Excel
+            </button>
+            <button type="button" disabled={isExporting} onClick={() => void handleExportTimeline('diagram')} className="rounded-xl bg-surface-100 px-3 py-2 text-xs font-semibold text-surface-600 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-surface-900 dark:text-surface-300">
+              <ImageIcon size={14} className="mr-1 inline-block" />
+              Diagram
+            </button>
+            <button type="button" disabled={!canManageLockedTimeline} onClick={handleLockToggle} className="rounded-xl bg-surface-100 px-3 py-2 text-xs font-semibold text-surface-600 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-surface-900 dark:text-surface-300">
+              {activeTimeline.status === 'Approved' ? <Unlock size={14} className="mr-1 inline-block" /> : <Lock size={14} className="mr-1 inline-block" />}
+              {activeTimeline.status === 'Approved' ? 'Unlock' : 'Lock'}
+            </button>
+            <button type="button" disabled={!draftTimeline} onClick={() => setDraftTimeline(null)} className="rounded-xl bg-surface-100 px-3 py-2 text-xs font-semibold text-surface-600 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-surface-900 dark:text-surface-300">
+              <RefreshCcw size={14} className="mr-1 inline-block" />
+              Reset
+            </button>
+            <button type="button" onClick={handleSave} disabled={!draftTimeline || isSaving || isReadOnly} className="rounded-xl bg-brand-600 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+              <Save size={14} className="mr-1 inline-block" />
+              {isSaving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-surface-100 px-3 py-1 text-xs font-medium text-surface-500 dark:bg-surface-900 dark:text-surface-300">
+            <Calendar size={12} className="mr-1 inline-block" />
+            {activeTimeline.projectWindow.startDate} to {activeTimeline.projectWindow.endDate}
+          </span>
+          <span className="rounded-full bg-surface-100 px-3 py-1 text-xs font-medium text-surface-500 dark:bg-surface-900 dark:text-surface-300">
+            <Target size={12} className="mr-1 inline-block" />
+            {activeTimeline.summary.criticalTasks} critical tasks
+          </span>
+          <span className="rounded-full bg-surface-100 px-3 py-1 text-xs font-medium text-surface-500 dark:bg-surface-900 dark:text-surface-300">
+            <AlertTriangle size={12} className="mr-1 inline-block" />
+            {activeTimeline.resourceConflicts.length} resource conflicts
+          </span>
+          {isReadOnly ? (
+            <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 dark:bg-rose-950/30 dark:text-rose-300">
+              Locked for editing. Only admins can change this approved timeline.
+            </span>
+          ) : null}
+          {draftTimeline ? (
+            <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+              <Sparkles size={12} className="mr-1 inline-block" />
+              What-if simulation active
+            </span>
+          ) : null}
+          {selectedDependencyFrom ? (
+            <span className="rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700 dark:bg-brand-950/30 dark:text-brand-300">
+              <GitBranchPlus size={12} className="mr-1 inline-block" />
+              Select the task that should start after {selectedDependencyFrom}
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-[28px] border border-surface-200 bg-white shadow-sm dark:border-surface-800 dark:bg-surface-950">
+        <div className="grid" style={{ gridTemplateColumns: `${SIDEBAR_WIDTH}px minmax(0, 1fr)` }}>
+          <Sidebar
+            rows={rowsForView}
+            totalHeight={totalHeight}
+            viewportHeight={viewportHeight}
+            scrollTop={scrollTop}
+            containerClassName={fullscreen ? 'h-[calc(100vh-280px)] min-h-[520px]' : undefined}
+            users={users}
+            selectedDependencyFrom={selectedDependencyFrom}
+            onSelectDependencyFrom={handleSelectDependency}
+          />
+          <div
+            ref={scrollRef}
+            className={fullscreen ? 'h-[calc(100vh-280px)] min-h-[520px] overflow-auto overscroll-contain scroll-smooth' : 'h-[72vh] overflow-auto overscroll-contain scroll-smooth'}
+            onWheel={(event) => {
+              const element = event.currentTarget;
+              if (Math.abs(event.deltaX) > 0) return;
+              if (event.shiftKey) {
+                event.preventDefault();
+                element.scrollLeft += event.deltaY;
+              }
+            }}
+            onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+            style={{ scrollbarGutter: 'stable both-edges' }}
+          >
+            <TimelineGrid
+              timeline={activeTimeline}
+              rows={rowsForView}
+              allRows={rows}
+              totalHeight={totalHeight}
+              dayWidth={dayWidth}
+              extraRightPadding={fullscreen ? 180 : 80}
+              onTaskCommit={handleTaskCommit}
+            />
+          </div>
+        </div>
+      </div>
+    </>
+  );
+  };
 
   return (
-    <div className="flex flex-col h-full space-y-3 max-h-[calc(100vh-180px)] overflow-hidden">
-      {/* 1. COMPACT HEADER */}
-      <div className="flex items-center justify-between gap-4 py-2 border-b border-surface-100 dark:border-surface-800 flex-shrink-0">
-        <div className="flex items-center gap-6 overflow-hidden">
-          <div className="flex items-center gap-3 shrink-0">
-             <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-xs" style={{ backgroundColor: project?.color || '#4F46E5' }}>
-               {project?.name?.[0] || 'P'}
-             </div>
-             <div className="flex flex-col justify-center">
-               <h2 className="text-sm font-bold text-surface-900 dark:text-white truncate max-w-[150px]">{project?.name}</h2>
-               <span className="text-[10px] text-surface-400 font-medium uppercase tracking-tighter">Timeline Board</span>
-             </div>
-          </div>
+    <div className="space-y-4">
+      {!isFullscreen ? renderTimelineBody(false) : null}
 
-          <div className="h-4 w-[1px] bg-surface-200 dark:bg-surface-700 hidden sm:block" />
+      <button
+        type="button"
+        onClick={() => {
+          setScrollTop(0);
+          setIsFullscreen(true);
+        }}
+        className="fixed bottom-6 right-6 z-30 inline-flex h-14 w-14 items-center justify-center rounded-full bg-brand-600 text-white shadow-xl transition-transform hover:scale-105"
+        title="Open full timeline view"
+      >
+        <Expand size={20} />
+      </button>
 
-          {/* Progress */}
-          <div className="hidden md:flex items-center gap-2 shrink-0">
-            <span className="text-[10px] text-surface-400 uppercase font-bold">Progress</span>
-            <div className="w-20 h-1.5 bg-surface-100 dark:bg-surface-800 rounded-full overflow-hidden">
-              <div className="h-full bg-brand-500" style={{ width: `${project?.progress || 0}%` }} />
-            </div>
-            <span className="text-xs font-bold text-surface-700 dark:text-surface-300">{project?.progress || 0}%</span>
-          </div>
-
-          {/* Due date */}
-          <div className="hidden xl:flex items-center gap-2 shrink-0">
-             <Calendar size={12} className="text-surface-400" />
-             <span className="text-xs font-semibold text-surface-700 dark:text-surface-400">
-               {project?.endDate ? formatDate(project.endDate) : 'No deadline'}
-             </span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          {canModify && (
-            <button 
-              onClick={addTask} 
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-100 dark:bg-surface-800 hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-200 text-xs font-bold rounded-lg transition-all"
-            >
-              <Plus size={14} /> Add Task
-            </button>
-          )}
-
-          {isAdmin && (
-            <button 
-              onClick={handleLockUnlock}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 border text-xs font-bold rounded-lg transition-all",
-                isLocked ? "bg-amber-50 text-amber-600 border-amber-200" : "bg-brand-50 text-brand-700 border-brand-200"
-              )}
-            >
-              {isLocked ? <Unlock size={14} /> : <Lock size={14} />}
-              {isLocked ? 'Unlock' : 'Approve'}
-            </button>
-          )}
-
-          {canModify && (
-            <button 
-              onClick={() => handleSave()} 
-              disabled={isSaving}
-              className="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-lg transition-all shadow-sm shadow-brand-200 dark:shadow-none"
-            >
-              {isSaving ? 'Saving...' : 'Save Changes'}
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* 2. SUMMARY BAR (HORIZONTAL) */}
-      <div className="flex items-center gap-8 px-4 py-2.5 bg-surface-50/50 dark:bg-surface-800/20 rounded-xl border border-surface-100 dark:border-surface-800 flex-shrink-0">
-         <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold text-surface-300 uppercase tracking-widest">Planned Cost:</span>
-            <span className="text-xs font-bold text-brand-600">₹{projectStats.totalCost.toLocaleString()}</span>
-         </div>
-         <div className="w-[1px] h-3 bg-surface-200 dark:bg-surface-700" />
-         <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold text-rose-300 dark:text-rose-900/50 uppercase tracking-widest">Delay:</span>
-            <span className={cn("text-xs font-bold", projectStats.totalDelay > 0 ? "text-rose-500" : "text-surface-400")}>
-              {projectStats.totalDelay} Days
-            </span>
-         </div>
-         <div className="w-[1px] h-3 bg-surface-200 dark:bg-surface-700" />
-         <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold text-surface-300 uppercase tracking-widest">Duration:</span>
-            <span className="text-xs font-bold text-surface-700 dark:text-surface-300">{projectStats.totalDuration} Days</span>
-         </div>
-         <div className="w-[1px] h-3 bg-surface-200 dark:bg-surface-700" />
-         <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold text-surface-300 uppercase tracking-widest">Status:</span>
-            <span className={cn(
-              "text-[10px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest",
-              projectStats.totalDelay > 0 ? "bg-rose-100 text-rose-600" : "bg-emerald-100 text-emerald-600"
-            )}>
-              {projectStats.totalDelay > 0 ? 'Delayed' : 'On Track'}
-            </span>
-         </div>
-
-         {/* View Toggle integrated in Summary Bar area */}
-         <div className="ml-auto flex items-center gap-1 bg-surface-200/50 dark:bg-surface-900/50 p-0.5 rounded-lg">
-           <button 
-             onClick={() => setView('table')}
-             className={cn("p-1 rounded transition-all", view === 'table' ? "bg-white dark:bg-surface-700 shadow-xs text-brand-600" : "text-surface-400")}
-           >
-             <TableIcon size={14} />
-           </button>
-           <button 
-             onClick={() => setView('gantt')}
-             className={cn("p-1 rounded transition-all", view === 'gantt' ? "bg-white dark:bg-surface-700 shadow-xs text-brand-600" : "text-surface-400")}
-           >
-             <Calendar size={14} />
-           </button>
-         </div>
-      </div>
-
-      {isLocked && !isAdmin && (
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-brand-50/50 dark:bg-brand-950/20 border border-brand-100 dark:border-brand-900/50 rounded-lg flex-shrink-0">
-          <Lock size={14} className="text-brand-600" />
-          <p className="text-[11px] text-brand-700 dark:text-brand-300 font-medium">Timeline Approved. Baseline dates locked.</p>
-        </div>
-      )}
-
-      {/* 3. MAIN TABLE AREA */}
-      <AnimatePresence mode="wait">
-        {view === 'table' ? (
-          <motion.div 
-            key="table-view"
-            initial={{ opacity: 0, y: 5 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -5 }}
-            className="flex-1 overflow-hidden flex flex-col border border-surface-100 dark:border-surface-800 rounded-xl bg-white dark:bg-surface-900"
-          >
-            <div className="overflow-x-auto flex-1 scrollbar-hide">
-              <table className="w-full text-sm min-w-[1000px] border-collapse relative">
-                <thead className="sticky top-0 z-30 bg-surface-50 dark:bg-surface-900 border-b border-surface-100 dark:border-surface-800">
-                  <tr className="text-[10px] font-black uppercase tracking-widest text-surface-400">
-                    <th className="px-4 py-3 text-left w-64">Task</th>
-                    <th className="px-4 py-3 text-left w-44">Baseline</th>
-                    <th className="px-4 py-3 text-left w-44">Actual</th>
-                    <th className="px-4 py-3 text-center w-24 whitespace-nowrap">Var</th>
-                    <th className="px-4 py-3 text-left w-48">Assignee</th>
-                    <th className="px-4 py-3 text-center w-28 whitespace-nowrap">Status</th>
-                    {canModify && <th className="px-4 py-3 w-10"></th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-surface-50 dark:divide-surface-800/50">
-                  {filteredTasks.map((task) => {
-                    const isDelayed = task.status === 'delayed';
-                    const varianceColor = (task.varianceDays || 0) > 0 ? 'text-rose-500 bg-rose-50 dark:bg-rose-950/20' : (task.varianceDays || 0) < 0 ? 'text-emerald-500 bg-emerald-50 dark:bg-emerald-950/20' : 'text-surface-400 bg-surface-50 dark:bg-surface-800';
-                    
-                    return (
-                      <tr key={task.id} className={cn(
-                        "group h-12 hover:bg-surface-50/50 dark:hover:bg-surface-800/20 transition-colors",
-                        isDelayed && "bg-rose-50/20 dark:bg-rose-950/5"
-                      )}>
-                        <td className="px-4 py-2">
-                          <div className="flex flex-col gap-0.5">
-                            <input 
-                              value={task.taskName} 
-                              onChange={(e) => updateTask(task.id, { taskName: e.target.value })}
-                              disabled={!canModify}
-                              className="bg-transparent border-none p-0 focus:ring-0 font-bold text-surface-800 dark:text-surface-200 w-full text-xs"
-                              placeholder="Task name..."
-                            />
-                            <div className="w-24 h-1 bg-surface-100 dark:bg-surface-800 rounded-full overflow-hidden mt-0.5">
-                              <div className="h-full bg-brand-500/60" style={{ width: `${task.progress}%` }} />
-                            </div>
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-2">
-                          <div className="flex flex-col leading-none">
-                            <div className="flex items-center gap-2 text-[11px] font-bold text-surface-500">
-                              <span>{task.plannedStartDate ? format(parseISO(task.plannedStartDate), 'MMM d') : '-'}</span>
-                              <ChevronRight size={10} className="text-surface-300" />
-                              <span>{task.plannedEndDate ? format(parseISO(task.plannedEndDate), 'MMM d') : '-'}</span>
-                            </div>
-                            <span className="text-[9px] text-surface-400 font-medium uppercase mt-1 tracking-tighter">
-                              {task.plannedDuration} days Plan
-                            </span>
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-2">
-                          {!task.actualStartDate ? (
-                             <span className="text-[11px] text-surface-300 font-bold tracking-widest">—</span>
-                          ) : (
-                            <div className="flex flex-col leading-none">
-                              <div className="flex items-center gap-2 text-[11px] font-bold text-surface-700 dark:text-surface-300">
-                                <span>{format(parseISO(task.actualStartDate), 'MMM d')}</span>
-                                <ChevronRight size={10} className="text-surface-400" />
-                                <span>{task.actualEndDate ? format(parseISO(task.actualEndDate), 'MMM d') : '...'}</span>
-                              </div>
-                              <span className="text-[9px] text-surface-400 font-medium uppercase mt-1 tracking-tighter">
-                                {task.actualDuration ? `${task.actualDuration}d Actual` : 'In Progress'}
-                              </span>
-                            </div>
-                          )}
-                        </td>
-
-                        <td className="px-4 py-2 text-center">
-                          <div className={cn("px-1.5 py-0.5 rounded text-[10px] font-black tracking-tight inline-block", varianceColor)}>
-                             {task.varianceDays && task.varianceDays > 0 ? `+${task.varianceDays}` : task.varianceDays || 0}d
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-2">
-                          <div className="flex items-center gap-2">
-                             <div className="w-6 h-6 rounded-full bg-surface-100 dark:bg-surface-800 flex items-center justify-center border border-surface-200 dark:border-surface-700 shrink-0">
-                               <User size={12} className="text-surface-400" />
-                             </div>
-                             <div className="flex flex-col min-w-0">
-                               <Dropdown 
-                                value={task.assignedRole || ''}
-                                onChange={(val) => updateTask(task.id, { assignedRole: val })}
-                                disabled={!canModify}
-                                placeholder="Role"
-                                triggerClassName="p-0 border-none bg-transparent h-auto text-[11px] font-bold text-surface-700 dark:text-surface-300 text-left min-w-0"
-                                items={ROLES.map(r => ({ id: r, label: r }))}
-                              />
-                             </div>
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-2 text-center">
-                          <Dropdown 
-                            value={task.status}
-                            onChange={(val) => updateTask(task.id, { status: val as any })}
-                            triggerClassName={cn(
-                               "text-[10px] h-6 font-black uppercase tracking-tight px-3 py-0 min-w-[80px] rounded-md border text-center mx-auto",
-                               task.status === 'completed' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                               task.status === 'in_progress' ? 'bg-brand-50 text-brand-600 border-brand-100' :
-                               task.status === 'delayed' ? 'bg-rose-50 text-rose-600 border-rose-100' :
-                               'bg-surface-50 text-surface-400 border-surface-100 dark:border-surface-800'
-                            )}
-                            items={[
-                              { id: 'not_started', label: 'To Do' },
-                              { id: 'in_progress', label: 'Active' },
-                              { id: 'completed', label: 'Done' },
-                              { id: 'delayed', label: 'Delay' },
-                            ]}
-                          />
-                        </td>
-                        {canModify && (
-                          <td className="px-4 py-2">
-                            <button 
-                              onClick={() => removeTask(task.id)}
-                              className="p-1.5 text-surface-300 hover:text-rose-500 transition-colors rounded-md opacity-0 group-hover:opacity-100"
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          </td>
-                        )}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </motion.div>
-        ) : (
-          <motion.div 
-            key="gantt-view"
-            initial={{ opacity: 0, x: 10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -10 }}
-            className="card p-0 overflow-hidden flex flex-col h-[500px]"
-          >
-            {/* Gantt Header/Dates */}
-            <div className="flex border-b border-surface-100 dark:border-surface-800 bg-surface-50/50 dark:bg-surface-800/30">
-              <div className="w-64 flex-shrink-0 border-r border-surface-100 dark:border-surface-700 px-4 py-3 font-bold text-xs uppercase tracking-wider text-surface-400">
-                Tasks
+      {isFullscreen ? (
+        <div className="fixed inset-0 z-50 bg-surface-950/50 p-3 backdrop-blur-md">
+          <div className="mx-auto flex h-full max-w-[99vw] flex-col overflow-hidden rounded-[32px] border border-surface-200 bg-surface-50 shadow-2xl dark:border-surface-700 dark:bg-surface-950">
+            <div className="flex items-center justify-between border-b border-surface-200 px-5 py-4 dark:border-surface-800">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-surface-400">Full Timeline View</p>
+                <h3 className="mt-1 text-2xl font-semibold text-surface-900 dark:text-surface-100">{project?.name}</h3>
               </div>
-              <div className="flex-1 overflow-x-auto scrollbar-hide flex">
-                 <div className="flex min-w-max">
-                    {days.map((day, i) => {
-                      const isWeekend = day.getDay() === 0 || day.getDay() === 6;
-                      const isToday = isSameDay(day, new Date());
-                      return (
-                        <div key={i} className={cn(
-                          "w-10 h-10 flex flex-col items-center justify-center border-r border-surface-100/50 dark:border-surface-700/50 flex-shrink-0",
-                          isWeekend && "bg-surface-100/50 dark:bg-surface-800/40",
-                          isToday && "bg-brand-50/50 dark:bg-brand-950/30"
-                        )}>
-                          <span className="text-[9px] text-surface-400 dark:text-surface-500 uppercase">{format(day, 'EEE')}</span>
-                          <span className={cn("text-[11px] font-bold", isToday ? "text-brand-600 dark:text-brand-400" : "text-surface-600 dark:text-surface-300")}>
-                            {format(day, 'd')}
-                          </span>
-                        </div>
-                      );
-                    })}
-                 </div>
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setScrollTop(0);
+                  setIsFullscreen(false);
+                }}
+                className="rounded-xl bg-surface-100 px-3 py-2 text-xs font-semibold text-surface-600 dark:bg-surface-900 dark:text-surface-300"
+              >
+                <Minimize2 size={14} className="mr-1 inline-block" />
+                Exit Full View
+              </button>
             </div>
-
-            {/* Gantt Body */}
-            <div className="flex-1 overflow-hidden flex">
-               {/* Left column titles with fixed width */}
-               <div className="w-64 flex-shrink-0 border-r border-surface-100 dark:border-surface-700 bg-surface-50/20 dark:bg-surface-900/10 overflow-y-auto scrollbar-hide">
-                  {filteredTasks.map(task => (
-                    <div key={task.id} className="h-16 border-b border-surface-100/50 dark:border-surface-800/50 px-4 flex flex-col justify-center gap-0.5">
-                       <span className="text-[13px] font-bold text-surface-800 dark:text-surface-200 truncate">{task.taskName}</span>
-                       <div className="flex items-center gap-2">
-                        <span className="text-[9px] text-surface-400 font-bold uppercase tracking-tighter">{task.status.replace('_', ' ')}</span>
-                        {task.delayDays && task.delayDays > 0 ? (
-                           <span className="text-[9px] font-black text-rose-500 px-1 rounded bg-rose-50 dark:bg-rose-950/30 flex items-center gap-0.5">
-                             <AlertCircle size={8} /> {task.delayDays}d
-                           </span>
-                        ) : null}
-                       </div>
-                    </div>
-                  ))}
-                  {filteredTasks.length === 0 && (
-                    <div className="h-16 flex items-center px-4 text-[11px] text-surface-400 font-medium">No active tasks</div>
-                  )}
-               </div>
-
-               {/* Right column bars scroll independently */}
-               <div className="flex-1 overflow-auto relative group/canvas">
-                  <div className="min-w-max">
-                     {filteredTasks.map(task => {
-                        const pStart = parseISO(task.plannedStartDate || task.startDate);
-                        const pEnd = parseISO(task.plannedEndDate || task.endDate);
-                        const aStart = task.actualStartDate ? parseISO(task.actualStartDate) : null;
-                        const aEnd = task.actualEndDate ? parseISO(task.actualEndDate) : (task.status !== 'completed' ? new Date() : null);
-                        
-                        // Baseline Pos
-                        const pOffset = differenceInDays(pStart, days[0]);
-                        const pWidth = differenceInDays(pEnd, pStart) + 1;
-                        
-                        // Actual Pos
-                        const aOffset = aStart ? differenceInDays(aStart, days[0]) : null;
-                        const aWidth = (aStart && aEnd) ? Math.max(differenceInDays(aEnd, aStart) + 1, 0.5) : 0;
-
-                        const isDelayed = task.status === 'delayed';
-
-                        return (
-                          <div key={task.id} className="h-16 border-b border-surface-100/50 dark:border-surface-800/50 relative">
-                             {/* Baseline Bar (Planned) */}
-                             <div 
-                                className="absolute top-4 h-2 rounded bg-surface-200 dark:bg-surface-800 z-10 opacity-60 border border-surface-300 dark:border-surface-700"
-                                style={{ 
-                                  left: `${pOffset * 40}px`, 
-                                  width: `${Math.max(pWidth * 40, 5)}px` 
-                                }}
-                                title={`Planned: ${format(pStart, 'MMM d')} - ${format(pEnd, 'MMM d')}`}
-                             />
-
-                             {/* Actual Bar (Execution) */}
-                             {aStart && (
-                               <div 
-                                  className={cn(
-                                    "absolute top-8 h-4 rounded-md shadow-sm flex items-center px-2 z-20 group/bar transition-all",
-                                    isDelayed ? "bg-rose-500/90" : 
-                                    task.status === 'completed' ? "bg-emerald-500/90" : "bg-brand-500"
-                                  )}
-                                   style={{ 
-                                     left: `${(aOffset || 0) * 40}px`, 
-                                     width: `${Math.max(aWidth * 40, 10)}px`,
-                                     minWidth: '10px'
-                                   }}
-                               >
-                                  {/* Progress Overlay */}
-                                  <div 
-                                    className="absolute inset-0 bg-white/10 dark:bg-black/10 z-0" 
-                                    style={{ width: `${task.progress}%` }} 
-                                  />
-
-                                  {/* Label if wide enough */}
-                                  {aWidth > 2 && (
-                                    <span className="text-[8px] font-black text-white z-10 truncate uppercase tracking-tighter mix-blend-overlay">
-                                      {task.progress}%
-                                    </span>
-                                  )}
-
-                                  {/* Delay Marker Tooltip-like */}
-                                  {isDelayed && (
-                                     <div className="absolute -top-6 left-0 bg-rose-600 text-white text-[8px] px-1 rounded font-bold whitespace-nowrap opacity-0 group-hover/bar:opacity-100 transition-opacity">
-                                       DELAYED {task.delayDays}d
-                                     </div>
-                                  )}
-                               </div>
-                             )}
-                             
-                             {/* Daily grid lines */}
-                             <div className="absolute inset-0 flex">
-                                {days.map((_, i) => (
-                                  <div key={i} className="w-10 border-r border-surface-50/50 dark:border-surface-800/30 h-full" />
-                                ))}
-                             </div>
-                          </div>
-                        );
-                     })}
-                  </div>
-               </div>
+            <div className="min-h-0 flex-1 overflow-auto p-4">
+              {renderTimelineBody(true)}
             </div>
-
-            {/* Legend / Footer */}
-            <div className="p-3 bg-surface-50 dark:bg-surface-800/50 border-t border-surface-100 dark:border-surface-700 flex items-center gap-6 justify-center">
-               <div className="flex items-center gap-2">
-                  <div className="w-3 h-1 bg-surface-300 dark:bg-surface-700 rounded" />
-                  <span className="text-[10px] text-surface-500 dark:text-surface-400 font-bold uppercase tracking-widest">Baseline (Planned)</span>
-               </div>
-               <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-brand-500 border border-brand-600 rounded" />
-                  <span className="text-[10px] text-surface-500 dark:text-surface-400 font-bold uppercase tracking-widest">Execution (Actual)</span>
-               </div>
-               <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-rose-500 border border-rose-600 rounded" />
-                  <span className="text-[10px] text-rose-500 dark:text-rose-400 font-bold uppercase tracking-widest">Delayed Execution</span>
-               </div>
-               <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-emerald-500 border border-emerald-600 rounded" />
-                  <span className="text-[10px] text-emerald-500 dark:text-emerald-400 font-bold uppercase tracking-widest">Completed Early/On-Time</span>
-               </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {tasks.length === 0 && !isLoading && (
-        <div className="flex-1 border border-dashed border-surface-200 dark:border-surface-800 rounded-xl flex items-center justify-center p-10 bg-surface-50/30">
-          <EmptyState 
-            icon={<Clock size={24} />}
-            title="No timeline data yet"
-            description="Build your project roadmap by adding timeline stages."
-            action={<button onClick={addTask} className="btn-primary btn-sm"><Plus size={14} /> Create Timeline Stage</button>}
-          />
+          </div>
         </div>
-      )}
+      ) : null}
+
+      <Modal
+        open={createMode !== null}
+        onClose={closeCreateModal}
+        title={createMode === 'phase' ? 'Add Phase' : 'Add Task'}
+        description={createMode === 'phase' ? 'Give the new phase a clear name.' : 'Name the task and choose its phase.'}
+        size="sm"
+      >
+        <div className="space-y-4 p-6">
+          <div>
+            <label className="label">{createMode === 'phase' ? 'Phase name' : 'Task name'}</label>
+            <input
+              value={draftName}
+              onChange={(event) => setDraftName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  void handleCreateSubmit();
+                }
+              }}
+              placeholder={createMode === 'phase' ? 'e.g. Development' : 'e.g. API integration'}
+              className="input"
+              autoFocus
+            />
+          </div>
+
+          {createMode === 'task' ? (
+            <div>
+              <label className="label">Phase</label>
+              <select
+                value={draftTaskPhaseId}
+                onChange={(event) => setDraftTaskPhaseId(event.target.value)}
+                className="input"
+              >
+                <option value="">No phase</option>
+                {selectablePhases.map((phase) => (
+                  <option key={phase.id} value={phase.id}>
+                    {phase.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={closeCreateModal} className="btn-secondary btn-md flex-1" disabled={isCreating}>
+              Cancel
+            </button>
+            <button type="button" onClick={() => void handleCreateSubmit()} className="btn-primary btn-md flex-1" disabled={isCreating}>
+              {isCreating ? 'Creating...' : createMode === 'phase' ? 'Create Phase' : 'Create Task'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
+
+export default ProjectTimelineModule;

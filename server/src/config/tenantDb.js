@@ -4,6 +4,7 @@ import { getUserModel } from '../models/User.js';
 import { getWorkspaceModel } from '../models/Workspace.js';
 import { getMembershipModel } from '../models/Membership.js';
 import { getProjectModel } from '../models/Project.js';
+import { getPhaseModel } from '../models/Phase.js';
 import { getTaskModel } from '../models/Task.js';
 import { getTeamModel } from '../models/Team.js';
 import { getQuickTaskModel } from '../models/QuickTask.js';
@@ -87,6 +88,7 @@ export async function getTenantModels(companyId = null) {
     Workspace: getWorkspaceModel(conn),
     Membership: getMembershipModel(conn),
     Project: getProjectModel(conn),
+    Phase: getPhaseModel(conn),
     Task: getTaskModel(conn),
     Team: getTeamModel(conn),
     QuickTask: getQuickTaskModel(conn),

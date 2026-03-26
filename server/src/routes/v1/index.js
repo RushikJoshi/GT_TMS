@@ -14,6 +14,8 @@ import settingsRoutes from './modules/settings.routes.js';
 import misRoutes from './modules/mis.routes.js';
 import reportsRoutes from './modules/reports.routes.js';
 import timelineRoutes from './modules/timeline.routes.js';
+import { requireAuth } from '../../middleware/auth.middleware.js';
+import * as TimelineController from '../../controllers/timeline.controller.js';
 
 
 const router = express.Router();
@@ -32,6 +34,8 @@ router.use('/settings', settingsRoutes);
 router.use('/mis', misRoutes);
 router.use('/reports', reportsRoutes);
 router.use('/timeline', timelineRoutes);
+router.patch('/task/:id', requireAuth, TimelineController.patchTaskTimeline);
+router.post('/dependency', requireAuth, TimelineController.createDependency);
 
 
 export default router;
