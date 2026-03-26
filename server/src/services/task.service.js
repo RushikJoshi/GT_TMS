@@ -299,7 +299,11 @@ export async function createTask({ companyId, workspaceId, userId, role, data })
     priority: data.priority || 'medium',
     assigneeIds: data.assigneeIds || [],
     reporterId: userId,
+    startDate: data.startDate ? new Date(data.startDate) : null,
     dueDate: data.dueDate ? new Date(data.dueDate) : null,
+    phaseId: data.phaseId || null,
+    dependencies: Array.isArray(data.dependencies) ? data.dependencies : [],
+    timelineType: data.type || 'task',
     estimatedHours: data.estimatedHours ?? null,
     order: data.order ?? 0,
     labels: data.labels || [],
@@ -415,13 +419,18 @@ export async function updateTask({ companyId, workspaceId, userId, role, taskId,
     throw err;
   }
 
-  const { subtasks, dueDate, startDate, completionRemark, ...rest } = updates;
+  const { subtasks, dueDate, startDate, endDate, completionRemark, ...rest } = updates;
   const beforeAssigneeIds = mapIdList(existing.assigneeIds);
   const nextStatus = rest.status ?? existing.status;
   const previousStatus = existing.status;
   const $set = { ...rest };
+  delete $set.type;
   if (dueDate !== undefined) $set.dueDate = dueDate ? new Date(dueDate) : null;
+  if (endDate !== undefined) $set.dueDate = endDate ? new Date(endDate) : null;
   if (startDate !== undefined) $set.startDate = startDate ? new Date(startDate) : null;
+  if (rest.phaseId !== undefined) $set.phaseId = rest.phaseId || null;
+  if (rest.dependencies !== undefined) $set.dependencies = Array.isArray(rest.dependencies) ? rest.dependencies : [];
+  if (rest.type !== undefined) $set.timelineType = rest.type;
   if (subtasks !== undefined) $set.subtasks = subtasks;
   if (rest.assigneeIds !== undefined) {
     $set.assigneeIds = Array.isArray(rest.assigneeIds) ? rest.assigneeIds : [];

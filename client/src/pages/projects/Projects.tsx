@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useForm } from 'react-hook-form';
 import {
-  Plus, Search, LayoutGrid, List, Filter, SortAsc,
-  FolderKanban, Users, Calendar, MoreHorizontal, Trash2, Edit3, Archive, ChevronDown
+  Plus, Search, LayoutGrid, List, SortAsc,
+  FolderKanban, Calendar, MoreVertical, Trash2, Edit3, Archive, ChevronDown
 } from 'lucide-react';
-import { cn, formatDate, getProgressColor, generateId } from '../../utils/helpers';
+import { cn, formatDate, getProgressColor } from '../../utils/helpers';
 import { useAppStore } from '../../context/appStore';
 import { useAuthStore } from '../../context/authStore';
 import { PROJECT_COLORS, STATUS_CONFIG } from '../../app/constants';
@@ -18,7 +18,6 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import type { Project, ProjectStatus, ProjectSdlcPhase } from '../../app/types';
 import { projectsService } from '../../services/api';
 import { emitErrorToast, emitSuccessToast } from '../../context/toastBus';
-
 const STATUS_FILTERS: { value: ProjectStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'active', label: 'Active' },
@@ -93,9 +92,9 @@ const ProjectCard = React.forwardRef<HTMLDivElement, {
           <DropdownMenu.Trigger asChild>
             <button
               onClick={e => e.stopPropagation()}
-              className="btn-ghost w-7 h-7 rounded-lg opacity-0 group-hover:opacity-100"
+              className="btn w-7 h-7 rounded-lg opacity group-hover:opacity-100"
             >
-              <MoreHorizontal size={14} />
+              <MoreVertical size={14} />
             </button>
           </DropdownMenu.Trigger>
           <DropdownMenu.Portal>
@@ -212,7 +211,9 @@ export const ProjectsPage: React.FC = () => {
     defaultValues: { budgetCurrency: 'INR' }
   });
 
+  const todayDate = new Date().toISOString().split('T')[0];
   const budgetCurrency = watch('budgetCurrency');
+  const selectedStartDate = watch('startDate') || todayDate;
 
   const filteredAssignableUsers = users.filter((candidate) => {
     const query = memberSearch.trim().toLowerCase();
@@ -240,6 +241,7 @@ export const ProjectsPage: React.FC = () => {
 
   const closeCreateModal = () => {
     setShowModal(false);
+    setSelectedColor(PROJECT_COLORS[0]);
     setSelectedMembers([]);
     setSelectedReportingPersons([]);
     setMemberSearch('');
@@ -271,6 +273,7 @@ export const ProjectsPage: React.FC = () => {
 
       addProject(created);
       setShowModal(false);
+      setSelectedColor(PROJECT_COLORS[0]);
       setSelectedMembers([]);
       setSelectedReportingPersons([]);
       setMemberSearch('');
@@ -485,11 +488,19 @@ export const ProjectsPage: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="label">Start date</label>
-              <input {...register('startDate')} type="date" className="input" min={new Date().toISOString().split('T')[0]} defaultValue={new Date().toISOString().split('T')[0]} />
+              <input {...register('startDate')} type="date" className="input" defaultValue={todayDate} />
             </div>
             <div>
               <label className="label">Due date</label>
-              <input {...register('endDate')} type="date" className="input" min={new Date().toISOString().split('T')[0]} />
+              <input
+                {...register('endDate', {
+                  validate: (value) => !value || value >= selectedStartDate || 'Due date must be on or after the start date',
+                })}
+                type="date"
+                className={cn('input', errors.endDate && 'border-rose-400')}
+                min={selectedStartDate}
+              />
+              {errors.endDate && <p className="mt-1 text-xs text-rose-500">{errors.endDate.message}</p>}
             </div>
 
           </div>

@@ -32,16 +32,16 @@ export const AuthLayout: React.FC = () => {
           >
             <div className="w-12 h-12 bg-white backdrop-blur rounded-2xl flex items-center justify-center border border-white/30">
               {/* <Zap size={24} className="text-white" /> */}
-              <img src='/logo.png' />
+              <img src='/1.png' />
             </div>
-            <span className="font-display font-bold text-2xl tracking-tight">Gitakshmi</span>
+            <span className="font-display font-bold text-4xl tracking-tight">Gitakshmi's</span>
           </motion.div>
 
           <motion.h2
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="font-display font-bold text-4xl leading-tight mb-4"
+            className="font-display font-bold text-4xl leading-tight mb-5"
           >
             Project Management System
           </motion.h2>
