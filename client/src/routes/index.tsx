@@ -27,6 +27,7 @@ import MISManager from '../pages/mis/MISManager';
 import MISReports from '../pages/mis/MISReports';
 import NotificationsPage from '../pages/notifications/Notifications';
 import UserSettingsPage from '../pages/settings/Settings';
+import PlannerPage from '../pages/planner/Planner';
 
 // Admin pages
 import {
@@ -145,6 +146,7 @@ export const router = createBrowserRouter([
       { path: 'admin/users', element: <AdminUsersPage /> },
       { path: 'admin/permissions', element: <AdminPermissionsPage /> },
       { path: 'admin/billing', element: <AdminBillingPage /> },
+      { path: 'planner', element: <PlannerPage /> },
 
      // Catch-all redirect
       { path: '*', element: <Navigate to="/dashboard" replace /> },

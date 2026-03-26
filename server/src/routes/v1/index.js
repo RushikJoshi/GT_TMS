@@ -14,6 +14,7 @@ import settingsRoutes from './modules/settings.routes.js';
 import misRoutes from './modules/mis.routes.js';
 import reportsRoutes from './modules/reports.routes.js';
 import timelineRoutes from './modules/timeline.routes.js';
+import personalTasksRoutes from './modules/personalTasks.routes.js';
 
 
 const router = express.Router();
@@ -32,6 +33,7 @@ router.use('/settings', settingsRoutes);
 router.use('/mis', misRoutes);
 router.use('/reports', reportsRoutes);
 router.use('/timeline', timelineRoutes);
+router.use('/personal-tasks', personalTasksRoutes);
 
 
 export default router;
