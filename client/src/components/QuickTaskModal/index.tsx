@@ -92,7 +92,10 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({ open, onClose, t
     .filter(u => ASSIGNABLE_ROLES.includes(u.role));
 
   const selectedAssigneeIds = watch('assigneeIds') || [];
-  const canUsePrivateTask = selectedAssigneeIds.length === 1 && selectedAssigneeIds[0] === user?.id;
+  const currentUserId = String(user?.id || (user as { _id?: string } | null)?._id || '');
+  const canUsePrivateTask =
+    selectedAssigneeIds.length === 1 &&
+    String(selectedAssigneeIds[0] || '') === currentUserId;
   const selectedAssignees = selectedAssigneeIds
     .map((id) => assignableUsers.find((u) => u.id === id))
     .filter(Boolean);
