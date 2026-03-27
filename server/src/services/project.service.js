@@ -118,10 +118,25 @@ function parseTaskSubtasks(value) {
     .map((title, index) => ({ title, isCompleted: false, order: index }));
 }
 
-export async function listProjects({ companyId, workspaceId, status, department, q, page = 1, limit = 50 }) {
+function isProjectAdminRole(role) {
+  return ['super_admin', 'admin', 'manager'].includes(role);
+}
+
+function buildProjectAccessFilter({ role, userId }) {
+  if (isProjectAdminRole(role)) return {};
+  return {
+    $or: [
+      { ownerId: userId },
+      { members: userId },
+      { reportingPersonIds: userId },
+    ],
+  };
+}
+
+export async function listProjects({ companyId, workspaceId, userId, role, status, department, q, page = 1, limit = 50 }) {
   const tenantId = companyId;
   const { Project } = await getTenantModels(companyId);
-  const filter = { tenantId, workspaceId };
+  const filter = { tenantId, workspaceId, ...buildProjectAccessFilter({ role, userId }) };
   if (status) filter.status = status;
   if (department) filter.department = department;
   if (q) filter.$text = { $search: q };
@@ -135,14 +150,21 @@ export async function listProjects({ companyId, workspaceId, status, department,
   return { items, total, page, limit };
 }
 
-export async function getProject({ companyId, workspaceId, projectId }) {
+export async function getProject({ companyId, workspaceId, projectId, userId, role }) {
   const tenantId = companyId;
   const { Project } = await getTenantModels(companyId);
-  const project = await Project.findOne({ _id: projectId, tenantId, workspaceId });
+  const project = await Project.findOne({ _id: projectId, tenantId, workspaceId, ...buildProjectAccessFilter({ role, userId }) });
   return project;
 }
 
-export async function createProject({ companyId, workspaceId, userId, data }) {
+export async function createProject({ companyId, workspaceId, userId, role, data }) {
+  if (role === 'team_member') {
+    const err = new Error('Team members are not allowed to create projects');
+    err.statusCode = 403;
+    err.code = 'FORBIDDEN';
+    throw err;
+  }
+
   const tenantId = companyId;
   const { Project, ActivityLog } = await getTenantModels(companyId);
   const incomingMembers = Array.isArray(data.members) ? data.members.filter(Boolean) : [];
@@ -246,41 +268,7 @@ export async function createProject({ companyId, workspaceId, userId, data }) {
   return project;
 }
 
-export async function syncProjectStats(companyId, workspaceId, projectId) {
-  const { Project, Task } = await getTenantModels(companyId);
-  if (!projectId) return;
-
-  const tasks = await Task.find({ 
-    projectId, 
-    tenantId: companyId, 
-    workspaceId,
-    $or: [{ parentTaskId: null }, { parentTaskId: { $exists: false } }] 
-  }).select('status').lean();
-
-  const STATUS_WEIGHTS = {
-    backlog: 0,
-    todo: 0,
-    scheduled: 10,
-    in_progress: 50,
-    in_review: 90,
-    blocked: 0,
-    done: 100
-  };
-
-  const total = tasks.length;
-  const completed = tasks.filter((t) => t.status === 'done').length;
-  
-  const totalWeight = tasks.reduce((sum, t) => sum + (STATUS_WEIGHTS[t.status] || 0), 0);
-  const progress = total > 0 ? Math.round(totalWeight / total) : 0;
-
-  await Project.updateOne(
-    { _id: projectId, tenantId: companyId, workspaceId },
-    { $set: { tasksCount: total, completedTasksCount: completed, progress } }
-  );
-}
-
-
-export async function updateProject({ companyId, workspaceId, userId, projectId, updates }) {
+export async function updateProject({ companyId, workspaceId, userId, role, projectId, updates }) {
   const tenantId = companyId;
   const { Project, ActivityLog } = await getTenantModels(companyId);
   const normalizedUpdates = { ...updates };
@@ -315,7 +303,7 @@ export async function updateProject({ companyId, workspaceId, userId, projectId,
   }
 
   const project = await Project.findOneAndUpdate(
-    { _id: projectId, tenantId, workspaceId },
+    { _id: projectId, tenantId, workspaceId, ...buildProjectAccessFilter({ role, userId }) },
     {
       $set: {
         ...normalizedUpdates,
@@ -373,10 +361,10 @@ export async function updateProject({ companyId, workspaceId, userId, projectId,
   return project;
 }
 
-export async function deleteProject({ companyId, workspaceId, userId, projectId }) {
+export async function deleteProject({ companyId, workspaceId, userId, role, projectId }) {
   const tenantId = companyId;
   const { Project, ActivityLog } = await getTenantModels(companyId);
-  const project = await Project.findOneAndDelete({ _id: projectId, tenantId, workspaceId });
+  const project = await Project.findOneAndDelete({ _id: projectId, tenantId, workspaceId, ...buildProjectAccessFilter({ role, userId }) });
   if (!project) return null;
 
   if (project.chatId) {
@@ -466,6 +454,7 @@ export async function importProjectsBulk({ companyId, workspaceId, userId, actor
         companyId,
         workspaceId,
         userId,
+        role: actorRole,
         data: {
           name: String(seedRow.projectName ?? '').trim(),
           description: String(seedRow.projectDescription ?? '').trim(),
