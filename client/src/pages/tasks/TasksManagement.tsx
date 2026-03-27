@@ -598,6 +598,16 @@ const CreateTaskOverlay: React.FC<{ onClose: () => void; onCreated: () => void }
     assignedToId: '',
     description: ''
   });
+  const selectedProject = projects.find((project) => project.id === formData.projectId);
+  const assignableUsers = selectedProject
+    ? users.filter((user) => !selectedProject.reportingPersonIds.includes(user.id))
+    : users;
+
+  useEffect(() => {
+    if (!formData.assignedToId) return;
+    if (assignableUsers.some((user) => user.id === formData.assignedToId)) return;
+    setFormData((prev) => ({ ...prev, assignedToId: '' }));
+  }, [assignableUsers, formData.assignedToId]);
 
    const handleCreate = async () => {
     if (!formData.title.trim()) return;
@@ -675,7 +685,7 @@ const CreateTaskOverlay: React.FC<{ onClose: () => void; onCreated: () => void }
                       onChange={e => setFormData({ ...formData, assignedToId: e.target.value })}
                     >
                        <option value="" className="dark:bg-surface-900">Unassigned</option>
-                       {users.map(u => <option key={u.id} value={u.id} className="dark:bg-surface-900">{u.name}</option>)}
+                       {assignableUsers.map(u => <option key={u.id} value={u.id} className="dark:bg-surface-900">{u.name}</option>)}
                     </select>
                  </div>
                 <div className="space-y-2">

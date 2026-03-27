@@ -81,7 +81,10 @@ export const PlannerPage: React.FC = () => {
         <div className="flex items-center gap-8">
           <h1 className="text-xl font-semibold text-surface-900 dark:text-white flex-shrink-0">Planner</h1>
           <div className="w-px h-4 bg-surface-200 dark:bg-surface-800" />
-          <PlannerStats stats={stats} />
+          <PlannerStats
+            stats={stats}
+            onSelect={(nextFilter) => setFilter(nextFilter)}
+          />
         </div>
         
         <button 

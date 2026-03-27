@@ -53,6 +53,7 @@ export const ProjectDetailPage: React.FC = () => {
   const projectTasks = tasks.filter(t => t.projectId === id);
   const members = users.filter(u => project?.members.includes(u.id));
   const reportingPersons = users.filter(u => project?.reportingPersonIds?.includes(u.id));
+  const assignableUsers = users.filter((u) => !project?.reportingPersonIds?.includes(u.id));
   const todayDate = new Date().toISOString().split('T')[0];
 
   const { register, handleSubmit, reset, setValue, watch } = useForm<TaskFormData>({
@@ -524,7 +525,7 @@ export const ProjectDetailPage: React.FC = () => {
                 value={watchAssignee} 
                 onChange={(val) => setValue('assigneeId', val)}
                 placeholder="Unassigned"
-                items={users.map(u => ({ 
+                items={assignableUsers.map(u => ({ 
                   id: u.id, 
                   label: u.name,
                   icon: <UserAvatar name={u.name} color={u.color} size="xs" />
