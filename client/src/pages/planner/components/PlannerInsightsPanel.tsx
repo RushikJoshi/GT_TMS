@@ -7,7 +7,7 @@ interface PlannerInsightsProps {
   onClose: () => void;
 }
 
-export const PlannerInsights: React.FC<PlannerInsightsProps> = ({ tasks, onClose }) => {
+const PlannerInsights: React.FC<PlannerInsightsProps> = ({ tasks, onClose }) => {
   const completed = tasks.filter(t => t.status === 'done').length;
   const total = tasks.length;
   const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
@@ -54,3 +54,5 @@ export const PlannerInsights: React.FC<PlannerInsightsProps> = ({ tasks, onClose
     </div>
   );
 };
+
+export default PlannerInsights;
