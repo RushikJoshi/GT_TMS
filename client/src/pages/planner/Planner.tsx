@@ -16,9 +16,9 @@ import { TaskItem } from './components/TaskItem';
 import { KanbanView } from './components/KanbanView';
 import { CalendarView } from './components/CalendarView';
 import { PlannerStats } from './components/PlannerStats';
-import { PlannerInsights } from './components/PlannerInsights';
+import PlannerInsightsPanel from './components/PlannerInsightsPanel';
 
-export const PlannerPage: React.FC = () => {
+const PlannerPage: React.FC = () => {
   const { personalTasks, addPersonalTask, updatePersonalTask, deletePersonalTask } = useAppStore();
   const [view, setView] = useState<'list' | 'kanban' | 'calendar'>('list');
   const [filter, setFilter] = useState<'all' | 'today' | 'upcoming' | 'high'>('all');
@@ -276,7 +276,7 @@ export const PlannerPage: React.FC = () => {
               exit={{ width: 0, opacity: 0 }}
               className="border-l border-surface-200 dark:border-surface-800 bg-white dark:bg-surface-950 overflow-y-auto flex-shrink-0"
             >
-              <PlannerInsights tasks={personalTasks} onClose={() => setShowPanel(false)} />
+              <PlannerInsightsPanel tasks={personalTasks} onClose={() => setShowPanel(false)} />
             </motion.aside>
           )}
         </AnimatePresence>
@@ -284,3 +284,5 @@ export const PlannerPage: React.FC = () => {
     </div>
   );
 };
+
+export default PlannerPage;
