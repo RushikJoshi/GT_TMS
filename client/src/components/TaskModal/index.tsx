@@ -1,15 +1,20 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { motion } from 'framer-motion';
-import { AlertTriangle, Calendar, ChevronDown, Clock, Edit3, Flag, Paperclip, Plus, Send, Tag, Trash2, Users, X } from 'lucide-react';
+import {
+  Calendar, Clock, Flag, Tag, Users, Paperclip,
+  Plus, Edit3, Trash2,
+  ChevronDown, X, Send, AlertTriangle, ListTodo, UserPlus
+} from 'lucide-react';
 import { cn, formatDate, formatRelativeTime, generateId } from '../../utils/helpers';
 import { PRIORITY_CONFIG, STATUS_CONFIG } from '../../app/constants';
 import { useAppStore } from '../../context/appStore';
 import { useAuthStore } from '../../context/authStore';
 import { UserAvatar } from '../UserAvatar';
 import { Modal } from '../Modal';
-import type { Activity, Comment, Priority, Task, TaskStatus, User } from '../../app/types';
-import { tasksService } from '../../services/api';
+import { ReassignRequestModal } from '../ReassignRequestModal';
+import type { Activity, Task, Priority, TaskStatus, Comment } from '../../app/types';
+import { tasksService, reassignService } from '../../services/api';
 import { emitErrorToast, emitSuccessToast } from '../../context/toastBus';
 
 interface TaskModalProps {
@@ -95,15 +100,38 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => 
   const [reviewChecklist, setReviewChecklist] = useState<ChecklistItem[]>(parseChecklist(activeTask?.completionReview?.reviewRemark));
   const [rating, setRating] = useState(activeTask?.completionReview?.rating || 0);
   const [isUploading, setIsUploading] = useState(false);
-  const assigneeRef = useRef<HTMLDivElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const { register, handleSubmit, reset } = useForm<{ title: string }>();
+  const [isEditingAssignee, setIsEditingAssignee] = useState(false);
+  const [isAddingLabel, setIsAddingLabel] = useState(false);
+  const [labelInput, setLabelInput] = useState('');
+  const [isReassigning, setIsReassigning] = useState(false);
+  const [pendingReassign, setPendingReassign] = useState<any>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  const currentTask = activeTask;
-  const project = projects.find((item) => item.id === currentTask?.projectId);
-  const assignees = users.filter((item) => currentTask?.assigneeIds.includes(item.id));
-  const reporter = users.find((item) => item.id === currentTask?.reporterId);
-  const canManageTask = ['super_admin', 'admin', 'manager', 'team_leader'].includes(user?.role || '');
+  useEffect(() => {
+    if (task?.id) {
+       (async () => {
+         try {
+           const res = await reassignService.getStatus(task.id);
+           setPendingReassign(res.data.data);
+         } catch { /* noop */ }
+       })();
+    }
+  }, [task?.id]);
+
+  if (!task) return null;
+
+  const project = projects.find(p => p.id === task.projectId);
+  const assignees = users.filter(u => task.assigneeIds.includes(u.id));
+  const reporter = users.find(u => u.id === task.reporterId);
+  const priority = PRIORITY_CONFIG[task.priority];
+  const statusCfg = STATUS_CONFIG[task.status] || STATUS_CONFIG.todo;
+  const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && task.status !== 'done';
+  const completionReview = task.completionReview;
+  const activityItems = buildTaskTimeline(task, comments);
+  
+  const totalSubtasks = (task.subtasks || []).length;
+  const completedSubtasks = (task.subtasks || []).filter(s => s.isCompleted).length;
+  const subtaskProgress = totalSubtasks > 0 ? Math.round((completedSubtasks / totalSubtasks) * 100) : 0;
   const canReview = Boolean(
     user && (
       canManageTask ||
@@ -111,6 +139,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => 
       project?.reportingPersonIds?.includes(user.id)
     )
   );
+  const canManageTask = ['super_admin', 'admin', 'manager', 'team_leader'].includes(user?.role || '');
+  const isReadOnly = !!pendingReassign && !canManageTask;
   const completionReview = currentTask?.completionReview;
   const priority = currentTask ? PRIORITY_CONFIG[currentTask.priority] : PRIORITY_CONFIG.medium;
   const statusCfg = currentTask ? STATUS_CONFIG[currentTask.status] || STATUS_CONFIG.todo : STATUS_CONFIG.todo;
@@ -246,6 +276,44 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => 
                 {canManageTask && <button onClick={() => { void (async () => { try { await tasksService.delete(currentTask.id); deleteTask(currentTask.id); await bootstrap(); emitSuccessToast('Task deleted successfully.', 'Task Deleted'); onClose(); } catch (error: any) { emitErrorToast(error?.response?.data?.message || 'Task could not be deleted.', 'Delete failed'); } })(); }} className="btn-ghost h-8 w-8 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"><Trash2 size={15} /></button>}
                 <button onClick={onClose} className="btn-ghost h-8 w-8"><X size={15} /></button>
               </div>
+
+              {editingTitle && canManageTask ? (
+                <form onSubmit={handleSubmit(data => {
+                  (async () => {
+                    await persistTaskUpdate({ title: data.title }, 'Title update failed');
+                    setEditingTitle(false);
+                  })();
+                })}>
+                  <input
+                    {...register('title', { value: task.title })}
+                    autoFocus
+                    className="input text-xl font-display font-semibold mb-0 h-auto py-1"
+                    onBlur={() => setEditingTitle(false)}
+                  />
+                </form>
+              ) : (
+                <h2 
+                  className={cn(
+                    "font-display font-semibold text-xl text-surface-900 dark:text-white leading-tight",
+                    canManageTask && "cursor-pointer hover:text-brand-700 dark:hover:text-brand-300 transition-colors group"
+                  )} 
+                  onClick={() => canManageTask && setEditingTitle(true)}
+                >
+                  {task.title}
+                  {canManageTask && <Edit3 size={14} className="inline ml-2 opacity-0 group-hover:opacity-100 transition-opacity text-surface-400" />}
+                </h2>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1 flex-shrink-0">
+              {canManageTask && (
+                <button onClick={handleDelete} className="btn-ghost w-8 h-8 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30">
+                  <Trash2 size={15} />
+                </button>
+              )}
+              <button onClick={onClose} className="btn-ghost w-8 h-8">
+                <X size={15} />
+              </button>
             </div>
           </div>
 
@@ -428,19 +496,294 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => 
           </div>
         </div>
 
-        <div className="w-full flex-shrink-0 overflow-y-auto border-t border-surface-100 bg-surface-50/50 p-4 dark:border-surface-800 dark:bg-surface-950/30 lg:w-64 lg:border-l lg:border-t-0 sm:p-5">
-          <div className="space-y-4">
-            <div><label className="label">Status</label><div className="relative"><select value={currentTask.status} onChange={(event) => { void syncTask(() => tasksService.update(currentTask.id, { status: event.target.value as TaskStatus }), 'Status update failed'); }} className="input appearance-none pr-8">{Object.entries(STATUS_CONFIG).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}</select><ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-surface-400" /></div></div>
-            <div><label className="label">Priority</label><div className="flex flex-wrap gap-1.5">{(Object.entries(PRIORITY_CONFIG) as [Priority, typeof PRIORITY_CONFIG.low][]).map(([key, config]) => <button key={key} type="button" onClick={() => { void syncTask(() => tasksService.update(currentTask.id, { priority: key }), 'Priority update failed'); }} className={cn('flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium', currentTask.priority === key ? `${config.bg} ${config.text} border-current` : 'border-surface-200 text-surface-500 dark:border-surface-700')}><Flag size={10} style={{ color: config.color }} />{config.label}</button>)}</div></div>
-            <div><label className="label">Assignees</label><div ref={assigneeRef} className="relative space-y-1.5">{assignees.map((item) => <div key={item.id} className="flex items-center gap-2 py-1"><UserAvatar name={item.name} color={item.color} size="xs" /><span className="text-xs text-surface-700 dark:text-surface-300">{item.name}</span></div>)}{assignees.length === 0 && <p className="text-xs text-surface-400">Unassigned</p>}{canManageTask && <button type="button" onClick={() => setAssigneeOpen((prev) => !prev)} className="btn-ghost btn-sm mt-1 text-xs"><Users size={12} />Assign</button>}{assigneeOpen && <div className="mt-2 rounded-2xl border border-surface-200 bg-white p-3 shadow-lg dark:border-surface-700 dark:bg-surface-900"><input value={assigneeQuery} onChange={(event) => setAssigneeQuery(event.target.value)} className="input mb-2 h-9 text-sm" placeholder="Search assignees..." /><div className="max-h-48 space-y-1 overflow-y-auto">{filteredAssignableUsers.map((candidate) => <label key={candidate.id} className="flex cursor-pointer items-center gap-2 rounded-xl px-2 py-2 hover:bg-surface-50 dark:hover:bg-surface-800"><input type="checkbox" checked={currentTask.assigneeIds.includes(candidate.id)} onChange={() => { const next = currentTask.assigneeIds.includes(candidate.id) ? currentTask.assigneeIds.filter((id) => id !== candidate.id) : [...currentTask.assigneeIds, candidate.id]; void syncTask(() => tasksService.update(currentTask.id, { assigneeIds: next }), 'Assignee update failed'); }} className="rounded" /><UserAvatar name={candidate.name} color={candidate.color} size="xs" /><div className="min-w-0 flex-1"><p className="truncate text-xs text-surface-700 dark:text-surface-200">{candidate.name}</p><p className="truncate text-[10px] text-surface-400">{candidate.jobTitle || candidate.email}</p></div></label>)}{filteredAssignableUsers.length === 0 && <p className="px-2 py-3 text-xs text-surface-400">No team members match this search.</p>}</div></div>}</div></div>
-            {reporter && <div><label className="label">Reporter</label><div className="flex items-center gap-2"><UserAvatar name={reporter.name} color={reporter.color} size="xs" /><span className="text-xs text-surface-700 dark:text-surface-300">{reporter.name}</span></div></div>}
-            <div><label className="label">Due Date</label><div className={cn('flex items-center gap-2 text-sm', isOverdue ? 'text-rose-500' : 'text-surface-600 dark:text-surface-400')}><Calendar size={14} />{currentTask.dueDate ? <span>{formatDate(currentTask.dueDate)}{isOverdue && <AlertTriangle size={12} className="ml-1 inline" />}</span> : <span className="text-surface-400">No due date</span>}</div></div>
-            {currentTask.estimatedHours ? <div><label className="label">Time Estimate</label><div className="flex items-center gap-2 text-sm text-surface-600 dark:text-surface-400"><Clock size={14} /><span>{currentTask.estimatedHours}h estimated</span></div></div> : null}
-            <div><label className="label">Labels</label><div className="flex flex-wrap gap-1.5">{(currentTask.labels || []).map((label) => <span key={label} className="badge-gray text-[11px]"><Tag size={9} />{label}</span>)}{(!currentTask.labels || currentTask.labels.length === 0) && <p className="text-xs text-surface-400">No labels</p>}</div></div>
-            <div className="border-t border-surface-100 pt-2 text-[11px] text-surface-400 dark:border-surface-800"><p>Created {formatRelativeTime(currentTask.createdAt)}</p><p>Updated {formatRelativeTime(currentTask.updatedAt)}</p>{completionReview?.completedAt && <p>Completed {formatRelativeTime(completionReview.completedAt)}</p>}{completionReview?.reviewedAt && <p>Reviewed {formatRelativeTime(completionReview.reviewedAt)}</p>}{completionReview?.rating ? <p>Rating {completionReview.rating}/5</p> : null}</div>
+        <div className="w-full lg:w-64 border-t lg:border-t-0 lg:border-l border-surface-100 dark:border-surface-800 p-4 sm:p-5 flex flex-col gap-4 flex-shrink-0 bg-surface-50/50 dark:bg-surface-950/30 overflow-y-auto">
+          <div>
+            <label className="label">Status</label>
+            <div className="relative">
+              <select
+                  disabled={isReadOnly}
+                  value={task.status}
+                  onChange={(e) => persistTaskUpdate({ status: e.target.value as TaskStatus }, 'Status update failed')}
+                  className={cn(
+                    'bg-white dark:bg-surface-800 border rounded-lg px-3 py-1.5 text-xs font-semibold focus:ring-2 outline-none transition-all w-full flex items-center justify-between',
+                    statusCfg.bg,
+                    statusCfg.text,
+                    isReadOnly && 'opacity-50 cursor-not-allowed'
+                  )}
+                >
+                {Object.entries(STATUS_CONFIG).map(([key, val]) => (
+                  <option key={key} value={key}>{val.label}</option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 pointer-events-none" />
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="label mb-0">Priority</label>
+              {!isEditingPriority && canManageTask && (
+                <button 
+                  onClick={() => setIsEditingPriority(true)}
+                  disabled={isReadOnly}
+                  className="p-1 rounded-md text-surface-400 hover:bg-surface-100 hover:text-surface-600 dark:hover:bg-surface-800 transition-colors"
+                >
+                  <Edit3 size={13} />
+                </button>
+              )}
+            </div>
+            
+            <motion.div layout className="flex gap-1.5 flex-wrap">
+              {isEditingPriority ? (
+                (Object.entries(PRIORITY_CONFIG) as [Priority, typeof PRIORITY_CONFIG.low][]).map(([key, cfg]) => (
+                  <button 
+                    key={key} 
+                    onClick={async () => { 
+                      await persistTaskUpdate({ priority: key }, 'Priority update failed'); 
+                      setIsEditingPriority(false);
+                    }} 
+                    className={cn(
+                      'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border', 
+                      task.priority === key 
+                        ? `${cfg.bg} ${cfg.text} border-current ring-1 ring-current/20` 
+                        : 'border-surface-200 dark:border-surface-700 text-surface-500 hover:border-surface-300 bg-white dark:bg-surface-900'
+                    )}
+                  >
+                    <Flag size={10} style={{ color: cfg.color }} />
+                    {cfg.label}
+                  </button>
+                ))
+              ) : (
+                <div className={cn(
+                  'flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all',
+                  priority.bg, priority.text, 'border-current/30 shadow-sm shadow-black/5'
+                )}>
+                  <Flag size={11} style={{ color: priority.color }} fill="currentColor" />
+                  <span className="uppercase tracking-wider">{priority.label}</span>
+                </div>
+              )}
+            </motion.div>
+          </div>
+
+          <div>
+            <label className="label">Assignees</label>
+            <div className="space-y-1.5">
+              {assignees.map(u => (
+                <div key={u.id} className="flex items-center gap-2 py-1">
+                  <UserAvatar name={u.name} color={u.color} size="xs" />
+                  <span className="text-xs text-surface-700 dark:text-surface-300">{u.name}</span>
+                </div>
+              ))}
+              {assignees.length === 0 && <p className="text-xs text-surface-400">Unassigned</p>}
+              
+              <div className="relative">
+                {canManageTask && (
+                  <button 
+                    onClick={() => setIsEditingAssignee(!isEditingAssignee)}
+                    className="btn-ghost btn-sm text-xs mt-1"
+                  >
+                    <Users size={12} />
+                    {task.assigneeIds.length > 0 ? 'Change' : 'Assign'}
+                  </button>
+                )}
+
+                {!canManageTask && (
+                  <div className="pt-1">
+                    {pendingReassign ? (
+                      <div className="flex items-center gap-2 text-[10px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/20 px-3 py-1.5 rounded-lg border border-amber-100 dark:border-amber-900/40 mt-1">
+                        <Clock size={12} />
+                         <span>
+                           Reassigning to {users.find(u => u.id === task.requestedAssigneeId)?.name || (pendingReassign ? users.find(u => u.id === pendingReassign.requestedAssigneeId)?.name : '...')}
+                         </span>
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={() => setIsReassigning(true)}
+                        className="btn-ghost btn-sm text-[11px] mt-1 text-brand-600 hover:text-brand-700"
+                      >
+                        <UserPlus size={12} />
+                        Request Reassign
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {isEditingAssignee && (
+                  <div className="absolute left-0 top-full mt-2 z-30 w-56 p-1 bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-700 rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in duration-200">
+                    <div className="max-h-48 overflow-y-auto">
+                      {(project ? users.filter(u => project.members.includes(u.id)) : users).map(u => (
+                        <button
+                          key={u.id}
+                          onClick={async () => {
+                            const current = task.assigneeIds;
+                            const next = current.includes(u.id) 
+                              ? current.filter(id => id !== u.id)
+                              : [...current, u.id];
+                            await persistTaskUpdate({ assigneeIds: next }, 'Assignee update failed');
+                            setIsEditingAssignee(false);
+                          }}
+                          className={cn(
+                            "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors text-left",
+                            task.assigneeIds.includes(u.id)
+                              ? "bg-brand-50 text-brand-700 dark:bg-brand-950/30 dark:text-brand-300"
+                              : "text-surface-600 dark:text-surface-400 hover:bg-surface-50 dark:hover:bg-surface-800"
+                          )}
+                        >
+                          <UserAvatar name={u.name} color={u.color} size="xs" />
+                          <span className="truncate flex-1">{u.name}</span>
+                          {task.assigneeIds.includes(u.id) && <div className="w-1.5 h-1.5 rounded-full bg-brand-500" />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {reporter && (
+            <div>
+              <label className="label">Reporter</label>
+              <div className="flex items-center gap-2">
+                <UserAvatar name={reporter.name} color={reporter.color} size="xs" />
+                <span className="text-xs text-surface-700 dark:text-surface-300">{reporter.name}</span>
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="label">Due Date</label>
+            <div className={cn('flex items-center gap-2 text-sm', isOverdue ? 'text-rose-500' : 'text-surface-600 dark:text-surface-400')}>
+              <Calendar size={14} />
+              {task.dueDate ? (
+                <span>{formatDate(task.dueDate)}{isOverdue && <AlertTriangle size={12} className="inline ml-1" />}</span>
+              ) : (
+                <span className="text-surface-400">No due date</span>
+              )}
+            </div>
+          </div>
+
+          {task.estimatedHours && (
+            <div>
+              <label className="label">Time Estimate</label>
+              <div className="flex items-center gap-2 text-sm text-surface-600 dark:text-surface-400">
+                <Clock size={14} />
+                <span>{task.estimatedHours}h estimated</span>
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="label">Labels</label>
+            <div className="flex flex-wrap gap-1.5 items-center">
+              {(task.labels || []).map(label => (
+                <span key={label} className="badge-gray text-[11px] group relative">
+                  <Tag size={9} />
+                  {label}
+                  {canManageTask && (
+                    <button 
+                      onClick={async () => {
+                        const next = (task.labels || []).filter(l => l !== label);
+                        await persistTaskUpdate({ labels: next }, 'Label removal failed');
+                      }}
+                      className="absolute -right-1 -top-1 w-3.5 h-3.5 rounded-full bg-rose-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X size={8} strokeWidth={3} />
+                    </button>
+                  )}
+                </span>
+              ))}
+              {(!task.labels || task.labels.length === 0) && !isAddingLabel && <p className="text-xs text-surface-400">No labels</p>}
+              
+              {isAddingLabel ? (
+                <div className="relative">
+                  <input
+                    autoFocus
+                    value={labelInput}
+                    onChange={e => setLabelInput(e.target.value)}
+                    onKeyDown={async e => {
+                      if (e.key === 'Enter') {
+                        const trimmed = labelInput.trim();
+                        if (trimmed && !(task.labels || []).includes(trimmed)) {
+                          const next = [...(task.labels || []), trimmed];
+                          await persistTaskUpdate({ labels: next }, 'Label addition failed');
+                        }
+                        setIsAddingLabel(false);
+                        setLabelInput('');
+                      }
+                      if (e.key === 'Escape') {
+                        setIsAddingLabel(false);
+                        setLabelInput('');
+                      }
+                    }}
+                    onBlur={() => {
+                      // Small delay to allow clicking on predefined labels if I add them later
+                      setTimeout(() => {
+                        setIsAddingLabel(false);
+                        setLabelInput('');
+                      }, 150);
+                    }}
+                    className="input h-6 text-[10px] w-24 py-0 px-2 min-h-0 border-brand-500/50 focus:ring-1 focus:ring-brand-500/30"
+                    placeholder="New label..."
+                  />
+                  <div className="absolute left-0 top-full mt-1 z-40 w-32 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-xl p-1">
+                    {['ASAP', 'Feedback', 'Blocked', 'Follow-up'].filter(l => !(task.labels || []).includes(l)).map(l => (
+                      <button
+                        key={l}
+                        type="button"
+                        onMouseDown={e => e.preventDefault()} // prevent blur
+                        onClick={async () => {
+                          const next = [...(task.labels || []), l];
+                          await persistTaskUpdate({ labels: next }, 'Label addition failed');
+                          setIsAddingLabel(false);
+                        }}
+                        className="w-full text-left px-2 py-1.5 text-[10px] font-bold text-surface-600 dark:text-surface-400 hover:bg-surface-50 dark:hover:bg-surface-700 rounded-md transition-colors"
+                      >
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                canManageTask && (
+                  <button 
+                    type="button"
+                    onClick={() => {
+                        console.log('Plus button clicked');
+                        setIsAddingLabel(true);
+                    }}
+                    className="badge text-[11px] bg-surface-100 dark:bg-surface-800 text-surface-500 hover:bg-surface-200 transition-colors flex items-center justify-center p-1 min-w-[20px]"
+                  >
+                    <Plus size={10} strokeWidth={3} />
+                  </button>
+                )
+              )}
+            </div>
+          </div>
+
+          <div className="text-[11px] text-surface-400 pt-2 border-t border-surface-100 dark:border-surface-800">
+            <p>Created {formatRelativeTime(task.createdAt)}</p>
+            <p>Updated {formatRelativeTime(task.updatedAt)}</p>
+            {completionReview?.completedAt && <p>Completed {formatRelativeTime(completionReview.completedAt)}</p>}
+            {completionReview?.reviewedAt && <p>Reviewed {formatRelativeTime(completionReview.reviewedAt)}</p>}
+            {completionReview?.rating ? <p>Rating {completionReview.rating}/5</p> : null}
           </div>
         </div>
       </div>
+      <ReassignRequestModal 
+        open={isReassigning}
+        onClose={() => setIsReassigning(false)}
+        taskId={task.id}
+        taskTitle={task.title}
+        onSubmitted={() => {
+           // Refresh global and local status
+           bootstrap();
+           (async () => {
+             const res = await reassignService.getStatus(task.id);
+             setPendingReassign(res.data.data);
+           })();
+        }}
+      />
     </Modal>
   );
 };
