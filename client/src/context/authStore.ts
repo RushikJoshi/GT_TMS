@@ -4,8 +4,9 @@ import type { User } from '../app/types';
 import { authService } from '../services/api';
 
 interface LoginPayload {
-  companyCode: string;
-  employeeCode: string;
+  email?: string;
+  companyCode?: string;
+  employeeCode?: string;
   password: string;
 }
 
