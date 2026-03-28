@@ -69,8 +69,9 @@ api.interceptors.response.use(
 export default api;
 
 interface LoginPayload {
-  companyCode: string;
-  employeeCode: string;
+  email?: string;
+  companyCode?: string;
+  employeeCode?: string;
   password: string;
 }
 
