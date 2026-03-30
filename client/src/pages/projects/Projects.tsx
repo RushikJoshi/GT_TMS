@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useForm } from 'react-hook-form';
@@ -17,6 +17,7 @@ import { Modal } from '../../components/Modal';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import type {
   Priority,
+  ProjectCategory,
   Project,
   ProjectImportResult,
   ProjectImportRow,
@@ -123,6 +124,19 @@ const DEFAULT_SDLC_PLAN: ProjectSdlcPhase[] = [
   { name: 'Deployment', durationDays: 2, notes: '' },
   { name: 'Maintenance', durationDays: 3, notes: '' },
 ];
+
+const DEFAULT_PROJECT_CATEGORIES: ProjectCategory[] = [
+  { id: 'ui-design', name: 'UI Design', color: '#2563eb', order: 0 },
+  { id: 'mobile-app-design', name: 'Mobile Application Design', color: '#ec4899', order: 1 },
+  { id: 'frontend-design', name: 'Frontend Design', color: '#0f766e', order: 2 },
+  { id: 'backend-design', name: 'Backend Design', color: '#ea580c', order: 3 },
+];
+
+const DEFAULT_DEPARTMENTS = ['General', 'Development', 'Design', 'Marketing', 'Product'];
+
+function slugifyCategory(value: string) {
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
 
 function normalizeHeader(value: string) {
   return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -521,6 +535,7 @@ export const ProjectsPage: React.FC = () => {
   const [memberSearch, setMemberSearch] = useState('');
   const [reportingSearch, setReportingSearch] = useState('');
   const [sdlcPlan, setSdlcPlan] = useState<ProjectSdlcPhase[]>(DEFAULT_SDLC_PLAN);
+  const [projectCategories, setProjectCategories] = useState<ProjectCategory[]>(DEFAULT_PROJECT_CATEGORIES);
   const [collapsedDepts, setCollapsedDepts] = useState<Record<string, boolean>>({});
   const [importFileName, setImportFileName] = useState('');
   const [importRows, setImportRows] = useState<ProjectImportRow[]>([]);
@@ -536,7 +551,13 @@ export const ProjectsPage: React.FC = () => {
 
   const todayDate = new Date().toISOString().split('T')[0];
   const budgetCurrency = watch('budgetCurrency');
+  const selectedDepartment = watch('department') || 'General';
   const selectedStartDate = watch('startDate') || todayDate;
+  const departmentOptions = useMemo(
+    () => Array.from(new Set([...DEFAULT_DEPARTMENTS, ...projects.map((project) => project.department || 'General').filter(Boolean)])),
+    [projects]
+  );
+  const departmentDropdownValue = departmentOptions.includes(selectedDepartment) ? selectedDepartment : '__custom__';
 
   const filteredAssignableUsers = users.filter((candidate) => {
     const query = memberSearch.trim().toLowerCase();
@@ -577,6 +598,7 @@ export const ProjectsPage: React.FC = () => {
     setMemberSearch('');
     setReportingSearch('');
     setSdlcPlan(DEFAULT_SDLC_PLAN);
+    setProjectCategories(DEFAULT_PROJECT_CATEGORIES);
     reset();
   };
 
@@ -591,6 +613,7 @@ export const ProjectsPage: React.FC = () => {
       budget: undefined,
       budgetCurrency: 'INR',
     });
+    setProjectCategories(DEFAULT_PROJECT_CATEGORIES);
     setShowModal(true);
   };
 
@@ -610,6 +633,7 @@ export const ProjectsPage: React.FC = () => {
     setMemberSearch('');
     setReportingSearch('');
     setSdlcPlan(project.sdlcPlan?.length ? project.sdlcPlan : DEFAULT_SDLC_PLAN);
+    setProjectCategories(project.subcategories?.length ? project.subcategories : DEFAULT_PROJECT_CATEGORIES);
   };
 
   React.useEffect(() => {
@@ -716,7 +740,7 @@ export const ProjectsPage: React.FC = () => {
   const onSaveProject = async (data: ProjectFormData) => {
     try {
       const fallbackMembers = user?.id ? [user.id] : [];
-      const payload = {
+        const payload = {
         name: data.name,
         description: data.description,
         color: selectedColor,
@@ -726,10 +750,19 @@ export const ProjectsPage: React.FC = () => {
         reportingPersonIds: selectedReportingPersons,
         startDate: data.startDate || new Date().toISOString().split('T')[0],
         endDate: data.endDate || undefined,
-        budget: typeof data.budget === 'number' && !Number.isNaN(data.budget) ? data.budget : undefined,
-        budgetCurrency: data.budgetCurrency || 'INR',
-        sdlcPlan: sdlcPlan.filter((phase) => phase.name.trim()),
-      };
+          budget: typeof data.budget === 'number' && !Number.isNaN(data.budget) ? data.budget : undefined,
+          budgetCurrency: data.budgetCurrency || 'INR',
+          sdlcPlan: sdlcPlan.filter((phase) => phase.name.trim()),
+          subcategories: projectCategories
+            .map((category, index) => ({
+              id: category.id || slugifyCategory(category.name) || `category-${index + 1}`,
+              name: category.name.trim(),
+              description: category.description || '',
+              color: category.color || PROJECT_COLORS[index % PROJECT_COLORS.length],
+              order: index,
+            }))
+            .filter((category) => category.name),
+        };
 
       if (editingProject) {
         const res = await projectsService.update(editingProject.id, payload);
@@ -927,20 +960,31 @@ export const ProjectsPage: React.FC = () => {
 
           <div>
             <label className="label">Department</label>
-            <input
-              {...register('department')}
-              className="input bg-white dark:bg-surface-900"
-              defaultValue="General"
-              list="department-options"
-              placeholder="e.g. General, Development, Design..."
+            <input type="hidden" {...register('department')} />
+            <Dropdown
+              value={departmentDropdownValue}
+              onChange={(value) => {
+                if (value === '__custom__') {
+                  if (departmentOptions.includes(selectedDepartment)) {
+                    setValue('department', '');
+                  }
+                  return;
+                }
+                setValue('department', value, { shouldDirty: true, shouldValidate: true });
+              }}
+              items={[
+                ...departmentOptions.map((department) => ({ id: department, label: department })),
+                { id: '__custom__', label: 'Custom Department' },
+              ]}
             />
-            <datalist id="department-options">
-              <option value="General" />
-              <option value="Development" />
-              <option value="Design" />
-              <option value="Marketing" />
-              <option value="Product" />
-            </datalist>
+            {departmentDropdownValue === '__custom__' && (
+              <input
+                value={selectedDepartment}
+                onChange={(event) => setValue('department', event.target.value, { shouldDirty: true, shouldValidate: true })}
+                className="input mt-3 bg-white dark:bg-surface-900"
+                placeholder="Enter custom department"
+              />
+            )}
           </div>
 
           <div>
@@ -1059,6 +1103,82 @@ export const ProjectsPage: React.FC = () => {
                 </label>
               ))}
               {availableReportingUsers.length === 0 && <p className="p-2 text-xs text-surface-400">No reporting persons match this search.</p>}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-surface-100 p-4 dark:border-surface-800">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="label mb-0">Project Categories</p>
+                <p className="text-xs text-surface-400">Create work buckets like UI Design, Mobile App Design, Frontend, and Backend.</p>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                onClick={() => setProjectCategories((prev) => [
+                  ...prev,
+                  {
+                    id: `category-${Date.now()}`,
+                    name: '',
+                    color: PROJECT_COLORS[prev.length % PROJECT_COLORS.length],
+                    order: prev.length,
+                  },
+                ])}
+              >
+                <Plus size={12} /> Add Category
+              </button>
+            </div>
+            <div className="space-y-3">
+              {projectCategories.map((category, index) => (
+                <div key={category.id || `${category.name}-${index}`} className="grid grid-cols-1 sm:grid-cols-[minmax(0,1.4fr)_180px_auto] gap-3 items-center">
+                  <input
+                    value={category.name}
+                    onChange={(e) => {
+                      const next = [...projectCategories];
+                      next[index] = {
+                        ...next[index],
+                        name: e.target.value,
+                        id: next[index].id || slugifyCategory(e.target.value) || `category-${index + 1}`,
+                        order: index,
+                      };
+                      setProjectCategories(next);
+                    }}
+                    className="input"
+                    placeholder="Category name"
+                  />
+                  <div className="flex items-center gap-3 rounded-xl border border-surface-100 bg-surface-50/70 px-3 py-2 dark:border-surface-800 dark:bg-surface-800/40">
+                    <input
+                      type="color"
+                      value={category.color || PROJECT_COLORS[index % PROJECT_COLORS.length]}
+                      onChange={(e) => {
+                        const next = [...projectCategories];
+                        next[index] = { ...next[index], color: e.target.value, order: index };
+                        setProjectCategories(next);
+                      }}
+                      className="h-10 w-14 cursor-pointer rounded-lg border border-surface-200 bg-transparent p-1 dark:border-surface-700"
+                      aria-label={`Pick color for ${category.name || `category ${index + 1}`}`}
+                    />
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-surface-400">Category Color</p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <span
+                          className="h-3 w-3 rounded-full border border-surface-200 dark:border-surface-700"
+                          style={{ backgroundColor: category.color || PROJECT_COLORS[index % PROJECT_COLORS.length] }}
+                        />
+                        <span className="text-sm text-surface-600 dark:text-surface-300">Pick color</span>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-ghost btn-sm text-rose-500"
+                    onClick={() => setProjectCategories((prev) => prev.filter((_, itemIndex) => itemIndex !== index).map((item, itemIndex) => ({ ...item, order: itemIndex })))}
+                    disabled={projectCategories.length === 1}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
 

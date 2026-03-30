@@ -99,3 +99,31 @@ export async function remove(req, res, next) {
   }
 }
 
+export async function upsertSubcategories(req, res, next) {
+  try {
+    const { companyId, workspaceId, sub: userId, role } = req.auth;
+    const { subcategories } = req.body;
+    
+    if (!Array.isArray(subcategories)) {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_BODY', message: 'subcategories must be an array' } });
+    }
+
+    const project = await ProjectService.updateProject({
+      companyId,
+      workspaceId,
+      userId,
+      role,
+      projectId: req.params.id,
+      updates: { subcategories }
+    });
+
+    if (!project) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } });
+    }
+
+    return res.status(200).json({ success: true, data: project });
+  } catch (e) {
+    return next(e);
+  }
+}
+

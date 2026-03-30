@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { useForm } from 'react-hook-form';
 import {
   LayoutDashboard, List, BarChart3, Settings2, Plus, ListTodo,
-  Users, Calendar, Flag, ChevronDown, ArrowLeft, Edit3
+  ArrowLeft, Edit3, Calendar, Flag
 } from 'lucide-react';
-import { addDaysToDateKey, cn, formatDate, getProgressColor, generateId } from '../../utils/helpers';
+import { cn, formatDate, getProgressColor } from '../../utils/helpers';
 import { useAppStore } from '../../context/appStore';
 import { useAuthStore } from '../../context/authStore';
 import { PRIORITY_CONFIG, STATUS_CONFIG } from '../../app/constants';
@@ -14,25 +13,12 @@ import { KanbanBoard } from '../../components/KanbanBoard';
 import { TaskModal } from '../../components/TaskModal';
 import { TaskCard } from '../../components/TaskCard';
 import { UserAvatar, AvatarGroup } from '../../components/UserAvatar';
-import { ProgressBar, EmptyState, Tabs, TabsContent, Dropdown } from '../../components/ui';
-import { Modal } from '../../components/Modal';
-import type { Task, TaskStatus, Priority, TimelinePhase, TaskCreationRequest } from '../../app/types';
+import { ProgressBar, EmptyState, Tabs, TabsContent } from '../../components/ui';
+import type { Task, TaskStatus, TimelinePhase, TaskCreationRequest, Priority } from '../../app/types';
 import { projectsService, tasksService, timelineService } from '../../services/api';
 import { emitErrorToast, emitSuccessToast } from '../../context/toastBus';
 import { ProjectTimelineModule } from '../../components/ProjectTimelineModule';
-
-
-interface TaskFormData {
-  title: string;
-  description: string;
-  priority: Priority;
-  startDate: string;
-  durationDays: number;
-  phaseId: string;
-  assigneeId: string;
-  status: TaskStatus;
-  estimatedHours: number;
-}
+import { ProjectTaskCreateModal, type ProjectTaskCreateValues } from '../../components/ProjectTaskCreateModal';
 
 export const ProjectDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -44,10 +30,9 @@ export const ProjectDetailPage: React.FC = () => {
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [showAddTask, setShowAddTask] = useState(false);
   const [defaultStatus, setDefaultStatus] = useState<TaskStatus>('todo');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
   const [editingName, setEditingName] = useState(false);
   const [timelinePhases, setTimelinePhases] = useState<TimelinePhase[]>([]);
-  const [newPhaseName, setNewPhaseName] = useState('');
-  const [isCreatingPhase, setIsCreatingPhase] = useState(false);
   const [taskRequests, setTaskRequests] = useState<TaskCreationRequest[]>([]);
   const [loadingTaskRequests, setLoadingTaskRequests] = useState(false);
 
@@ -65,15 +50,10 @@ export const ProjectDetailPage: React.FC = () => {
     ((project?.reportingPersonIds || []).includes(user.id) || ['super_admin', 'admin', 'manager', 'team_leader'].includes(user?.role || ''))
   );
   const reportingPersons = users.filter(u => project?.reportingPersonIds?.includes(u.id));
-  const assignableUsers = members.filter((u) => !project?.reportingPersonIds?.includes(u.id));
-  const todayDate = new Date().toISOString().split('T')[0];
-
-  const { register, handleSubmit, reset, setValue, watch } = useForm<TaskFormData>({
-    defaultValues: { priority: 'medium', status: defaultStatus, startDate: todayDate, durationDays: 1, phaseId: '' }
-  });
-
-  const watchPriority = watch('priority');
-  const watchAssignee = watch('assigneeId');
+  const categories = project?.subcategories || [];
+  const filteredProjectTasks = selectedCategoryId === 'all'
+    ? projectTasks
+    : projectTasks.filter((task) => task.subcategoryId === selectedCategoryId);
 
   useEffect(() => {
     if (!project?.id) return;
@@ -86,6 +66,12 @@ export const ProjectDetailPage: React.FC = () => {
       }
     })();
   }, [project?.id]);
+
+  useEffect(() => {
+    if (selectedCategoryId === 'all') return;
+    if ((project?.subcategories || []).some((category) => category.id === selectedCategoryId)) return;
+    setSelectedCategoryId('all');
+  }, [project?.subcategories, selectedCategoryId]);
 
   useEffect(() => {
     if (!project?.id) return;
@@ -124,41 +110,24 @@ export const ProjectDetailPage: React.FC = () => {
 
   const handleAddTask = (status: TaskStatus = 'todo') => {
     setDefaultStatus(status);
-    setValue('startDate', project?.startDate || todayDate);
-    setValue('durationDays', 1);
-    setValue('phaseId', '');
     setShowAddTask(true);
   };
 
-  const handleCreatePhase = async () => {
-    const trimmedName = newPhaseName.trim();
-    if (!trimmedName || !project?.id) return;
-
+  const handleCreatePhase = async (newPhase: { id: string; name: string; order: number; color: string }) => {
+    if (!project?.id) return;
     try {
-      setIsCreatingPhase(true);
-      const palette = ['#2563eb', '#0f766e', '#7c3aed', '#ea580c', '#dc2626', '#0891b2'];
       await timelineService.upsert(project.id, {
         phases: [
           ...timelinePhases.map(({ id, name, order, color }) => ({ id, name, order, color })),
-          {
-            name: trimmedName,
-            order: timelinePhases.length,
-            color: palette[timelinePhases.length % palette.length],
-          },
+          newPhase,
         ],
       });
       const response = await timelineService.get(project.id);
       const phases = (response.data?.data?.phases || []).filter((phase: TimelinePhase) => phase.id !== 'ungrouped');
       setTimelinePhases(phases);
-      const createdPhase = phases.find((phase: TimelinePhase) => phase.name === trimmedName);
-      if (createdPhase) {
-        setValue('phaseId', createdPhase.id);
-      }
-      setNewPhaseName('');
+      return phases.find((phase: TimelinePhase) => phase.name === newPhase.name)?.id;
     } catch (error: any) {
       emitErrorToast(error?.response?.data?.error?.message || error?.response?.data?.message || 'Phase could not be created.', 'Phase');
-    } finally {
-      setIsCreatingPhase(false);
     }
   };
 
@@ -185,23 +154,23 @@ export const ProjectDetailPage: React.FC = () => {
     }
   };
 
-  const onCreateTask = async (data: TaskFormData) => {
+  const onCreateTask = async (data: ProjectTaskCreateValues) => {
     try {
-      const startDate = data.startDate || project.startDate || todayDate;
-      const durationDays = Math.max(1, Number(data.durationDays) || 1);
       const payload = {
         title: data.title,
         description: data.description || undefined,
+        taskType: data.taskType,
         priority: data.priority,
-        status: defaultStatus,
+        status: data.status,
         projectId: project.id,
-        assigneeIds: data.assigneeId ? [data.assigneeId] : [],
-        startDate,
-        dueDate: addDaysToDateKey(startDate, durationDays - 1),
-        durationDays,
+        assigneeIds: data.assigneeIds,
+        startDate: data.startDate,
+        dueDate: data.dueDate,
+        durationDays: data.durationDays,
         phaseId: data.phaseId || undefined,
+        subcategoryId: data.subcategoryId || undefined,
         estimatedHours: data.estimatedHours || undefined,
-        order: projectTasks.filter((task) => task.status === defaultStatus).length,
+        order: projectTasks.filter((task) => task.status === data.status).length,
       };
 
       if (canCreateTask) {
@@ -209,6 +178,9 @@ export const ProjectDetailPage: React.FC = () => {
         const createdTask = response.data.data ?? response.data;
         addTask(createdTask);
         updateProject(project.id, { tasksCount: project.tasksCount + 1 });
+        if (createdTask?.id && data.files.length) {
+          await tasksService.uploadAttachments(createdTask.id, data.files);
+        }
         await bootstrap();
         emitSuccessToast('Task created successfully.', 'Task Added');
       } else {
@@ -219,7 +191,6 @@ export const ProjectDetailPage: React.FC = () => {
       }
 
       setShowAddTask(false);
-      reset();
     } catch (error: any) {
       const message =
         error?.response?.data?.error?.message ||
@@ -280,7 +251,7 @@ export const ProjectDetailPage: React.FC = () => {
   };
 
   const statusCounts = Object.keys(STATUS_CONFIG).reduce((acc, key) => {
-    acc[key as TaskStatus] = projectTasks.filter(t => t.status === key).length;
+    acc[key as TaskStatus] = filteredProjectTasks.filter(t => t.status === key).length;
     return acc;
   }, {} as Record<TaskStatus, number>);
 
@@ -383,6 +354,39 @@ export const ProjectDetailPage: React.FC = () => {
             </div>
           ))}
         </div>
+
+        {categories.length ? (
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedCategoryId('all')}
+              className={cn(
+                'rounded-xl border px-3 py-1.5 text-xs font-semibold transition-colors',
+                selectedCategoryId === 'all'
+                  ? 'border-brand-200 bg-brand-50 text-brand-700 dark:border-brand-900/50 dark:bg-brand-950/30 dark:text-brand-300'
+                  : 'border-surface-200 text-surface-500 dark:border-surface-800 dark:text-surface-400'
+              )}
+            >
+              All categories
+            </button>
+            {categories.map((category) => (
+              <button
+                key={category.id}
+                type="button"
+                onClick={() => setSelectedCategoryId(category.id)}
+                className={cn(
+                  'rounded-xl border px-3 py-1.5 text-xs font-semibold transition-colors',
+                  selectedCategoryId === category.id
+                    ? 'text-surface-900 dark:text-white border-transparent'
+                    : 'border-surface-200 text-surface-500 dark:border-surface-800 dark:text-surface-400'
+                )}
+                style={selectedCategoryId === category.id ? { backgroundColor: `${category.color || '#6366f1'}20`, borderColor: category.color || '#6366f1' } : undefined}
+              >
+                {category.name}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </motion.div>
 
       {/* Views */}
@@ -390,6 +394,7 @@ export const ProjectDetailPage: React.FC = () => {
         <TabsContent value="kanban" className="pt-4">
           <KanbanBoard 
             projectId={project.id} 
+            tasksOverride={filteredProjectTasks}
             onOpenTask={openTask} 
             onAddTask={canCreateTask || canRequestTask ? handleAddTask : undefined} 
             onDeleteTask={canCreateTask ? handleDeleteTask : undefined} 
@@ -398,20 +403,20 @@ export const ProjectDetailPage: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="list" className="pt-4">
-          <div className="space-y-2">
-            {projectTasks.length === 0 ? (
-              <EmptyState
-                icon={<List size={24} />}
-                title="No tasks yet"
-                description={canCreateTask ? "Create your first task to get started" : canRequestTask ? "Request a task from the reporting person for this project." : "Tasks will appear here once created by a manager."}
-                action={canCreateTask || canRequestTask ? <button onClick={() => handleAddTask()} className="btn-primary btn-md"><Plus size={14} /> {canCreateTask ? 'Add Task' : 'Request Task'}</button> : null}
-              />
-            ) : (
-              projectTasks.map(task => (
-                <div key={task.id} className="group">
-                  <TaskCard task={task} compact onClick={() => openTask(task)} />
-                </div>
-              ))
+            <div className="space-y-2">
+            {filteredProjectTasks.length === 0 ? (
+                <EmptyState
+                  icon={<List size={24} />}
+                  title={selectedCategoryId === 'all' ? 'No tasks yet' : 'No tasks in this category'}
+                  description={canCreateTask ? "Create your first task to get started" : canRequestTask ? "Request a task from the reporting person for this project." : "Tasks will appear here once created by a manager."}
+                  action={canCreateTask || canRequestTask ? <button onClick={() => handleAddTask()} className="btn-primary btn-md"><Plus size={14} /> {canCreateTask ? 'Add Task' : 'Request Task'}</button> : null}
+                />
+              ) : (
+              filteredProjectTasks.map(task => (
+                  <div key={task.id} className="group">
+                    <TaskCard task={task} compact onClick={() => openTask(task)} />
+                  </div>
+                ))
             )}
           </div>
         </TabsContent>
@@ -488,9 +493,9 @@ export const ProjectDetailPage: React.FC = () => {
             <div className="card p-5">
               <h3 className="font-display font-semibold text-surface-900 dark:text-white mb-4">Task Distribution</h3>
               <div className="space-y-3">
-                {(Object.entries(STATUS_CONFIG) as [TaskStatus, typeof STATUS_CONFIG.todo][]).map(([key, cfg]) => {
+                  {(Object.entries(STATUS_CONFIG) as [TaskStatus, typeof STATUS_CONFIG.todo][]).map(([key, cfg]) => {
                   const count = statusCounts[key];
-                  const total = projectTasks.length || 1;
+                    const total = filteredProjectTasks.length || 1;
                   return (
                     <div key={key} className="flex items-center gap-3">
                       <span className={cn('w-24 text-xs font-medium', cfg.text)}>{cfg.label}</span>
@@ -631,98 +636,18 @@ export const ProjectDetailPage: React.FC = () => {
         onClose={() => { setShowTaskModal(false); setSelectedTaskId(null); }}
       />
 
-      {/* Add Task Modal */}
-      <Modal open={showAddTask} onClose={() => setShowAddTask(false)} title={canCreateTask ? 'New Task' : 'Request Task'}>
-        <form onSubmit={handleSubmit(onCreateTask)} className="p-6 space-y-4">
-          <div>
-            <label className="label">Title *</label>
-            <input {...register('title', { required: true })} placeholder="Task title" className="input" />
-          </div>
-          <div>
-            <label className="label">Description</label>
-            <textarea {...register('description')} placeholder="Optional description" className="input h-auto py-2 resize-none" rows={2} />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="label">Priority</label>
-              <Dropdown 
-                value={watchPriority} 
-                onChange={(val) => setValue('priority', val as Priority)}
-                items={Object.entries(PRIORITY_CONFIG).map(([k, v]) => ({ 
-                  id: k, 
-                  label: v.label,
-                  icon: <Flag size={12} style={{ color: v.color }} />
-                }))}
-              />
-            </div>
-            <div>
-              <label className="label">Status</label>
-              <Dropdown 
-                value={defaultStatus} 
-                onChange={(val) => setDefaultStatus(val as TaskStatus)}
-                items={Object.entries(STATUS_CONFIG).map(([k, v]) => ({ 
-                  id: k, 
-                  label: v.label,
-                  icon: <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: v.color }} />
-                }))}
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="label">Assignee</label>
-              <Dropdown 
-                value={watchAssignee} 
-                onChange={(val) => setValue('assigneeId', val)}
-                placeholder="Unassigned"
-                items={assignableUsers.map(u => ({ 
-                  id: u.id, 
-                  label: u.name,
-                  icon: <UserAvatar name={u.name} color={u.color} size="xs" />
-                }))}
-              />
-            </div>
-            <div>
-              <label className="label">Phase</label>
-              <select {...register('phaseId')} className="input">
-                <option value="">Ungrouped</option>
-                {timelinePhases.map((phase) => (
-                  <option key={phase.id} value={phase.id}>{phase.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end">
-            <div>
-              <label className="label">Add New Phase</label>
-              <input value={newPhaseName} onChange={(e) => setNewPhaseName(e.target.value)} placeholder="e.g. Development" className="input" />
-            </div>
-            <button type="button" onClick={() => void handleCreatePhase()} disabled={isCreatingPhase || !newPhaseName.trim()} className="btn-secondary btn-md">
-              {isCreatingPhase ? 'Adding...' : 'Add Phase'}
-            </button>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="label">Start Date *</label>
-              <input {...register('startDate', { required: true })} type="date" className="input" min={todayDate} />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="label">Duration (days) *</label>
-              <input {...register('durationDays', { required: true, valueAsNumber: true, min: 1 })} type="number" min={1} step={1} className="input" />
-            </div>
-            <div>
-              <label className="label">Estimated hours</label>
-              <input {...register('estimatedHours', { valueAsNumber: true })} type="number" placeholder="0" className="input" />
-            </div>
-          </div>
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={() => setShowAddTask(false)} className="btn-secondary btn-md flex-1">Cancel</button>
-            <button type="submit" className="btn-primary btn-md flex-1">{canCreateTask ? 'Create Task' : 'Send Request'}</button>
-          </div>
-        </form>
-      </Modal>
+      <ProjectTaskCreateModal
+        open={showAddTask}
+        onClose={() => setShowAddTask(false)}
+        onSubmit={onCreateTask}
+        project={project}
+        members={members}
+        phases={timelinePhases}
+        defaultStatus={defaultStatus}
+        submitLabel={canCreateTask ? 'Create Task' : 'Send Request'}
+        title={canCreateTask ? 'New Task' : 'Request Task'}
+        onCreatePhase={handleCreatePhase}
+      />
     </div>
   );
 };

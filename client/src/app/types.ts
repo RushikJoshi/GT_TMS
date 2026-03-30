@@ -15,6 +15,7 @@ export interface TaskSubtask {
   id: string;
   title: string;
   isCompleted: boolean;
+  assigneeIds?: string[];
   order: number;
   createdAt?: string;
   updatedAt?: string;
@@ -90,6 +91,7 @@ export interface TaskCreationRequest {
   dueDate?: string;
   durationDays: number;
   phaseId?: string;
+  subcategoryId?: string;
   estimatedHours?: number;
   order: number;
   labels?: string[];
@@ -281,6 +283,16 @@ export interface ProjectSdlcPhase {
   notes?: string;
 }
 
+export interface ProjectSubcategory {
+  id: string;
+  name: string;
+  description?: string;
+  color?: string;
+  order?: number;
+}
+
+export type ProjectCategory = ProjectSubcategory;
+
 export interface Project {
   id: string;
   name: string;
@@ -300,6 +312,7 @@ export interface Project {
   budget?: number;
   budgetCurrency?: string;
   sdlcPlan?: ProjectSdlcPhase[];
+  subcategories?: ProjectCategory[];
   totalPlannedDurationDays?: number;
   progress: number;
   tasksCount: number;
@@ -320,6 +333,7 @@ export interface Task {
   reporterId: string;
   parentTaskId?: string;
   phaseId?: string;
+  subcategoryId?: string;
   dependencies?: string[];
   type?: 'task' | 'milestone';
   /** Embedded checklist items (GW-style subtask bar) */
