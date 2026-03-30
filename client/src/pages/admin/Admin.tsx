@@ -875,13 +875,13 @@ export const AdminPermissionsPage: React.FC = () => {
     { key: 'editOtherProjects', label: 'Edit Other Projects', description: 'Can update or delete projects outside their own memberships and reporting assignments' },
     { key: 'manageUsers', label: 'Manage Users', description: 'Can invite, edit, and remove users' },
     { key: 'viewReports', label: 'View Reports', description: 'Access to analytics and reports' },
-    { key: 'manageBilling', label: 'Manage Billing', description: 'Can view and update billing info' },
+    // { key: 'manageBilling', label: 'Manage Billing', description: 'Can view and update billing info' },
     { key: 'exportData', label: 'Export Data', description: 'Can export workspace data' },
     { key: 'manageSettings', label: 'Manage Settings', description: 'Can edit workspace-level settings' },
     { key: 'createTeams', label: 'Create Teams', description: 'Can create and manage teams' },
   ] as const;
 
-  const ROLES: Role[] = ['super_admin', 'admin', 'manager', 'team_leader', 'team_member'];
+  const VISIBLE_PERMISSION_ROLES: Role[] = ['admin', 'manager', 'team_leader', 'team_member'];
   const DEFAULT_PERMISSIONS: Record<string, Partial<Record<Role, boolean>>> = {
     createProjects: { super_admin: true, admin: true, manager: true, team_leader: false, team_member: false },
     deleteProjects: { super_admin: true, admin: true, manager: false, team_leader: false, team_member: false },
@@ -1001,7 +1001,7 @@ export const AdminPermissionsPage: React.FC = () => {
             <thead>
               <tr className="border-b border-surface-100 dark:border-surface-800 bg-surface-50 dark:bg-surface-800/50">
                 <th className="text-left px-5 py-3 text-xs font-semibold text-surface-500 uppercase tracking-wider w-72">Permission</th>
-                {ROLES.map(role => (
+                {VISIBLE_PERMISSION_ROLES.map(role => (
                   <th key={role} className="px-4 py-3 text-center text-xs font-semibold text-surface-500 uppercase tracking-wider">
                     <span className={cn('badge text-[10px]', ROLE_CONFIG[role].bg, ROLE_CONFIG[role].color)}>
                       {ROLE_CONFIG[role].label}
@@ -1023,7 +1023,7 @@ export const AdminPermissionsPage: React.FC = () => {
                     <p className="text-sm font-medium text-surface-800 dark:text-surface-200">{perm.label}</p>
                     <p className="text-xs text-surface-400">{perm.description}</p>
                   </td>
-                  {ROLES.map((role) => {
+                  {VISIBLE_PERMISSION_ROLES.map((role) => {
                     const allowed = Boolean(permissionMap[perm.key]?.[role]);
                     return (
                       <td key={role} className="px-4 py-3.5 text-center">

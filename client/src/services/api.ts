@@ -89,8 +89,8 @@ export const tasksService = {
   getAll: (projectId?: string) => api.get('/tasks', { params: { projectId } }),
   getById: (id: string) => api.get(`/tasks/${id}`),
   create: (data: unknown) => api.post('/tasks', data),
-  getRequests: (projectId: string, requestStatus?: 'pending' | 'approved' | 'rejected') =>
-    api.get('/tasks/requests', { params: { projectId, requestStatus } }),
+  getRequests: (params?: { projectId?: string; requestStatus?: 'pending' | 'approved' | 'rejected' }) =>
+    api.get('/tasks/requests', { params }),
   createRequest: (data: unknown) => api.post('/tasks/requests', data),
   reviewRequest: (id: string, body: { action: 'approve' | 'reject'; reviewNote?: string }) =>
     api.post(`/tasks/requests/${id}/review`, body),

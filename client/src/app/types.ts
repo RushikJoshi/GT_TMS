@@ -421,7 +421,7 @@ export interface Team {
 
 export interface Notification {
   id: string;
-  type: 'task_assigned' | 'comment_added' | 'deadline_approaching' | 'project_update' | 'mention';
+  type: string;
   title: string;
   message: string;
   isRead: boolean;
