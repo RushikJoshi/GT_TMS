@@ -8,7 +8,7 @@ export async function getOverview(req, res, next) {
     const Task = getTaskModel(mongoose.connection);
     const QuickTask = getQuickTaskModel(mongoose.connection);
 
-     const isManagerOrAdmin = ['owner', 'admin', 'manager', 'workspace_admin', 'system_admin', 'super_admin'].includes(role);
+     const isManagerOrAdmin = ['owner', 'admin', 'manager', 'team_leader', 'workspace_admin', 'system_admin', 'super_admin'].includes(role);
     
     if (!companyId || !workspaceId) {
        return res.status(200).json({ success: true, data: [] });
@@ -157,27 +157,38 @@ export async function getAllTasks(req, res, next) {
       .lean();
 
     const mappedTasks = tasks.map(t => ({
-      id: t._id,
+      id: String(t._id),
       title: t.title,
       assignedTo: t.assigneeIds?.[0]?.name || 'Unassigned',
-      projectId: t.projectId?._id || null,
+      assigneeIds: (t.assigneeIds || []).map((assignee) => String(assignee?._id || assignee)).filter(Boolean),
+      reporterId: t.reporterId ? String(t.reporterId) : undefined,
+      projectId: t.projectId?._id ? String(t.projectId._id) : null,
       projectName: t.projectId?.name || '-',
       type: 'project',
       status: t.status,
       priority: t.priority,
-      dueDate: t.dueDate
+      dueDate: t.dueDate,
+      estimatedHours: t.estimatedHours ?? undefined,
+      subtasks: t.subtasks || [],
+      attachments: t.attachments || [],
+      description: t.description || '',
     }));
 
     const mappedQuickTasks = quickTasks.map(qt => ({
-      id: qt._id,
+      id: String(qt._id),
       title: qt.title,
       assignedTo: qt.assigneeIds?.[0]?.name || 'Unassigned',
+      assigneeIds: (qt.assigneeIds || []).map((assignee) => String(assignee?._id || assignee)).filter(Boolean),
+      reporterId: qt.reporterId ? String(qt.reporterId) : undefined,
       projectId: null,
       projectName: '-',
       type: 'quick',
       status: qt.status,
       priority: qt.priority,
-      dueDate: qt.dueDate
+      dueDate: qt.dueDate,
+      estimatedHours: qt.estimatedHours ?? undefined,
+      attachments: qt.attachments || [],
+      description: qt.description || '',
     }));
 
     return res.status(200).json({ 

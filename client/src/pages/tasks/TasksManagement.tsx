@@ -282,11 +282,26 @@ export const TasksManagement: React.FC = () => {
   };
 
    const filteredTasks = (list: TaskRow[]) => {
-     let filtered = list.filter(t => 
-       (t.title?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-       t.assignedTo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-       t.projectName?.toLowerCase().includes(searchTerm.toLowerCase()))
-     );
+     const query = searchTerm.trim().toLowerCase();
+     let filtered = list.filter((task) => {
+       if (!query) return true;
+       const reporter = task.reporterId ? userMap.get(task.reporterId) : null;
+       const assignees = (task.assigneeIds || [])
+         .map((id) => userMap.get(id)?.name || '')
+         .filter(Boolean)
+         .join(' ');
+       return [
+         task.title,
+         task.assignedTo,
+         task.projectName,
+         task.description || '',
+         reporter?.name || '',
+         assignees,
+       ]
+         .join(' ')
+         .toLowerCase()
+         .includes(query);
+     });
  
      if (filterStatus !== 'all') {
        filtered = filtered.filter(t => t.status === filterStatus);
@@ -317,8 +332,28 @@ export const TasksManagement: React.FC = () => {
      );
    };
 
-  const allFilteredTasks = [...filteredTasks(projectTasks), ...filteredTasks(quickTasks)];
+  const filteredProjectTasks = useMemo(() => filteredTasks(projectTasks), [projectTasks, searchTerm, filterStatus, departmentFilter, personFilter, userMap]);
+  const filteredQuickTasks = useMemo(() => filteredTasks(quickTasks), [quickTasks, searchTerm, filterStatus, departmentFilter, personFilter, userMap]);
+  const allFilteredTasks = useMemo(() => [...filteredProjectTasks, ...filteredQuickTasks], [filteredProjectTasks, filteredQuickTasks]);
+  const activeTasksPageCount = Math.max(1, Math.ceil(allFilteredTasks.length / tasksPerPage));
+  const projectTasksPageCount = Math.max(1, Math.ceil(filteredProjectTasks.length / tasksPerPage));
+  const quickTasksPageCount = Math.max(1, Math.ceil(filteredQuickTasks.length / tasksPerPage));
+  const paginatedActiveTasks = allFilteredTasks.slice((currentPage - 1) * tasksPerPage, currentPage * tasksPerPage);
+  const paginatedProjectTasks = filteredProjectTasks.slice((projectsPage - 1) * tasksPerPage, projectsPage * tasksPerPage);
+  const paginatedQuickTasks = filteredQuickTasks.slice((quickPage - 1) * tasksPerPage, quickPage * tasksPerPage);
   const activeFilterCount = [filterStatus !== 'all', departmentFilter !== 'all', personFilter !== 'all'].filter(Boolean).length;
+
+  useEffect(() => {
+    if (currentPage > activeTasksPageCount) setCurrentPage(activeTasksPageCount);
+  }, [activeTasksPageCount, currentPage]);
+
+  useEffect(() => {
+    if (projectsPage > projectTasksPageCount) setProjectsPage(projectTasksPageCount);
+  }, [projectTasksPageCount, projectsPage]);
+
+  useEffect(() => {
+    if (quickPage > quickTasksPageCount) setQuickPage(quickTasksPageCount);
+  }, [quickTasksPageCount, quickPage]);
 
   const StatusIcon = ({ status }: { status: string }) => {
     const s = status.toLowerCase().replace('_', '');
@@ -340,7 +375,7 @@ export const TasksManagement: React.FC = () => {
   };
 
    return (
-    <div className="h-full flex flex-col bg-[#f8f9fc] dark:bg-surface-950 p-3 sm:p-4 lg:p-6 overflow-hidden">
+    <div className="min-h-full flex flex-col bg-[#f8f9fc] dark:bg-surface-950 p-3 sm:p-4 lg:p-6 overflow-x-hidden">
       {/* Bordio Style Top Header */}
       <div className="mb-4 flex flex-col gap-3 lg:mb-6 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -519,7 +554,7 @@ export const TasksManagement: React.FC = () => {
         )}
       </div>
 
-      <div className="flex-1 overflow-hidden relative">
+      <div className="relative flex-1">
         <AnimatePresence mode="wait">
           {view === 'table' ? (
             <motion.div 
@@ -527,9 +562,9 @@ export const TasksManagement: React.FC = () => {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="h-full flex flex-col"
+              className="flex flex-col"
             >
-               <div className="flex flex-col h-full gap-6 overflow-auto custom-scrollbar">
+               <div className="flex flex-col gap-6 overflow-visible lg:overflow-auto custom-scrollbar">
                  {/* 1. Active Tasks Section */}
                  <div className="bg-white dark:bg-surface-900 rounded-xl border border-gray-200 dark:border-surface-800 shadow-sm overflow-hidden flex flex-col shrink-0 ring-1 ring-black/5">
                    <div 
@@ -544,8 +579,8 @@ export const TasksManagement: React.FC = () => {
                    </div>
                    
                    {activeSections.includes('active') && (
-                     <div className="overflow-auto border-gray-100 dark:border-surface-800 border-t">
-                       <table className="w-full text-xs text-left border-collapse">
+                     <div className="overflow-x-auto border-t border-gray-100 dark:border-surface-800">
+                       <table className="min-w-[760px] w-full text-xs text-left border-collapse">
                          <thead className="bg-white dark:bg-surface-900 text-gray-400 dark:text-surface-500 font-semibold border-b border-gray-50 dark:border-surface-800">
                            <tr>
                              <th className="px-5 py-3 font-semibold min-w-[300px]">Task Name</th>
@@ -561,9 +596,7 @@ export const TasksManagement: React.FC = () => {
                            {loading ? (
                              <tr><td colSpan={7} className="px-5 py-10 text-center text-gray-400">Loading your tasks...</td></tr>
                            ) : allFilteredTasks.length > 0 ? (
-                             allFilteredTasks
-                                .slice((currentPage - 1) * tasksPerPage, currentPage * tasksPerPage)
-                                .map((task, idx) => (
+                             paginatedActiveTasks.map((task, idx) => (
                                <TaskRowComponent key={task.id || idx} task={task} onClick={() => setSelectedTask(task)} />
                              ))
                            ) : (
@@ -574,27 +607,13 @@ export const TasksManagement: React.FC = () => {
 
                         {/* Pagination Controls */}
                         {allFilteredTasks.length > tasksPerPage && (
-                          <div className="px-5 py-4 flex items-center justify-between border-t border-gray-100 dark:border-surface-800 bg-gray-50/30 dark:bg-surface-950/20">
-                            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">
-                               Showing {Math.min(allFilteredTasks.length, (currentPage - 1) * tasksPerPage + 1)}-{Math.min(allFilteredTasks.length, currentPage * tasksPerPage)} of {allFilteredTasks.length}
-                            </span>
-                            <div className="flex items-center gap-2">
-                              {Array.from({ length: Math.ceil(allFilteredTasks.length / tasksPerPage) }, (_, i) => i + 1).map(page => (
-                                <button
-                                  key={page}
-                                  onClick={() => setCurrentPage(page)}
-                                  className={cn(
-                                    "w-8 h-8 rounded-lg text-xs font-bold transition-all",
-                                    currentPage === page 
-                                      ? "bg-[#00a3ff] text-white shadow-lg shadow-blue-500/20" 
-                                      : "bg-white dark:bg-surface-900 text-gray-500 dark:text-surface-400 hover:bg-gray-100 dark:hover:bg-surface-800 border border-gray-100 dark:border-surface-800"
-                                  )}
-                                >
-                                  {page}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
+                          <PaginationControls
+                            currentPage={currentPage}
+                            totalPages={activeTasksPageCount}
+                            totalItems={allFilteredTasks.length}
+                            itemsPerPage={tasksPerPage}
+                            onPageChange={setCurrentPage}
+                          />
                         )}
                      </div>
                    )}
@@ -609,30 +628,20 @@ export const TasksManagement: React.FC = () => {
                      <div className="flex items-center gap-2">
                        <ChevronDown size={14} className={cn("text-gray-400 transition-transform", !activeSections.includes('projects') && "-rotate-90")} />
                        <span className="text-sm font-bold text-gray-700 dark:text-surface-200 uppercase tracking-tight">Projects</span>
-                       <span className="bg-gray-100 dark:bg-surface-800 text-gray-500 dark:text-surface-400 text-[10px] font-bold px-2 py-0.5 rounded-full">{allFilteredTasks.filter(t => t.projectName !== '-').length}</span>
+                       <span className="bg-gray-100 dark:bg-surface-800 text-gray-500 dark:text-surface-400 text-[10px] font-bold px-2 py-0.5 rounded-full">{filteredProjectTasks.length}</span>
                      </div>
                    </div>
 
                    {activeSections.includes('projects') && (
-                     <div className="overflow-auto border-gray-100 dark:border-surface-800 border-t">
-                        <table className="w-full text-xs text-left border-collapse">
+                     <div className="overflow-x-auto border-t border-gray-100 dark:border-surface-800">
+                        <table className="min-w-[760px] w-full text-xs text-left border-collapse">
                           <tbody className="divide-y divide-gray-50 dark:divide-surface-800">
-                             {allFilteredTasks.filter(t => t.projectName !== '-').length === 0 ? (
+                             {filteredProjectTasks.length === 0 ? (
                                <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">No project tasks found.</td></tr>
                              ) : (
                                (() => {
-                                 const groups: Record<string, TaskRow[]> = {};
-                                 allFilteredTasks.filter(t => t.projectName !== '-').forEach(t => {
-                                   if (!groups[t.projectName]) groups[t.projectName] = [];
-                                   groups[t.projectName].push(t);
-                                 });
-                                 
-                                 const pTasks = allFilteredTasks.filter(t => t.projectName !== '-');
-                                 const paginatedPTasks = pTasks.slice((projectsPage - 1) * tasksPerPage, projectsPage * tasksPerPage);
-                                 
-                                 // Re-group paginated tasks
                                  const paginatedGroups: Record<string, TaskRow[]> = {};
-                                 paginatedPTasks.forEach(t => {
+                                 paginatedProjectTasks.forEach(t => {
                                    if (!paginatedGroups[t.projectName]) paginatedGroups[t.projectName] = [];
                                    paginatedGroups[t.projectName].push(t);
                                  });
@@ -652,30 +661,16 @@ export const TasksManagement: React.FC = () => {
                                        </React.Fragment>
                                      ))}
                                      
-                                     {pTasks.length > tasksPerPage && (
+                                     {filteredProjectTasks.length > tasksPerPage && (
                                        <tr>
                                          <td colSpan={7} className="px-5 py-4 border-t border-gray-100 dark:border-surface-800 bg-gray-50/30 dark:bg-surface-950/20">
-                                            <div className="flex items-center justify-between">
-                                              <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">
-                                                Showing {Math.min(pTasks.length, (projectsPage - 1) * tasksPerPage + 1)}-{Math.min(pTasks.length, projectsPage * tasksPerPage)} of {pTasks.length}
-                                              </span>
-                                              <div className="flex items-center gap-2">
-                                                {Array.from({ length: Math.ceil(pTasks.length / tasksPerPage) }, (_, i) => i + 1).map(page => (
-                                                  <button
-                                                    key={page}
-                                                    onClick={() => setProjectsPage(page)}
-                                                    className={cn(
-                                                      "w-8 h-8 rounded-lg text-xs font-bold transition-all",
-                                                      projectsPage === page 
-                                                        ? "bg-[#00a3ff] text-white shadow-lg shadow-blue-500/20" 
-                                                        : "bg-white dark:bg-surface-900 text-gray-500 dark:text-surface-400 hover:bg-gray-100 dark:hover:bg-surface-800 border border-gray-100 dark:border-surface-800"
-                                                    )}
-                                                  >
-                                                    {page}
-                                                  </button>
-                                                ))}
-                                              </div>
-                                            </div>
+                                            <PaginationControls
+                                              currentPage={projectsPage}
+                                              totalPages={projectTasksPageCount}
+                                              totalItems={filteredProjectTasks.length}
+                                              itemsPerPage={tasksPerPage}
+                                              onPageChange={setProjectsPage}
+                                            />
                                          </td>
                                        </tr>
                                      )}
@@ -698,49 +693,33 @@ export const TasksManagement: React.FC = () => {
                      <div className="flex items-center gap-2">
                        <ChevronDown size={14} className={cn("text-gray-400 transition-transform", !activeSections.includes('quick') && "-rotate-90")} />
                        <span className="text-sm font-bold text-gray-700 dark:text-surface-200 uppercase tracking-tight">Quick Tasks</span>
-                       <span className="bg-gray-100 dark:bg-surface-800 text-gray-500 dark:text-surface-400 text-[10px] font-bold px-2 py-0.5 rounded-full">{allFilteredTasks.filter(t => t.projectName === '-').length}</span>
+                       <span className="bg-gray-100 dark:bg-surface-800 text-gray-500 dark:text-surface-400 text-[10px] font-bold px-2 py-0.5 rounded-full">{filteredQuickTasks.length}</span>
                      </div>
                    </div>
 
                    {activeSections.includes('quick') && (
-                     <div className="overflow-auto border-gray-100 dark:border-surface-800 border-t">
-                        <table className="w-full text-xs text-left border-collapse">
+                     <div className="overflow-x-auto border-t border-gray-100 dark:border-surface-800">
+                        <table className="min-w-[760px] w-full text-xs text-left border-collapse">
                           <tbody className="divide-y divide-gray-50 dark:divide-surface-800">
-                             {allFilteredTasks.filter(t => t.projectName === '-').length === 0 ? (
+                             {filteredQuickTasks.length === 0 ? (
                                <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">No quick tasks found.</td></tr>
                              ) : (
                                (() => {
-                                 const qTasks = allFilteredTasks.filter(t => t.projectName === '-');
-                                 const paginatedQTasks = qTasks.slice((quickPage - 1) * tasksPerPage, quickPage * tasksPerPage);
                                  return (
                                    <>
-                                     {paginatedQTasks.map((task, idx) => (
+                                     {paginatedQuickTasks.map((task, idx) => (
                                        <TaskRowComponent key={task.id || idx} task={task} onClick={() => setSelectedTask(task)} />
                                      ))}
-                                     {qTasks.length > tasksPerPage && (
+                                     {filteredQuickTasks.length > tasksPerPage && (
                                        <tr>
                                           <td colSpan={7} className="px-5 py-4 border-t border-gray-100 dark:border-surface-800 bg-gray-50/30 dark:bg-surface-950/20">
-                                             <div className="flex items-center justify-between">
-                                                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">
-                                                  Showing {Math.min(qTasks.length, (quickPage - 1) * tasksPerPage + 1)}-{Math.min(qTasks.length, quickPage * tasksPerPage)} of {qTasks.length}
-                                                </span>
-                                                <div className="flex items-center gap-2">
-                                                  {Array.from({ length: Math.ceil(qTasks.length / tasksPerPage) }, (_, i) => i + 1).map(page => (
-                                                    <button
-                                                      key={page}
-                                                      onClick={() => setQuickPage(page)}
-                                                      className={cn(
-                                                        "w-8 h-8 rounded-lg text-xs font-bold transition-all",
-                                                        quickPage === page 
-                                                          ? "bg-[#00a3ff] text-white shadow-lg shadow-blue-500/20" 
-                                                          : "bg-white dark:bg-surface-900 text-gray-500 dark:text-surface-400 hover:bg-gray-100 dark:hover:bg-surface-800 border border-gray-100 dark:border-surface-800"
-                                                      )}
-                                                    >
-                                                      {page}
-                                                    </button>
-                                                  ))}
-                                                </div>
-                                             </div>
+                                             <PaginationControls
+                                               currentPage={quickPage}
+                                               totalPages={quickTasksPageCount}
+                                               totalItems={filteredQuickTasks.length}
+                                               itemsPerPage={tasksPerPage}
+                                               onPageChange={setQuickPage}
+                                             />
                                           </td>
                                        </tr>
                                      )}
@@ -868,7 +847,7 @@ const CreateTaskOverlay: React.FC<{ onClose: () => void; onCreated: () => void }
     >
         <motion.div 
           initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
-          className="bg-white dark:bg-surface-900 rounded-[2rem] w-full max-w-2xl shadow-2xl p-10 mt-10"
+          className="mt-4 w-full max-w-2xl rounded-[1.75rem] bg-white p-5 shadow-2xl sm:mt-10 sm:p-10 dark:bg-surface-900"
           onClick={e => e.stopPropagation()}
         >
            <div className="flex items-center justify-between mb-8">
@@ -888,7 +867,7 @@ const CreateTaskOverlay: React.FC<{ onClose: () => void; onCreated: () => void }
                  />
              </div>
 
-             <div className="grid grid-cols-2 gap-6">
+             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                  <div className="space-y-2">
                     <label className="text-[11px] font-bold uppercase tracking-widest text-gray-400 dark:text-surface-500 ml-1">Project</label>
                     <select 
@@ -960,7 +939,7 @@ const CreateTaskOverlay: React.FC<{ onClose: () => void; onCreated: () => void }
                 />
              </div>
 
-             <div className="flex items-center justify-end gap-4 pt-4">
+             <div className="flex flex-col-reverse gap-3 pt-4 sm:flex-row sm:items-center sm:justify-end">
                 <button onClick={onClose} className="px-6 py-3 text-sm font-bold text-gray-500 hover:text-gray-700">Discard</button>
                 <button 
                   onClick={handleCreate}
@@ -1003,7 +982,7 @@ const TaskDetailOverlay: React.FC<{
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-end bg-black/30 backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex items-end justify-end bg-black/30 backdrop-blur-[2px] md:items-center"
       onClick={onClose}
     >
        <motion.div 
@@ -1011,7 +990,7 @@ const TaskDetailOverlay: React.FC<{
         animate={{ x: 0 }}
         exit={{ x: '100%' }}
         transition={{ type: 'spring', damping: 30, stiffness: 200 }}
-        className="w-full max-w-[950px] h-full bg-white dark:bg-surface-900 shadow-2xl flex flex-col"
+        className="h-[92vh] w-full max-w-[950px] rounded-t-[1.5rem] bg-white shadow-2xl flex flex-col md:h-full md:rounded-none dark:bg-surface-900"
         onClick={e => e.stopPropagation()}
       >
         {/* Detail Header */}
@@ -1027,16 +1006,16 @@ const TaskDetailOverlay: React.FC<{
            </div>
         </div>
 
-        <div className="flex-1 overflow-hidden flex">
+        <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
           {/* Main Content Side */}
-          <div className="flex-1 overflow-y-auto p-10 space-y-10 custom-scrollbar">
+          <div className="flex-1 overflow-y-auto p-5 space-y-8 custom-scrollbar sm:p-8 lg:p-10">
              {loading && !fullData ? (
               <div className="flex items-center justify-center h-40 text-gray-400">Loading task details...</div>
             ) : (
               <>
                 <h1 className="text-3xl font-bold text-gray-900 dark:text-surface-100 leading-tight">{data.title}</h1>
                 
-                <div className="grid grid-cols-2 gap-y-4 gap-x-10 max-w-lg">
+                <div className="grid max-w-lg grid-cols-1 gap-x-10 gap-y-4 md:grid-cols-2">
                    <div className="flex items-center gap-6">
                      <span className="text-[13px] text-gray-400 dark:text-surface-500 font-medium w-24">Status</span>
                      <select 
@@ -1198,7 +1177,7 @@ const TaskDetailOverlay: React.FC<{
                        <Paperclip size={14} /> Files <span className="bg-gray-100 text-gray-500 px-2.5 py-0.5 rounded-full ml-1 text-[9px]">{data.attachments?.length || 0}</span>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     {data.attachments?.map((file: any) => (
                       <div key={file.id} className="flex items-center gap-3 p-3 bg-white border border-gray-100 rounded-xl hover:shadow-md transition-all cursor-pointer group">
                          <div className="w-10 h-10 bg-blue-50 flex items-center justify-center rounded-lg text-blue-500 group-hover:bg-blue-500 group-hover:text-white transition-colors">
@@ -1224,8 +1203,8 @@ const TaskDetailOverlay: React.FC<{
           </div>
 
           {/* Activity / Chat Sidebar */}
-          <div className="w-[340px] border-l border-gray-100 bg-[#fbfcff] flex flex-col">
-             <div className="p-8 border-b border-gray-100 bg-white">
+          <div className="flex w-full flex-col border-t border-gray-100 bg-[#fbfcff] lg:w-[340px] lg:border-l lg:border-t-0 dark:border-surface-800 dark:bg-surface-950/40">
+             <div className="border-b border-gray-100 bg-white p-5 sm:p-6 dark:border-surface-800 dark:bg-surface-900">
                 <div className="flex items-center justify-between">
                    <div className="flex items-center gap-2">
                       <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center text-blue-500">
@@ -1241,7 +1220,7 @@ const TaskDetailOverlay: React.FC<{
                    </div>
                 </div>
              </div>
-             <div className="flex-1 overflow-y-auto p-8 space-y-6 scrollbar-hide bg-gray-50/20">
+             <div className="flex-1 overflow-y-auto p-5 space-y-6 scrollbar-hide bg-gray-50/20 sm:p-6">
                  <div className="text-center py-2 relative">
                     <span className="bg-white border border-gray-100 text-[#999] text-[9px] font-bold px-3 py-1 rounded-full uppercase tracking-widest relative z-10 shadow-sm">Activity & Chat</span>
                     <div className="absolute top-1/2 left-0 right-0 h-[1px] bg-gray-100/50 -z-10" />
@@ -1272,7 +1251,7 @@ const TaskDetailOverlay: React.FC<{
                  )}
               </div>
 
-             <div className="p-6 bg-white dark:bg-surface-900 border-t border-gray-100 dark:border-surface-800 shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
+             <div className="border-t border-gray-100 bg-white p-5 shadow-[0_-4px_20px_rgba(0,0,0,0.02)] dark:border-surface-800 dark:bg-surface-900 sm:p-6">
                 <div className="relative group">
                   <textarea 
                     placeholder="Type a message..."
@@ -1329,6 +1308,74 @@ const ActivityItem = ({ user: userName, action, time, meta, metaAction }: any) =
         </div>
       )}
       {time && <span className="text-gray-300 text-[9px] font-bold uppercase block tracking-widest">{time}</span>}
+    </div>
+  );
+};
+
+const PaginationControls = ({
+  currentPage,
+  totalPages,
+  totalItems,
+  itemsPerPage,
+  onPageChange,
+}: {
+  currentPage: number;
+  totalPages: number;
+  totalItems: number;
+  itemsPerPage: number;
+  onPageChange: (page: number) => void;
+}) => {
+  if (totalItems <= itemsPerPage) return null;
+
+  const pages = Array.from({ length: totalPages }, (_, index) => index + 1).filter((page) => {
+    if (totalPages <= 5) return true;
+    return page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1;
+  });
+
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <span className="text-[11px] font-bold uppercase tracking-widest text-gray-400">
+        Showing {Math.min(totalItems, (currentPage - 1) * itemsPerPage + 1)}-{Math.min(totalItems, currentPage * itemsPerPage)} of {totalItems}
+      </span>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+          disabled={currentPage === 1}
+          className="rounded-lg border border-gray-100 bg-white px-3 py-2 text-[11px] font-bold text-gray-500 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-surface-800 dark:bg-surface-900 dark:text-surface-400 dark:hover:bg-surface-800"
+        >
+          Prev
+        </button>
+        {pages.map((page, index) => {
+          const prevPage = pages[index - 1];
+          const showGap = prevPage && page - prevPage > 1;
+          return (
+            <React.Fragment key={page}>
+              {showGap ? <span className="px-1 text-xs font-bold text-gray-300 dark:text-surface-600">...</span> : null}
+              <button
+                type="button"
+                onClick={() => onPageChange(page)}
+                className={cn(
+                  'h-8 min-w-8 rounded-lg px-2 text-xs font-bold transition-all',
+                  currentPage === page
+                    ? 'bg-[#00a3ff] text-white shadow-lg shadow-blue-500/20'
+                    : 'border border-gray-100 bg-white text-gray-500 hover:bg-gray-100 dark:border-surface-800 dark:bg-surface-900 dark:text-surface-400 dark:hover:bg-surface-800'
+                )}
+              >
+                {page}
+              </button>
+            </React.Fragment>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+          disabled={currentPage === totalPages}
+          className="rounded-lg border border-gray-100 bg-white px-3 py-2 text-[11px] font-bold text-gray-500 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-surface-800 dark:bg-surface-900 dark:text-surface-400 dark:hover:bg-surface-800"
+        >
+          Next
+        </button>
+      </div>
     </div>
   );
 };

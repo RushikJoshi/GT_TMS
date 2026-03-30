@@ -93,7 +93,7 @@ export const ProjectDetailPage: React.FC = () => {
     void (async () => {
       try {
         setLoadingTaskRequests(true);
-        const response = await tasksService.getRequests(project.id);
+        const response = await tasksService.getRequests({ projectId: project.id });
         if (!cancelled) setTaskRequests(response.data?.data ?? response.data ?? []);
       } catch {
         if (!cancelled) setTaskRequests([]);
@@ -360,6 +360,11 @@ export const ProjectDetailPage: React.FC = () => {
               <span className="hidden sm:inline">To-do table</span>
               <span className="sm:hidden">To-do</span>
             </Link>
+            <Link to={`/projects/${project.id}/requests`} className="btn-secondary btn-sm sm:btn-md whitespace-nowrap">
+              <Settings2 size={15} />
+              <span className="hidden sm:inline">Task requests</span>
+              <span className="sm:hidden">Requests</span>
+            </Link>
           </div>
         </div>
 
@@ -418,15 +423,20 @@ export const ProjectDetailPage: React.FC = () => {
         <TabsContent value="overview" className="pt-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="card p-5 md:col-span-2">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <h3 className="font-display font-semibold text-surface-900 dark:text-white">Task Requests</h3>
-                  <p className="text-xs text-surface-400">
-                    {canReviewTaskRequests ? 'Review requested tasks before they are created.' : 'Track task requests raised for this project.'}
-                  </p>
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-display font-semibold text-surface-900 dark:text-white">Task Requests</h3>
+                    <p className="text-xs text-surface-400">
+                      {canReviewTaskRequests ? 'Review requested tasks before they are created.' : 'Track task requests raised for this project.'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Link to={`/projects/${project.id}/requests`} className="text-xs font-medium text-brand-600 dark:text-brand-400">
+                      Open full page
+                    </Link>
+                    {loadingTaskRequests ? <span className="text-xs text-surface-400">Loading...</span> : null}
+                  </div>
                 </div>
-                {loadingTaskRequests ? <span className="text-xs text-surface-400">Loading...</span> : null}
-              </div>
               <div className="space-y-3">
                 {taskRequests.length === 0 ? (
                   <p className="text-sm text-surface-400">No task requests found for this project.</p>

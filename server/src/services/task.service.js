@@ -422,23 +422,31 @@ export async function createTask({ companyId, workspaceId, userId, role, data })
 
 export async function listTaskCreationRequests({ companyId, workspaceId, userId, role, projectId, requestStatus }) {
   const tenantId = companyId;
-  const ok = await assertProjectAccess({ tenantId, workspaceId, userId, role, projectId });
-  if (!ok) {
-    const err = new Error('Forbidden: no access to this project');
-    err.statusCode = 403;
-    err.code = 'FORBIDDEN';
-    throw err;
-  }
-
   const { TaskCreationRequest, Project } = await getTenantModels(companyId);
-  const project = await Project.findOne({ _id: projectId, tenantId, workspaceId }).lean();
-  if (!project) return [];
+  const filter = { tenantId, workspaceId };
+  if (projectId) {
+    const ok = await assertProjectAccess({ tenantId, workspaceId, userId, role, projectId });
+    if (!ok) {
+      const err = new Error('Forbidden: no access to this project');
+      err.statusCode = 403;
+      err.code = 'FORBIDDEN';
+      throw err;
+    }
 
-  const filter = { tenantId, workspaceId, projectId };
-  if (requestStatus) filter.requestStatus = requestStatus;
-  if (!canApproveTaskRequest({ role, userId, project })) {
-    filter.requestedBy = userId;
+    const project = await Project.findOne({ _id: projectId, tenantId, workspaceId }).lean();
+    if (!project) return [];
+
+    filter.projectId = projectId;
+    if (!canApproveTaskRequest({ role, userId, project })) {
+      filter.requestedBy = userId;
+    }
+  } else if (!isAdminRole(role) && role !== 'manager' && role !== 'team_leader') {
+    filter.$or = [
+      { requestedBy: userId },
+      { requestedToIds: userId },
+    ];
   }
+  if (requestStatus) filter.requestStatus = requestStatus;
 
   const requests = await TaskCreationRequest.find(filter).sort({ createdAt: -1 });
   return requests.map(mapRequestWithActivity);
