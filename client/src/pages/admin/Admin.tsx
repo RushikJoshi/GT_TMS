@@ -218,6 +218,7 @@ export const AdminUsersPage: React.FC = () => {
   const [roleFilter, setRoleFilter] = useState<Role | 'all'>('all');
   const [editForm, setEditForm] = useState({
     role: 'team_member' as Role,
+    email: '',
     jobTitle: '',
     department: '',
     isActive: true,
@@ -298,6 +299,7 @@ export const AdminUsersPage: React.FC = () => {
     if (!selectedUser) return;
     setEditForm({
       role: selectedUser.role,
+      email: selectedUser.email || '',
       jobTitle: selectedUser.jobTitle || '',
       department: selectedUser.department || '',
       isActive: selectedUser.isActive,
@@ -570,6 +572,10 @@ export const AdminUsersPage: React.FC = () => {
                   <option key={k} value={k}>{v.label}</option>
                 ))}
               </select>
+            </div>
+            <div>
+              <label className="label">Email</label>
+              <input value={editForm.email} onChange={e => setEditForm(prev => ({ ...prev, email: e.target.value }))} className="input" type="email" />
             </div>
             <div>
               <label className="label">Job Title</label>

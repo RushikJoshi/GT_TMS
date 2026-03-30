@@ -52,6 +52,7 @@ const taskCreateSchema = z.object({
   startDate: z.string().optional(),
   durationDays: z.number().int().min(1).max(3650),
   phaseId: z.string().optional(),
+  subcategoryId: z.string().optional(),
   dependencies: z.array(z.string()).optional(),
   type: timelineTypeEnum.optional(),
   estimatedHours: z.number().optional(),

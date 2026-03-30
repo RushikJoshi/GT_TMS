@@ -18,6 +18,7 @@ const taskCreationRequestSchema = new mongoose.Schema(
     dueDate: { type: Date, default: null },
     durationDays: { type: Number, required: true, min: 1, max: 3650 },
     phaseId: { type: mongoose.Schema.Types.ObjectId, ref: 'Phase', default: null, index: true },
+    subcategoryId: { type: String, trim: true, maxlength: 100, default: null },
     estimatedHours: { type: Number, default: null, min: 0 },
     order: { type: Number, default: 0 },
     labels: [{ type: String, trim: true, maxlength: 40 }],
@@ -48,6 +49,7 @@ taskCreationRequestSchema.set('toJSON', {
     ret.requestedBy = String(ret.requestedBy);
     ret.requestedToIds = Array.isArray(ret.requestedToIds) ? ret.requestedToIds.map((value) => String(value)) : [];
     ret.phaseId = ret.phaseId ? String(ret.phaseId) : undefined;
+    ret.subcategoryId = ret.subcategoryId || undefined;
     ret.createdTaskId = ret.createdTaskId ? String(ret.createdTaskId) : undefined;
     ret.startDate = ret.startDate ? new Date(ret.startDate).toISOString().split('T')[0] : undefined;
     ret.dueDate = ret.dueDate ? new Date(ret.dueDate).toISOString().split('T')[0] : undefined;

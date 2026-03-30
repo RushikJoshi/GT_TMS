@@ -194,6 +194,36 @@ function addDaysUtc(date, days) {
   return new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate() + days));
 }
 
+function resolveTaskSchedule(data) {
+  const requestedStartDate = data.startDate ? new Date(data.startDate) : new Date();
+  const startDate = Number.isNaN(requestedStartDate.getTime()) ? new Date() : requestedStartDate;
+  const requestedDueDate = data.dueDate ? new Date(data.dueDate) : null;
+  if (requestedDueDate && !Number.isNaN(requestedDueDate.getTime())) {
+    const diffMs = requestedDueDate.getTime() - startDate.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
+    return {
+      startDate,
+      dueDate: requestedDueDate,
+      durationDays: Math.max(1, diffDays),
+    };
+  }
+
+  const rawDurationDays = Number(data.durationDays);
+  if (!Number.isFinite(rawDurationDays) || rawDurationDays < 1) {
+    const err = new Error('Task duration is required.');
+    err.statusCode = 400;
+    err.code = 'TASK_DURATION_REQUIRED';
+    throw err;
+  }
+
+  const durationDays = Math.max(1, Math.round(rawDurationDays));
+  return {
+    startDate,
+    dueDate: addDaysUtc(startDate, durationDays - 1),
+    durationDays,
+  };
+}
+
 function mapRequestWithActivity(request) {
   return typeof request?.toJSON === 'function' ? request.toJSON() : request;
 }
@@ -341,17 +371,7 @@ export async function createTask({ companyId, workspaceId, userId, role, data })
 
   const { Task, Project, ActivityLog, Notification } = await getTenantModels(companyId);
   const project = await Project.findOne({ _id: data.projectId, tenantId, workspaceId }).select('name').lean();
-  const rawDurationDays = Number(data.durationDays);
-  if (!Number.isFinite(rawDurationDays) || rawDurationDays < 1) {
-    const err = new Error('Task duration is required.');
-    err.statusCode = 400;
-    err.code = 'TASK_DURATION_REQUIRED';
-    throw err;
-  }
-  const durationDays = Math.max(1, Math.round(rawDurationDays));
-
-  const startDate = data.startDate ? new Date(data.startDate) : new Date();
-  const dueDate = addDaysUtc(startDate, durationDays - 1);
+  const { startDate, dueDate, durationDays } = resolveTaskSchedule(data);
   const task = await Task.create({
     tenantId,
     workspaceId,
@@ -367,6 +387,7 @@ export async function createTask({ companyId, workspaceId, userId, role, data })
     dueDate,
     duration: durationDays * 24 * 60,
     phaseId: data.phaseId || null,
+    subcategoryId: data.subcategoryId || null,
     dependencies: Array.isArray(data.dependencies) ? data.dependencies : [],
     timelineType: data.type || 'task',
     estimatedHours: data.estimatedHours ?? null,
@@ -479,17 +500,7 @@ export async function createTaskCreationRequest({ companyId, workspaceId, userId
     throw err;
   }
 
-  const rawDurationDays = Number(data.durationDays);
-  if (!Number.isFinite(rawDurationDays) || rawDurationDays < 1) {
-    const err = new Error('Task duration is required.');
-    err.statusCode = 400;
-    err.code = 'TASK_DURATION_REQUIRED';
-    throw err;
-  }
-
-  const durationDays = Math.max(1, Math.round(rawDurationDays));
-  const startDate = data.startDate ? new Date(data.startDate) : new Date();
-  const dueDate = addDaysUtc(startDate, durationDays - 1);
+  const { startDate, dueDate, durationDays } = resolveTaskSchedule(data);
 
   const request = await TaskCreationRequest.create({
     tenantId,
@@ -506,6 +517,7 @@ export async function createTaskCreationRequest({ companyId, workspaceId, userId
     dueDate,
     durationDays,
     phaseId: data.phaseId || null,
+    subcategoryId: data.subcategoryId || null,
     estimatedHours: data.estimatedHours ?? null,
     order: data.order ?? 0,
     labels: data.labels || [],
@@ -598,8 +610,10 @@ export async function reviewTaskCreationRequest({
         priority: request.priority,
         assigneeIds: mapIdList(request.assigneeIds),
         startDate: request.startDate ? new Date(request.startDate).toISOString().split('T')[0] : undefined,
+        dueDate: request.dueDate ? new Date(request.dueDate).toISOString().split('T')[0] : undefined,
         durationDays: request.durationDays,
         phaseId: request.phaseId ? String(request.phaseId) : undefined,
+        subcategoryId: request.subcategoryId || undefined,
         estimatedHours: request.estimatedHours,
         order: request.order,
         labels: request.labels || [],

@@ -28,6 +28,19 @@ function normalizeSdlcPlan(input) {
     .filter((phase) => phase.name);
 }
 
+function normalizeSubcategories(input) {
+  const subcategories = Array.isArray(input) ? input : [];
+  return subcategories
+    .map((subcategory, index) => ({
+      id: String(subcategory?.id ?? '').trim(),
+      name: String(subcategory?.name ?? '').trim(),
+      description: String(subcategory?.description ?? '').trim(),
+      color: String(subcategory?.color ?? '#6366f1').trim() || '#6366f1',
+      order: Number.isFinite(Number(subcategory?.order)) ? Math.max(0, Number(subcategory.order)) : index,
+    }))
+    .filter((subcategory) => subcategory.id && subcategory.name);
+}
+
 function normalizeUserIdentifier(value) {
   return String(value || '').trim().toLowerCase();
 }
@@ -247,6 +260,7 @@ export async function createProject({ companyId, workspaceId, userId, role, data
       .map(String)
   ));
   const sdlcPlan = normalizeSdlcPlan(data.sdlcPlan);
+  const subcategories = normalizeSubcategories(data.subcategories);
   const totalPlannedDurationDays = sdlcPlan.reduce((sum, phase) => sum + phase.durationDays, 0);
   const teamId = data.teamId && mongoose.Types.ObjectId.isValid(data.teamId) ? data.teamId : null;
 
@@ -267,6 +281,7 @@ export async function createProject({ companyId, workspaceId, userId, role, data
     budget: Number.isFinite(data.budget) ? Number(data.budget) : null,
     budgetCurrency: String(data.budgetCurrency || 'INR').trim().slice(0, 8) || 'INR',
     sdlcPlan,
+    subcategories,
     totalPlannedDurationDays,
     progress: 0,
     tasksCount: 0,
@@ -368,6 +383,10 @@ export async function updateProject({ companyId, workspaceId, userId, role, proj
   if (updates.sdlcPlan !== undefined) {
     normalizedUpdates.sdlcPlan = normalizeSdlcPlan(updates.sdlcPlan);
     normalizedUpdates.totalPlannedDurationDays = normalizedUpdates.sdlcPlan.reduce((sum, phase) => sum + phase.durationDays, 0);
+  }
+
+  if (updates.subcategories !== undefined) {
+    normalizedUpdates.subcategories = normalizeSubcategories(updates.subcategories);
   }
 
   const project = await Project.findOneAndUpdate(
