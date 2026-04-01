@@ -98,15 +98,15 @@ const taskRequestReviewSchema = z.object({
   reviewNote: z.string().trim().max(5000).optional(),
 });
 
- const addSubtaskSchema = z.object({
-   title: z.string().trim().min(1).max(300),
-   assigneeId: z.string().optional(),
-   isCompleted: z.boolean().optional(),
- });
- 
- const addCommentSchema = z.object({
-   content: z.string().trim().min(1).max(8000),
- });
+const addSubtaskSchema = z.object({
+  title: z.string().trim().min(1).max(300),
+  assigneeId: z.string().optional(),
+  isCompleted: z.boolean().optional(),
+});
+
+const addCommentSchema = z.object({
+  content: z.string().trim().min(1).max(8000),
+});
 
 const patchSubtaskSchema = z.object({
   title: z.string().trim().min(1).max(300).optional(),
@@ -129,8 +129,8 @@ router.put('/reassign-request/:id/reject', ReassignController.rejectRequest);
 router.get('/reassign-request/status/:taskId', ReassignController.getStatusForTask);
 
 router.get('/', TasksController.list);
- router.get('/detail/:id', TasksController.getDetail);
- router.get('/:id', TasksController.getOne);
+router.get('/detail/:id', TasksController.getDetail);
+router.get('/:id', TasksController.getOne);
 router.post('/', validateBody(taskCreateSchema), TasksController.create);
 router.put('/:id', validateBody(taskUpdateSchema), TasksController.update);
 router.patch('/:id', validateBody(taskUpdateSchema), TasksController.update);
@@ -142,7 +142,7 @@ router.post('/:id/subtasks', validateBody(addSubtaskSchema), TasksController.add
 router.patch('/:id/subtasks/:subtaskId', validateBody(patchSubtaskSchema), TasksController.patchSubtask);
 router.delete('/:id/subtasks/:subtaskId', TasksController.deleteSubtask);
 
- router.post('/:id/attachments', upload.array('files', 10), TasksController.uploadAttachments);
- router.post('/:id/comments', validateBody(addCommentSchema), TasksController.addComment);
+router.post('/:id/attachments', upload.array('files', 10), TasksController.uploadAttachments);
+router.post('/:id/comments', validateBody(addCommentSchema), TasksController.addComment);
 
 export default router;

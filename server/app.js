@@ -115,7 +115,7 @@ app.use((req, _res, next) => {
 app.use(
   rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: 600,
+    limit: 10000, // Increased for development
   })
 );
 

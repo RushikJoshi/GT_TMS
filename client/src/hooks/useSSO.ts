@@ -32,8 +32,9 @@ export function useSSO() {
     if (checked.current) return;
     checked.current = true;
 
-    // If already authenticated (e.g. from persisted localStorage), skip
-    if (isAuthenticated && user && token) return;
+    // If already authenticated with a user object, skip.
+    // (token might be null in SSO sessions, so we don't check for it here)
+    if (isAuthenticated && user) return;
 
     // Check SSO session silently
     fetch(SSO_ME_URL, {
@@ -69,7 +70,7 @@ export function useSSO() {
               bio: undefined,
             },
             isAuthenticated: true,
-            // token stays null — API calls use the cookie
+            token: null, // Clear stale localStorage token so axios uses the SSO cookie
           });
         }
       })
