@@ -164,7 +164,7 @@ export const TasksManagement: React.FC = () => {
       setCurrentPage(1);
       setProjectsPage(1);
       setQuickPage(1);
-    }, [searchTerm, filterStatus]);
+    }, [searchTerm, filterStatus, departmentFilter, personFilter]);
 
    useEffect(() => {
      const handleClickOutside = (e: MouseEvent) => {
@@ -277,6 +277,15 @@ export const TasksManagement: React.FC = () => {
   
   // Kanban columns data
   const kanbanTasks = [...projectTasks, ...quickTasks];
+  const userMap = useMemo(() => new Map(users.map((item) => [item.id, item])), [users]);
+  const departmentOptions = useMemo(
+    () => Array.from(new Set(users.map((item) => item.department?.trim()).filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b)),
+    [users]
+  );
+  const personOptions = useMemo(
+    () => [...users].sort((a, b) => a.name.localeCompare(b.name)),
+    [users]
+  );
 
   useEffect(() => {
     fetchTasks();
@@ -349,7 +358,28 @@ export const TasksManagement: React.FC = () => {
      );
    };
 
-  const allFilteredTasks = [...filteredTasks(projectTasks), ...filteredTasks(quickTasks)];
+  const filteredProjectTasks = useMemo(() => filteredTasks(projectTasks), [projectTasks, searchTerm, filterStatus, departmentFilter, personFilter, userMap]);
+  const filteredQuickTasks = useMemo(() => filteredTasks(quickTasks), [quickTasks, searchTerm, filterStatus, departmentFilter, personFilter, userMap]);
+  const allFilteredTasks = useMemo(() => [...filteredProjectTasks, ...filteredQuickTasks], [filteredProjectTasks, filteredQuickTasks]);
+  const activeTasksPageCount = Math.max(1, Math.ceil(allFilteredTasks.length / tasksPerPage));
+  const projectTasksPageCount = Math.max(1, Math.ceil(filteredProjectTasks.length / tasksPerPage));
+  const quickTasksPageCount = Math.max(1, Math.ceil(filteredQuickTasks.length / tasksPerPage));
+  const paginatedActiveTasks = allFilteredTasks.slice((currentPage - 1) * tasksPerPage, currentPage * tasksPerPage);
+  const paginatedProjectTasks = filteredProjectTasks.slice((projectsPage - 1) * tasksPerPage, projectsPage * tasksPerPage);
+  const paginatedQuickTasks = filteredQuickTasks.slice((quickPage - 1) * tasksPerPage, quickPage * tasksPerPage);
+  const activeFilterCount = [filterStatus !== 'all', departmentFilter !== 'all', personFilter !== 'all'].filter(Boolean).length;
+
+  useEffect(() => {
+    if (currentPage > activeTasksPageCount) setCurrentPage(activeTasksPageCount);
+  }, [activeTasksPageCount, currentPage]);
+
+  useEffect(() => {
+    if (projectsPage > projectTasksPageCount) setProjectsPage(projectTasksPageCount);
+  }, [projectTasksPageCount, projectsPage]);
+
+  useEffect(() => {
+    if (quickPage > quickTasksPageCount) setQuickPage(quickTasksPageCount);
+  }, [quickTasksPageCount, quickPage]);
 
   const StatusIcon = ({ status }: { status: string }) => {
     const s = status.toLowerCase().replace('_', '');
@@ -624,7 +654,7 @@ export const TasksManagement: React.FC = () => {
                      <div className="flex items-center gap-2">
                        <ChevronDown size={14} className={cn("text-gray-400 transition-transform", !activeSections.includes('projects') && "-rotate-90")} />
                        <span className="text-sm font-bold text-gray-700 dark:text-surface-200 uppercase tracking-tight">Projects</span>
-                       <span className="bg-gray-100 dark:bg-surface-800 text-gray-500 dark:text-surface-400 text-[10px] font-bold px-2 py-0.5 rounded-full">{allFilteredTasks.filter(t => t.projectName !== '-').length}</span>
+                       <span className="bg-gray-100 dark:bg-surface-800 text-gray-500 dark:text-surface-400 text-[10px] font-bold px-2 py-0.5 rounded-full">{allFilteredTasks.filter(t => t.type === 'project').length}</span>
                      </div>
                    </div>
 
@@ -632,7 +662,7 @@ export const TasksManagement: React.FC = () => {
                      <div className="overflow-x-auto border-t border-gray-100 dark:border-surface-800">
                         <table className="min-w-[760px] w-full text-xs text-left border-collapse">
                           <tbody className="divide-y divide-gray-50 dark:divide-surface-800">
-                             {allFilteredTasks.filter(t => t.projectName !== '-').length === 0 ? (
+                             {allFilteredTasks.filter(t => t.type === 'project').length === 0 ? (
                                <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">No project tasks found.</td></tr>
                              ) : (
                                (() => {
@@ -699,7 +729,7 @@ export const TasksManagement: React.FC = () => {
                      <div className="flex items-center gap-2">
                        <ChevronDown size={14} className={cn("text-gray-400 transition-transform", !activeSections.includes('quick') && "-rotate-90")} />
                        <span className="text-sm font-bold text-gray-700 dark:text-surface-200 uppercase tracking-tight">Quick Tasks</span>
-                       <span className="bg-gray-100 dark:bg-surface-800 text-gray-500 dark:text-surface-400 text-[10px] font-bold px-2 py-0.5 rounded-full">{allFilteredTasks.filter(t => t.projectName === '-').length}</span>
+                       <span className="bg-gray-100 dark:bg-surface-800 text-gray-500 dark:text-surface-400 text-[10px] font-bold px-2 py-0.5 rounded-full">{allFilteredTasks.filter(t => t.type === 'quick').length}</span>
                      </div>
                    </div>
 
@@ -707,11 +737,11 @@ export const TasksManagement: React.FC = () => {
                      <div className="overflow-x-auto border-t border-gray-100 dark:border-surface-800">
                         <table className="min-w-[760px] w-full text-xs text-left border-collapse">
                           <tbody className="divide-y divide-gray-50 dark:divide-surface-800">
-                             {allFilteredTasks.filter(t => t.projectName === '-').length === 0 ? (
+                             {allFilteredTasks.filter(t => t.type === 'quick').length === 0 ? (
                                <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">No quick tasks found.</td></tr>
                              ) : (
                                (() => {
-                                 const qTasks = allFilteredTasks.filter(t => t.projectName === '-');
+                                 const qTasks = allFilteredTasks.filter(t => t.type === 'quick');
                                  const paginatedQTasks = qTasks.slice((quickPage - 1) * tasksPerPage, quickPage * tasksPerPage);
                                  return (
                                    <>
@@ -1280,8 +1310,8 @@ const TaskDetailOverlay: React.FC<{
           </div>
 
           {/* Activity / Chat Sidebar */}
-          <div className="w-[340px] border-l border-gray-100 bg-[#fbfcff] flex flex-col">
-             <div className="p-8 border-b border-gray-100 bg-white">
+          <div className="flex w-full flex-col border-t border-gray-100 bg-[#fbfcff] lg:w-[340px] lg:border-l lg:border-t-0 dark:border-surface-800 dark:bg-surface-950/40">
+             <div className="border-b border-gray-100 bg-white p-5 sm:p-6 dark:border-surface-800 dark:bg-surface-900">
                 <div className="flex items-center justify-between">
                    <div className="flex items-center gap-2">
                       <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center text-blue-500">
@@ -1328,17 +1358,28 @@ const TaskDetailOverlay: React.FC<{
                  )}
               </div>
 
-             <div className="p-6 bg-white dark:bg-surface-900 border-t border-gray-100 dark:border-surface-800 shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
-                <div className="relative group">
-                  <textarea 
-                    placeholder="Type a message..."
-                    className="w-full bg-gray-50 dark:bg-surface-950/40 border border-gray-200 dark:border-surface-800 rounded-2xl px-5 py-4 text-sm dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-brand-500/20 focus:bg-white dark:focus:bg-surface-950/60 resize-none transition-all pr-20"
-                    rows={2}
-                    value={commentText}
-                    onChange={(e) => setCommentText(e.target.value)}
-                    onKeyDown={(e) => {
-                       if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
+               <div className="p-6 bg-white dark:bg-surface-900 border-t border-gray-100 dark:border-surface-800 shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
+                  <div className="relative group">
+                    <textarea 
+                      placeholder="Type a message..."
+                      className="w-full bg-gray-50 dark:bg-surface-950/40 border border-gray-200 dark:border-surface-800 rounded-2xl px-5 py-4 text-sm dark:text-surface-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-brand-500/20 focus:bg-white dark:focus:bg-surface-950/60 resize-none transition-all pr-20"
+                      rows={2}
+                      value={commentText}
+                      onChange={(e) => setCommentText(e.target.value)}
+                      onKeyDown={(e) => {
+                         if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            if (commentText.trim()) {
+                               onPostComment(commentText);
+                               setCommentText('');
+                            }
+                         }
+                      }}
+                    />
+                    <div className="absolute right-4 bottom-4 flex items-center gap-3 text-gray-400">
+                      <button className="hover:text-blue-500 transition-colors"><Paperclip size={18} /></button>
+                      <button 
+                        onClick={() => {
                           if (commentText.trim()) {
                              onPostComment(commentText);
                              setCommentText('');
