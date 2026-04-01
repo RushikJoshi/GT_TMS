@@ -506,7 +506,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => 
                                 console.log(`[addSubtask] Task: ${currentTask.id}, Title: ${subtaskTitle.trim()}, Assignee: ${selectedSubtaskAssigneeId}`);
                                 return tasksService.addSubtask(currentTask.id, { 
                                   title: subtaskTitle.trim(), 
-                                  assigneeId: selectedSubtaskAssigneeId || undefined 
+                                  assigneeIds: selectedSubtaskAssigneeId ? [selectedSubtaskAssigneeId] : undefined 
                                 });
                               }, 
                               'Subtask failed', 
@@ -526,7 +526,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => 
                           void syncTask(
                             () => tasksService.addSubtask(currentTask.id, { 
                               title: subtaskTitle.trim(), 
-                              assigneeId: selectedSubtaskAssigneeId || undefined 
+                              assigneeIds: selectedSubtaskAssigneeId ? [selectedSubtaskAssigneeId] : undefined 
                             }), 
                             'Subtask failed', 
                             'Subtask added successfully.'
@@ -543,7 +543,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => 
                   )}
                   <div className="space-y-1.5">
                     {(currentTask.subtasks || []).map((subtask) => {
-                      const rawAssignee = subtask.assigneeId;
+                      const rawAssignee = subtask.assigneeIds?.[0];
                       const subAssignee = rawAssignee 
                         ? (typeof rawAssignee === 'object' && (rawAssignee as any).name 
                             ? (rawAssignee as any) 
@@ -581,7 +581,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => 
                                       <button
                                         type="button"
                                         onClick={() => {
-                                          void syncTask(() => tasksService.patchSubtask(currentTask.id, subtask.id, { assigneeId: null }), 'Update failed');
+                                          void syncTask(() => tasksService.patchSubtask(currentTask.id, subtask.id, { assigneeIds: [] }), 'Update failed');
                                           setEditingSubtaskId(null);
                                         }}
                                         className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-surface-500 hover:bg-surface-50 dark:hover:bg-surface-800"
@@ -594,12 +594,12 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => 
                                           key={u.id}
                                           type="button"
                                           onClick={() => {
-                                            void syncTask(() => tasksService.patchSubtask(currentTask.id, subtask.id, { assigneeId: u.id }), 'Update failed');
+                                            void syncTask(() => tasksService.patchSubtask(currentTask.id, subtask.id, { assigneeIds: [u.id] }), 'Update failed');
                                             setEditingSubtaskId(null);
                                           }}
                                           className={cn(
                                             "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition-colors",
-                                            (String(u.id) === String(subtask.assigneeId) || String((u as any)._id) === String(subtask.assigneeId))
+                                            (String(u.id) === String(subtask.assigneeIds?.[0]) || String((u as any)._id) === String(subtask.assigneeIds?.[0]))
                                               ? "bg-brand-50 text-brand-700 dark:bg-brand-950/30 dark:text-brand-300"
                                               : "text-surface-600 hover:bg-surface-50 dark:text-surface-400 dark:hover:bg-surface-800"
                                           )}
@@ -612,7 +612,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => 
                                 </div>
                               )}
                             </div>
-                          ) : subtask.assigneeId ? (
+                          ) : subtask.assigneeIds?.length ? (
                             <div className="flex items-center gap-1 text-[10px] text-surface-400 opacity-60">
                                <Clock size={10} />
                                <span>Syncing...</span>
@@ -636,7 +636,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => 
                                           key={u.id}
                                           type="button"
                                           onClick={() => {
-                                            void syncTask(() => tasksService.patchSubtask(currentTask.id, subtask.id, { assigneeId: u.id }), 'Update failed');
+                                            void syncTask(() => tasksService.patchSubtask(currentTask.id, subtask.id, { assigneeIds: [u.id] }), 'Update failed');
                                             setEditingSubtaskId(null);
                                           }}
                                           className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-surface-600 hover:bg-surface-50 dark:text-surface-400 dark:hover:bg-surface-800 transition-colors"
