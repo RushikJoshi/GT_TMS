@@ -42,7 +42,9 @@ api.interceptors.response.use(
 
     if (status === 401) {
       localStorage.removeItem('flowboard-auth');
-      window.location.href = '/login';
+      if (!window.location.pathname.includes('/login')) {
+        window.location.href = '/login';
+      }
       return Promise.reject(error);
     }
 
