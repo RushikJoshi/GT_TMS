@@ -667,12 +667,12 @@ export const TasksManagement: React.FC = () => {
                              ) : (
                                (() => {
                                  const groups: Record<string, TaskRow[]> = {};
-                                 allFilteredTasks.filter(t => t.type === 'project').forEach(t => {
+                                 allFilteredTasks.filter(t => t.projectName !== '-').forEach(t => {
                                    if (!groups[t.projectName]) groups[t.projectName] = [];
                                    groups[t.projectName].push(t);
                                  });
                                  
-                                 const pTasks = allFilteredTasks.filter(t => t.type === 'project');
+                                 const pTasks = allFilteredTasks.filter(t => t.projectName !== '-');
                                  const paginatedPTasks = pTasks.slice((projectsPage - 1) * tasksPerPage, projectsPage * tasksPerPage);
                                  
                                  // Re-group paginated tasks
@@ -751,13 +751,27 @@ export const TasksManagement: React.FC = () => {
                                      {filteredQuickTasks.length > tasksPerPage && (
                                        <tr>
                                           <td colSpan={7} className="px-5 py-4 border-t border-gray-100 dark:border-surface-800 bg-gray-50/30 dark:bg-surface-950/20">
-                                             <PaginationControls
-                                               currentPage={quickPage}
-                                               totalPages={quickTasksPageCount}
-                                               totalItems={filteredQuickTasks.length}
-                                               itemsPerPage={tasksPerPage}
-                                               onPageChange={setQuickPage}
-                                             />
+                                             <div className="flex items-center justify-between">
+                                                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">
+                                                  Showing {Math.min(qTasks.length, (quickPage - 1) * tasksPerPage + 1)}-{Math.min(qTasks.length, quickPage * tasksPerPage)} of {qTasks.length}
+                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                  {Array.from({ length: Math.ceil(qTasks.length / tasksPerPage) }, (_, i) => i + 1).map(page => (
+                                                    <button
+                                                      key={page}
+                                                      onClick={() => setQuickPage(page)}
+                                                      className={cn(
+                                                        "w-8 h-8 rounded-lg text-xs font-bold transition-all",
+                                                        quickPage === page 
+                                                          ? "bg-[#00a3ff] text-white shadow-lg shadow-blue-500/20" 
+                                                          : "bg-white dark:bg-surface-900 text-gray-500 dark:text-surface-400 hover:bg-gray-100 dark:hover:bg-surface-800 border border-gray-100 dark:border-surface-800"
+                                                      )}
+                                                    >
+                                                      {page}
+                                                    </button>
+                                                  ))}
+                                                </div>
+                                             </div>
                                           </td>
                                        </tr>
                                      )}
@@ -770,71 +784,6 @@ export const TasksManagement: React.FC = () => {
                      </div>
                    )}
                  </div>
-
-                {/* 4. Personal Tasks Section */}
-                <div className="bg-white dark:bg-surface-900 rounded-xl border border-gray-200 dark:border-surface-800 shadow-sm overflow-hidden flex flex-col shrink-0 ring-1 ring-black/5">
-                  <div 
-                    onClick={() => toggleSection('personal')}
-                    className="px-5 py-3 border-b border-gray-100 dark:border-surface-800 flex items-center justify-between bg-white dark:bg-surface-950/20 sticky top-0 z-10 backdrop-blur-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-surface-800/40 transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      <ChevronDown size={14} className={cn("text-gray-400 transition-transform", !activeSections.includes('personal') && "-rotate-90")} />
-                      <span className="text-sm font-bold text-gray-700 dark:text-surface-200 uppercase tracking-tight">Personal Tasks</span>
-                      <span className="bg-gray-100 dark:bg-surface-800 text-gray-500 dark:text-surface-400 text-[10px] font-bold px-2 py-0.5 rounded-full">{filteredTasks(personalTasks).length}</span>
-                    </div>
-                  </div>
- 
-                  {activeSections.includes('personal') && (
-                    <div className="overflow-auto border-gray-100 dark:border-surface-800 border-t">
-                       <table className="w-full text-xs text-left border-collapse">
-                         <tbody className="divide-y divide-gray-50 dark:divide-surface-800">
-                            {filteredTasks(personalTasks).length === 0 ? (
-                              <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">No personal tasks found.</td></tr>
-                            ) : (
-                              (() => {
-                                const pTasks = filteredTasks(personalTasks);
-                                const paginatedPTasks = pTasks.slice((personalPage - 1) * tasksPerPage, personalPage * tasksPerPage);
-                                return (
-                                  <>
-                                    {paginatedPTasks.map((task, idx) => (
-                                      <TaskRowComponent key={task.id || idx} task={task} onClick={() => setSelectedTask(task)} />
-                                    ))}
-                                    {pTasks.length > tasksPerPage && (
-                                      <tr>
-                                         <td colSpan={7} className="px-5 py-4 border-t border-gray-100 dark:border-surface-800 bg-gray-50/30 dark:bg-surface-950/20">
-                                            <div className="flex items-center justify-between">
-                                               <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">
-                                                 Showing {Math.min(pTasks.length, (personalPage - 1) * tasksPerPage + 1)}-{Math.min(pTasks.length, personalPage * tasksPerPage)} of {pTasks.length}
-                                               </span>
-                                               <div className="flex items-center gap-2">
-                                                 {Array.from({ length: Math.ceil(pTasks.length / tasksPerPage) }, (_, i) => i + 1).map(page => (
-                                                   <button
-                                                     key={page}
-                                                     onClick={() => setPersonalPage(page)}
-                                                     className={cn(
-                                                       "w-8 h-8 rounded-lg text-xs font-bold transition-all",
-                                                       personalPage === page 
-                                                         ? "bg-[#00a3ff] text-white shadow-lg shadow-blue-500/20" 
-                                                         : "bg-white dark:bg-surface-900 text-gray-500 dark:text-surface-400 hover:bg-gray-100 dark:hover:bg-surface-800 border border-gray-100 dark:border-surface-800"
-                                                     )}
-                                                   >
-                                                     {page}
-                                                   </button>
-                                                 ))}
-                                               </div>
-                                            </div>
-                                         </td>
-                                      </tr>
-                                    )}
-                                  </>
-                                );
-                              })()
-                            )}
-                         </tbody>
-                       </table>
-                    </div>
-                  )}
-                </div>
                </div>
             </motion.div>
           ) : (
@@ -1378,7 +1327,7 @@ const TaskDetailOverlay: React.FC<{
                    </div>
                 </div>
              </div>
-             <div className="flex-1 overflow-y-auto p-5 space-y-6 scrollbar-hide bg-gray-50/20 sm:p-6">
+             <div className="flex-1 overflow-y-auto p-8 space-y-6 scrollbar-hide bg-gray-50/20">
                  <div className="text-center py-2 relative">
                     <span className="bg-white border border-gray-100 text-[#999] text-[9px] font-bold px-3 py-1 rounded-full uppercase tracking-widest relative z-10 shadow-sm">Activity & Chat</span>
                     <div className="absolute top-1/2 left-0 right-0 h-[1px] bg-gray-100/50 -z-10" />
@@ -1400,46 +1349,14 @@ const TaskDetailOverlay: React.FC<{
                            </div>
                            <p className="whitespace-pre-wrap leading-relaxed">{c.content}</p>
                         </div>
-                        <span className="text-xs font-bold text-gray-700 flex items-center gap-1.5 uppercase tracking-wide">
-                          Activity
-                        </span>
                      </div>
-                     <div className="flex -space-x-2">
-                       <UserAvatar name="M" size="xs" className="border-2 border-white" />
-                       <UserAvatar name="S" size="xs" className="border-2 border-white" />
-                     </div>
-                  </div>
-               </div>
-               <div className="flex-1 overflow-y-auto p-8 space-y-6 scrollbar-hide bg-gray-50/20">
-                   <div className="text-center py-2 relative">
-                      <span className="bg-white border border-gray-100 text-[#999] text-[9px] font-bold px-3 py-1 rounded-full uppercase tracking-widest relative z-10 shadow-sm">Activity & Chat</span>
-                      <div className="absolute top-1/2 left-0 right-0 h-[1px] bg-gray-100/50 -z-10" />
-                   </div>
-                   
-                   {data.comments?.map((c: any) => {
-                     const author = users.find(u => u.id === c.authorId);
-                     const isMe = c.authorId === user?.id;
-                     return (
-                       <div key={c.id || c._id} className={cn("flex items-start gap-3", isMe ? "flex-row-reverse" : "")}>
-                          <UserAvatar name={author?.name || 'U'} size="xs" color={author?.color} />
-                          <div className={cn(
-                            "max-w-[80%] rounded-2xl p-3 shadow-sm text-[12px]",
-                            isMe ? "bg-blue-500 text-white rounded-tr-none" : "bg-white border border-gray-100 text-gray-800 rounded-tl-none"
-                          )}>
-                             <div className="flex items-center justify-between gap-4 mb-1">
-                                <span className={cn("font-bold text-[10px]", isMe ? "text-blue-100" : "text-gray-400")}>{author?.name}</span>
-                                <span className={cn("text-[9px]", isMe ? "text-blue-200" : "text-gray-300")}>{new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                             </div>
-                             <p className="whitespace-pre-wrap leading-relaxed">{c.content}</p>
-                          </div>
-                       </div>
-                     );
-                   })}
-                   
-                   {!data.comments?.length && (
-                      <div className="text-center text-gray-300 text-[11px] font-medium py-10 italic">No messages yet. Start the conversation!</div>
-                   )}
-                </div>
+                   );
+                 })}
+                 
+                 {!data.comments?.length && (
+                    <div className="text-center text-gray-300 text-[11px] font-medium py-10 italic">No messages yet. Start the conversation!</div>
+                 )}
+              </div>
 
                <div className="p-6 bg-white dark:bg-surface-900 border-t border-gray-100 dark:border-surface-800 shadow-[0_-4px_20px_rgba(0,0,0,0.02)]">
                   <div className="relative group">
@@ -1467,16 +1384,26 @@ const TaskDetailOverlay: React.FC<{
                              onPostComment(commentText);
                              setCommentText('');
                           }
-                        }}
-                        className="hover:text-blue-500 transition-colors"
-                      >
-                        <MessageSquare size={18} />
-                      </button>
-                    </div>
+                       }
+                    }}
+                  />
+                  <div className="absolute right-4 bottom-4 flex items-center gap-3 text-gray-400">
+                    <button className="hover:text-blue-500 transition-colors"><Paperclip size={18} /></button>
+                    <button 
+                      onClick={() => {
+                        if (commentText.trim()) {
+                           onPostComment(commentText);
+                           setCommentText('');
+                        }
+                      }}
+                      className="hover:text-blue-500 transition-colors"
+                    >
+                      <MessageSquare size={18} />
+                    </button>
                   </div>
-               </div>
-            </div>
-          )}
+                </div>
+             </div>
+          </div>
         </div>
       </motion.div>
     </motion.div>

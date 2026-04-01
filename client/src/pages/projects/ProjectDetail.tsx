@@ -3,7 +3,8 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   LayoutDashboard, List, BarChart3, Settings2, Plus, ListTodo,
-  ArrowLeft, Edit3, Calendar, Flag
+  ArrowLeft, Edit3, Calendar, Flag,
+  Users
 } from 'lucide-react';
 import { cn, formatDate, getProgressColor } from '../../utils/helpers';
 import { useAppStore } from '../../context/appStore';
@@ -109,10 +110,7 @@ export const ProjectDetailPage: React.FC = () => {
   };
 
   const handleAddTask = (status: TaskStatus = 'todo') => {
-    setDefaultStatus('todo');
-    setValue('startDate', project?.startDate || todayDate);
-    setValue('durationDays', 1);
-    setValue('phaseId', '');
+    setDefaultStatus(status);
     setShowAddTask(true);
   };
 
@@ -736,99 +734,18 @@ export const ProjectDetailPage: React.FC = () => {
         onClose={() => { setShowTaskModal(false); setSelectedTaskId(null); }}
       />
 
-      {/* Add Task Modal */}
-      <Modal open={showAddTask} onClose={() => setShowAddTask(false)} title="New Task">
-        <form onSubmit={handleSubmit(onCreateTask)} className="p-6 space-y-4">
-          <div>
-            <label className="label">Title *</label>
-            <input {...register('title', { required: true })} placeholder="Task title" className="input" />
-          </div>
-          <div>
-            <label className="label">Description</label>
-            <textarea {...register('description')} placeholder="Optional description" className="input h-auto py-2 resize-none" rows={2} />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="label">Priority</label>
-              <Dropdown 
-                value={watchPriority} 
-                onChange={(val) => setValue('priority', val as Priority)}
-                items={Object.entries(PRIORITY_CONFIG).map(([k, v]) => ({ 
-                  id: k, 
-                  label: v.label,
-                  icon: <Flag size={12} style={{ color: v.color }} />
-                }))}
-              />
-            </div>
-            <div>
-              <label className="label">Status</label>
-              <Dropdown 
-                value={defaultStatus} 
-                onChange={(val) => setDefaultStatus(val as TaskStatus)}
-                items={Object.entries(STATUS_CONFIG).map(([k, v]) => ({ 
-                  id: k, 
-                  label: v.label,
-                  icon: <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: v.color }} />
-                }))}
-                disabled
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="label">Assignee</label>
-              <Dropdown 
-                value={watchAssignee} 
-                onChange={(val) => setValue('assigneeId', val)}
-                placeholder="Unassigned"
-                items={assignableUsers.map(u => ({ 
-                  id: u.id, 
-                  label: u.name,
-                  icon: <UserAvatar name={u.name} color={u.color} size="xs" />
-                }))}
-              />
-            </div>
-            <div>
-              <label className="label">Phase</label>
-              <select {...register('phaseId')} className="input">
-                <option value="">Ungrouped</option>
-                {timelinePhases.map((phase) => (
-                  <option key={phase.id} value={phase.id}>{phase.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end">
-            <div>
-              <label className="label">Add New Phase</label>
-              <input value={newPhaseName} onChange={(e) => setNewPhaseName(e.target.value)} placeholder="e.g. Development" className="input" />
-            </div>
-            <button type="button" onClick={() => void handleCreatePhase()} disabled={isCreatingPhase || !newPhaseName.trim()} className="btn-secondary btn-md">
-              {isCreatingPhase ? 'Adding...' : 'Add Phase'}
-            </button>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="label">Start Date *</label>
-              <input {...register('startDate', { required: true })} type="date" className="input" min={todayDate} />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="label">Duration (days) *</label>
-              <input {...register('durationDays', { required: true, valueAsNumber: true, min: 1 })} type="number" min={1} step={1} className="input" />
-            </div>
-            <div>
-              <label className="label">Estimated hours</label>
-              <input {...register('estimatedHours', { valueAsNumber: true })} type="number" placeholder="0" className="input" />
-            </div>
-          </div>
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={() => setShowAddTask(false)} className="btn-secondary btn-md flex-1">Cancel</button>
-            <button type="submit" className="btn-primary btn-md flex-1">Create Task</button>
-          </div>
-        </form>
-      </Modal>
+      <ProjectTaskCreateModal
+        open={showAddTask}
+        onClose={() => setShowAddTask(false)}
+        onSubmit={onCreateTask}
+        project={project}
+        members={members}
+        phases={timelinePhases}
+        defaultStatus={defaultStatus}
+        submitLabel={canCreateTask ? 'Create Task' : 'Send Request'}
+        title={canCreateTask ? 'New Task' : 'Request Task'}
+        onCreatePhase={handleCreatePhase}
+      />
     </div>
   );
 };
