@@ -32,6 +32,21 @@ const DEFAULT_TEMPLATE_MAP = {
     subject: 'New quick task assigned: {{taskTitle}}',
     body: 'Hi {{userName}},\n\nA quick task has been assigned to you.\n\nTask: {{taskTitle}}\nPriority: {{priority}}\nDue date: {{dueDate}}\nAssigned by: {{assignedBy}}\n\nOpen task: {{taskUrl}}\n\nRegards,\n{{siteName}}',
   },
+  taskDueToday: {
+    enabled: true,
+    subject: 'Task due today: {{taskTitle}}',
+    body: 'Hi {{userName}},\n\nThis is a reminder that your task is due today.\n\nTask: {{taskTitle}}\nProject: {{projectName}}\nPriority: {{priority}}\nDue date: {{dueDate}}\n\nOpen task: {{taskUrl}}\n\nRegards,\n{{siteName}}',
+  },
+  quickTaskDueToday: {
+    enabled: true,
+    subject: 'Quick task due today: {{taskTitle}}',
+    body: 'Hi {{userName}},\n\nThis is a reminder that your quick task is due today.\n\nTask: {{taskTitle}}\nPriority: {{priority}}\nDue date: {{dueDate}}\n\nOpen task: {{taskUrl}}\n\nRegards,\n{{siteName}}',
+  },
+  dailyWorkReport: {
+    enabled: true,
+    subject: 'Daily work report for {{reportDate}}',
+    body: 'Hi {{userName}},\n\nThe daily work report for {{workspaceName}} is ready.\n\nCompleted today: {{totalCompletedToday}}\nOverdue open items: {{totalOverdueOpen}}\nAverage performance score: {{averagePerformanceScore}}\nTop performer: {{topPerformerName}}\n\nSummary: {{headline}}\n\nRegards,\n{{siteName}}',
+  },
   userCredentials: {
     enabled: true,
     subject: 'Your {{siteName}} account credentials',
@@ -115,6 +130,21 @@ function resolveAppUrl() {
   );
 }
 
+function isTestEmailRecipient(value) {
+  const email = String(value || '').trim().toLowerCase();
+  if (!email || !email.includes('@')) return false;
+  const [localPart] = email.split('@');
+  if (!localPart) return false;
+  return localPart === 'test'
+    || localPart.startsWith('test+')
+    || localPart.includes('.test')
+    || localPart.includes('_test')
+    || localPart.includes('-test')
+    || localPart.startsWith('qa')
+    || localPart.startsWith('demo')
+    || localPart.startsWith('sample');
+}
+
 async function loadSystemMailSettings() {
   const settings = await SystemSetting.findOne({ key: 'system' }).lean();
   return normalizeEmailSettings(settings?.email || {}, settings?.general || {});
@@ -178,6 +208,9 @@ export async function sendTemplatedEmail({ to, templateKey, variables = {}, sett
 
 export async function sendTemplatedEmailSafe(options) {
   try {
+    if (isTestEmailRecipient(options?.to)) {
+      return { skipped: true, reason: 'test_recipient_filtered' };
+    }
     return await sendTemplatedEmail(options);
   } catch (error) {
     console.error('EMAIL_SEND_FAILED', {
@@ -199,4 +232,4 @@ export async function verifyMailSettings(emailSettingsOverride = null) {
   };
 }
 
-export { DEFAULT_TEMPLATE_MAP, normalizeEmailSettings };
+export { DEFAULT_TEMPLATE_MAP, normalizeEmailSettings, isTestEmailRecipient };

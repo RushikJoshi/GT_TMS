@@ -17,6 +17,7 @@ import { getAdminMessageModel } from '../models/admin/AdminMessage.model.js';
 import { getTaskReassignRequestModel } from '../models/TaskReassignRequest.js';
 import { getPersonalTaskModel } from '../models/PersonalTask.js';
 import { getTaskCreationRequestModel } from '../models/TaskCreationRequest.js';
+import { getDailyWorkReportModel } from '../models/DailyWorkReport.js';
 import { getMISModel } from '../models/MIS.js';
 
 
@@ -105,6 +106,7 @@ export async function getTenantModels(companyId = null) {
     TaskReassignRequest: getTaskReassignRequestModel(conn),
     PersonalTask: getPersonalTaskModel(conn),
     TaskCreationRequest: getTaskCreationRequestModel(conn),
+    DailyWorkReport: getDailyWorkReportModel(conn),
     MIS: getMISModel(conn),
   };
 }

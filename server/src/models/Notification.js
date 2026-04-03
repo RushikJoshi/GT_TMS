@@ -4,6 +4,7 @@ const notificationTypes = [
   'task_assigned',
   'comment_added',
   'deadline_approaching',
+  'quick_task_deadline_approaching',
   'project_update',
   'mention',
   'broadcast',
@@ -27,6 +28,7 @@ const notificationTypes = [
   'quick_task_deleted',
   'quick_task_comment_added',
   'quick_task_attachments_added',
+  'daily_work_report_generated',
 ];
 
 const notificationSchema = new mongoose.Schema(

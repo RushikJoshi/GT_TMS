@@ -11,7 +11,8 @@ dotenv.config({ path: envFile });
 import app from "./app.js"
 import connectDB from './src/config/db.js';
 import { alignProjectIndexes } from './src/config/indexes.js';
-import { ensureBootstrapSuperAdmin } from './src/config/seed.js';
+import { ensureBootstrapSuperAdmin, ensureSystemTestTenant } from './src/config/seed.js';
+import { startReportAutomationScheduler } from './src/services/reportAutomation.service.js';
 
 const port = process.env.PORT || '5000';
 
@@ -19,6 +20,8 @@ async function startServer() {
   await connectDB();
   await alignProjectIndexes();
   await ensureBootstrapSuperAdmin();
+  await ensureSystemTestTenant();
+  startReportAutomationScheduler();
 
   app.listen(port, () => {
     console.log('Server is listening on PORT:', port);

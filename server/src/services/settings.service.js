@@ -5,6 +5,7 @@ import SystemSetting from '../models/SystemSetting.js';
 import Company from '../models/Company.js';
 import { getTenantModels } from '../config/tenantDb.js';
 import { DEFAULT_TEMPLATE_MAP, normalizeEmailSettings, verifyMailSettings } from './mail.service.js';
+import { getUploadsDirectoryPath, storageStatus } from './storage.service.js';
 
 const SETTINGS_KEY = 'system';
 const DEFAULT_SECURITY_SETTINGS = {
@@ -87,7 +88,7 @@ function formatRelativeTime(fromDate) {
 }
 
 function getUploadsDirectorySizeMb() {
-  const uploadsDir = path.join(process.cwd(), 'uploads');
+  const uploadsDir = getUploadsDirectoryPath();
   if (!fs.existsSync(uploadsDir)) return 0;
 
   let totalBytes = 0;
@@ -127,6 +128,7 @@ async function buildSystemStats(settings) {
 
   const storageUsedMb = getUploadsDirectorySizeMb();
   const storageLimitMb = settings.infrastructure?.storageLimitMb || 512000;
+  const fileStorage = storageStatus();
 
   return {
     lastBackupAt: settings.infrastructure?.lastBackupAt || null,
@@ -134,6 +136,7 @@ async function buildSystemStats(settings) {
     storageUsedMb,
     storageLimitMb,
     storageUsedText: `${storageUsedMb}MB / ${Math.round(storageLimitMb / 1024)}GB`,
+    storageMode: fileStorage.objectStorageEnabled ? 'object-storage' : 'local-fallback',
     onlineUsers,
     companiesCount,
     usersCount,

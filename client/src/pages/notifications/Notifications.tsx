@@ -1,11 +1,13 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Bell, CheckCheck, MessageSquare, UserPlus, AlertCircle, FolderOpen, Filter } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { cn, formatRelativeTime } from '../../utils/helpers';
 import { useAppStore } from '../../context/appStore';
 import { UserAvatar } from '../../components/UserAvatar';
 import { EmptyState } from '../../components/ui';
 import type { Notification } from '../../app/types';
+import { openNotificationTarget } from '../../utils/notificationNavigation';
 
 const NOTIF_ICONS = {
   task_assigned: { icon: UserPlus, color: 'bg-brand-50 text-brand-600 dark:bg-brand-950/50 dark:text-brand-400' },
@@ -22,7 +24,8 @@ const getNotificationVisual = (type: string) =>
   };
 
 export const NotificationsPage: React.FC = () => {
-  const { notifications, users, markNotificationRead, markAllNotificationsRead } = useAppStore();
+  const navigate = useNavigate();
+  const { notifications, users, tasks, quickTasks, markNotificationRead, markAllNotificationsRead } = useAppStore();
   const unread = notifications.filter(n => !n.isRead).length;
 
   const grouped = notifications.reduce((acc, n) => {
@@ -35,6 +38,11 @@ export const NotificationsPage: React.FC = () => {
   const groupedEntries = Object.entries(grouped).sort((a, b) =>
     new Date(b[0]).getTime() - new Date(a[0]).getTime()
   );
+
+  const handleNotificationClick = (notif: Notification) => {
+    markNotificationRead(notif.id);
+    openNotificationTarget(notif, { tasks, quickTasks }, navigate);
+  };
 
   return (
     <div className="max-w-full mx-auto">
@@ -90,7 +98,7 @@ export const NotificationsPage: React.FC = () => {
                         initial={{ opacity: 0, y: 5 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: i * 0.04 }}
-                        onClick={() => markNotificationRead(notif.id)}
+                        onClick={() => handleNotificationClick(notif)}
                         className={cn(
                           'flex items-start gap-4 px-5 py-4 cursor-pointer transition-colors hover:bg-surface-50 dark:hover:bg-surface-800/50',
                           !notif.isRead && 'bg-brand-50/40 dark:bg-brand-950/15'

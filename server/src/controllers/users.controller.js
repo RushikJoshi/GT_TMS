@@ -1,4 +1,5 @@
 import * as UserService from '../services/user.service.js';
+import { uploadIncomingFile } from '../services/storage.service.js';
 
 export async function me(req, res, next) {
   try {
@@ -177,7 +178,14 @@ export async function updateProfilePhoto(req, res, next) {
     if (!req.file) {
       return res.status(400).json({ success: false, error: { message: 'No file uploaded' } });
     }
-    const avatarUrl = `/uploads/${req.file.filename}`;
+    const requestBaseUrl = `${req.protocol}://${req.get('host')}`;
+    const uploaded = await uploadIncomingFile({
+      file: req.file,
+      requestBaseUrl,
+      category: 'avatars',
+      entityId: userId,
+    });
+    const avatarUrl = uploaded.url;
     const user = await UserService.updateProfilePhoto({ companyId, userId, avatarUrl });
     if (!user) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'User not found' } });
     return res.status(200).json({ success: true, data: user });

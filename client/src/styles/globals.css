@@ -125,7 +125,7 @@
   }
 
   .page-header {
-    @apply mb-5 sm:mb-6;
+    @apply mb-5 sm:mb-6 rounded-[28px] border border-surface-100 bg-white/80 p-4 shadow-card backdrop-blur-sm dark:border-surface-800 dark:bg-surface-900/75 sm:p-5;
   }
 
   .page-title {

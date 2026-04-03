@@ -1,10 +1,12 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Bell, Check, CheckCheck, X, MessageSquare, AlertCircle, UserPlus, FolderOpen } from 'lucide-react';
+import { Bell, CheckCheck, X, MessageSquare, AlertCircle, UserPlus, FolderOpen } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { cn, formatRelativeTime } from '../../utils/helpers';
 import { useAppStore } from '../../context/appStore';
 import { UserAvatar } from '../UserAvatar';
 import type { Notification } from '../../app/types';
+import { openNotificationTarget } from '../../utils/notificationNavigation';
 
 interface NotificationPanelProps {
   onClose: () => void;
@@ -24,10 +26,17 @@ const getNotificationVisual = (type: string) =>
     color: 'bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-300',
   };
 
-const NotifItem: React.FC<{ notif: Notification }> = ({ notif }) => {
-  const { users, markNotificationRead } = useAppStore();
+const NotifItem: React.FC<{ notif: Notification; onClose: () => void }> = ({ notif, onClose }) => {
+  const navigate = useNavigate();
+  const { users, tasks, quickTasks, markNotificationRead } = useAppStore();
   const { icon: Icon, color } = getNotificationVisual(notif.type);
   const sender = users[Math.floor(Math.random() * Math.max(users.length, 1))];
+
+  const handleClick = () => {
+    markNotificationRead(notif.id);
+    openNotificationTarget(notif, { tasks, quickTasks }, navigate);
+    onClose();
+  };
 
   return (
     <div
@@ -35,7 +44,7 @@ const NotifItem: React.FC<{ notif: Notification }> = ({ notif }) => {
         'flex items-start gap-3 px-4 py-3 hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors cursor-pointer relative',
         !notif.isRead && 'bg-brand-50/40 dark:bg-brand-950/20'
       )}
-      onClick={() => markNotificationRead(notif.id)}
+      onClick={handleClick}
     >
       {!notif.isRead && (
         <span className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-brand-600 rounded-full" />
@@ -56,6 +65,7 @@ const NotifItem: React.FC<{ notif: Notification }> = ({ notif }) => {
 };
 
 export const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose }) => {
+  const navigate = useNavigate();
   const { notifications, markAllNotificationsRead } = useAppStore();
   const unread = notifications.filter(n => !n.isRead).length;
 
@@ -67,7 +77,6 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose })
       transition={{ duration: 0.15 }}
       className="absolute top-full right-0 mt-2 w-96 bg-white dark:bg-surface-900 rounded-2xl shadow-modal border border-surface-100 dark:border-surface-800 overflow-hidden z-50"
     >
-      {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-surface-100 dark:border-surface-800">
         <div className="flex items-center gap-2">
           <h3 className="font-display font-semibold text-surface-900 dark:text-white text-sm">Notifications</h3>
@@ -94,7 +103,6 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose })
         </div>
       </div>
 
-      {/* Notifications List */}
       <div className="max-h-96 overflow-y-auto divide-y divide-surface-50 dark:divide-surface-800">
         {notifications.length === 0 ? (
           <div className="py-12 flex flex-col items-center gap-2">
@@ -104,14 +112,16 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose })
             <p className="text-sm text-surface-400">No notifications yet</p>
           </div>
         ) : (
-          notifications.map(notif => <NotifItem key={notif.id} notif={notif} />)
+          notifications.map(notif => <NotifItem key={notif.id} notif={notif} onClose={onClose} />)
         )}
       </div>
 
-      {/* Footer */}
       <div className="px-4 py-2.5 border-t border-surface-100 dark:border-surface-800">
         <button
-          onClick={() => { onClose(); }}
+          onClick={() => {
+            onClose();
+            navigate('/notifications');
+          }}
           className="w-full text-center text-xs text-brand-600 dark:text-brand-400 font-medium hover:text-brand-700 transition-colors py-0.5"
         >
           View all notifications →

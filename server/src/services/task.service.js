@@ -4,6 +4,7 @@ import { sendTemplatedEmailSafe } from './mail.service.js';
 import { syncProjectStats } from './project.service.js';
 import { hasWorkspacePermission } from './permission.service.js';
 import { assertAllowedTaskTitle, normalizeTaskTitle } from '../utils/taskTitleValidation.js';
+import { uploadIncomingFiles } from './storage.service.js';
 
 function strId(x) {
   return x ? String(x) : '';
@@ -290,9 +291,9 @@ async function sendTaskAssignmentEmails({ tenantId, assigneeIds, actorId, task, 
 }
 
 function canReviewProjectTask({ role, userId, task, reviewerIds }) {
-  if (isAdminRole(role) || ['manager', 'team_leader'].includes(role)) return true;
   const uid = strId(userId);
-  if (strId(task.reporterId) === uid) return true;
+  if (isAdminRole(role) || ['manager', 'team_leader'].includes(role)) return true;
+  if ((task.assigneeIds || []).some((assigneeId) => strId(assigneeId) === uid)) return false;
   return reviewerIds.includes(uid);
 }
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import {
   Search, Filter, List, LayoutGrid, Plus, MoreHorizontal,
   Calendar, Clock, User, ChevronDown, Check, Mail, AlertCircle,
@@ -131,6 +131,7 @@ const SearchableSelect: React.FC<{
 };
 
 export const TasksManagement: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuthStore();
   const { users, projects } = useAppStore();
   const [view, setView] = useState<'table' | 'kanban'>('table');
@@ -154,6 +155,7 @@ export const TasksManagement: React.FC = () => {
   const [tasksPerPage] = useState(10);
   const [activeSections, setActiveSections] = useState<string[]>(['active', 'projects', 'quick', 'personal', 'overdue', 'completed']);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const notificationTaskId = searchParams.get('taskId');
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'active' | 'project' | 'quick' | 'overdue' | 'done' | null>(null);
 
   const location = useLocation();
@@ -318,6 +320,17 @@ export const TasksManagement: React.FC = () => {
   useEffect(() => {
     fetchTasks();
   }, []);
+
+  useEffect(() => {
+    if (!notificationTaskId) return;
+    const targetTask =
+      projectTasks.find((task) => task.id === notificationTaskId) ||
+      quickTasks.find((task) => task.id === notificationTaskId) ||
+      personalTasks.find((task) => task.id === notificationTaskId) ||
+      null;
+    if (!targetTask) return;
+    setSelectedTask(targetTask);
+  }, [notificationTaskId, personalTasks, projectTasks, quickTasks]);
 
   const fetchTasks = async () => {
     try {
@@ -1063,7 +1076,15 @@ export const TasksManagement: React.FC = () => {
             task={selectedTask}
             fullData={fullTaskData}
             loading={fullTaskLoading}
-            onClose={() => setSelectedTask(null)}
+            onClose={() => {
+              setSelectedTask(null);
+              if (notificationTaskId) {
+                const nextParams = new URLSearchParams(searchParams);
+                nextParams.delete('taskId');
+                nextParams.delete('tab');
+                setSearchParams(nextParams, { replace: true });
+              }
+            }}
             onToggleSubtask={handleToggleSubtask}
             onAddSubtask={handleAddSubtask}
             onUpdateField={handleUpdateTaskField}

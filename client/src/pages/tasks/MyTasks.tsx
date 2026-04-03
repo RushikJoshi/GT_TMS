@@ -31,6 +31,8 @@ export const MyTasksPage: React.FC = () => {
   });
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const notificationTaskId = searchParams.get('taskId');
+  const notificationTab = searchParams.get('tab') === 'activity' ? 'activity' : 'details';
 
   const myTasks = tasks.filter(t => {
     if (!t.assigneeIds.includes(user?.id || '')) return false;
@@ -68,6 +70,23 @@ export const MyTasksPage: React.FC = () => {
     else updatedParams.delete('filter');
     setSearchParams(updatedParams, { replace: true });
   }, [filter, searchParams, setSearchParams]);
+
+  React.useEffect(() => {
+    if (!selectedTaskId) {
+      setSelectedTask(null);
+      return;
+    }
+
+    const targetTask = myTasks.find((task) => task.id === selectedTaskId) || null;
+    setSelectedTask(targetTask);
+  }, [myTasks, selectedTaskId]);
+
+  React.useEffect(() => {
+    if (!notificationTaskId) return;
+    const targetTask = myTasks.find((task) => task.id === notificationTaskId);
+    if (!targetTask) return;
+    setSelectedTaskId(targetTask.id);
+  }, [myTasks, notificationTaskId]);
 
   return (
     <div className="max-w-full mx-auto">
@@ -256,7 +275,21 @@ export const MyTasksPage: React.FC = () => {
         </div>
       )}
 
-      <TaskModal task={selectedTask} open={!!selectedTaskId} onClose={() => setSelectedTaskId(null)} />
+      <TaskModal
+        task={selectedTask}
+        open={!!selectedTaskId}
+        initialTab={notificationTab}
+        onClose={() => {
+          setSelectedTaskId(null);
+          setSelectedTask(null);
+          if (notificationTaskId) {
+            const nextParams = new URLSearchParams(searchParams);
+            nextParams.delete('taskId');
+            nextParams.delete('tab');
+            setSearchParams(nextParams, { replace: true });
+          }
+        }}
+      />
     </div>
   );
 };
