@@ -111,6 +111,165 @@ export async function ensureBootstrapSuperAdmin() {
   );
 }
 
+export async function ensureSystemTestTenant() {
+  const companyCode = 'TEST001';
+  const companyEmail = 'test@gmail.com';
+  const companyName = 'Test';
+  const testPassword = 'Test@1234';
+  const testUserName = 'Test User';
+  const testWorkspaceSlug = 'test';
+  const testEmployeeId = 'TEST001';
+
+  let company = await Company.findOne({
+    $or: [
+      { organizationId: companyCode },
+      { email: companyEmail },
+    ],
+  });
+
+  if (!company) {
+    company = await Company.create({
+      organizationId: companyCode,
+      name: companyName,
+      email: companyEmail,
+      databaseName: buildTenantDatabaseName({ companyName, organizationId: companyCode }),
+      status: 'active',
+      color: '#0f766e',
+      systemFlags: {
+        isSystemTestTenant: true,
+        billingExempt: true,
+        moduleValidationExempt: true,
+      },
+    });
+  } else {
+    await Company.updateOne(
+      { _id: company._id },
+      {
+        $set: {
+          organizationId: companyCode,
+          name: companyName,
+          email: companyEmail,
+          status: 'active',
+          color: company.color || '#0f766e',
+          systemFlags: {
+            ...(company.systemFlags?.toObject?.() || company.systemFlags || {}),
+            isSystemTestTenant: true,
+            billingExempt: true,
+            moduleValidationExempt: true,
+          },
+        },
+      }
+    );
+    company = await Company.findById(company._id);
+  }
+
+  const { User, Workspace, Membership } = await getTenantModels(company._id);
+  const passwordHash = await hashPassword(testPassword);
+
+  await AuthLookup.updateOne(
+    { email: companyEmail },
+    { $set: { email: companyEmail, tenantId: company._id } },
+    { upsert: true }
+  );
+
+  let testUser = await User.findOne({ tenantId: company._id, email: companyEmail }).select('+passwordHash');
+  if (!testUser) {
+    testUser = await User.findOne({
+      email: companyEmail,
+      $or: [
+        { tenantId: { $exists: false } },
+        { tenantId: null },
+        { companyId: company._id },
+      ],
+    }).select('+passwordHash');
+
+    if (testUser) {
+      await User.updateOne(
+        { _id: testUser._id },
+        { $set: { tenantId: company._id }, $unset: { companyId: '' } }
+      );
+      testUser.tenantId = company._id;
+    }
+  }
+
+  if (!testUser) {
+    testUser = await User.create({
+      tenantId: company._id,
+      name: testUserName,
+      email: companyEmail,
+      employeeId: testEmployeeId,
+      passwordHash,
+      role: 'admin',
+      jobTitle: 'Testing Account',
+      department: 'QA',
+      isActive: true,
+      color: '#0f766e',
+    });
+  } else {
+    await User.updateOne(
+      { _id: testUser._id },
+      {
+        $set: {
+          tenantId: company._id,
+          name: testUserName,
+          email: companyEmail,
+          employeeId: testEmployeeId,
+          passwordHash,
+          role: 'admin',
+          jobTitle: 'Testing Account',
+          department: 'QA',
+          isActive: true,
+          color: '#0f766e',
+        },
+        $unset: { companyId: '' },
+      }
+    );
+    testUser = await User.findById(testUser._id).select('+passwordHash');
+  }
+
+  let workspace = await Workspace.findOne({ tenantId: company._id, slug: testWorkspaceSlug });
+  if (!workspace) {
+    workspace = await Workspace.findOne({ tenantId: company._id }).sort({ createdAt: 1 });
+  }
+
+  if (!workspace) {
+    workspace = await Workspace.create({
+      tenantId: company._id,
+      name: companyName,
+      slug: testWorkspaceSlug,
+      plan: 'enterprise',
+      ownerId: testUser._id,
+      settings: {
+        permissions: {},
+        security: {
+          strongPasswords: false,
+        },
+      },
+    });
+  } else {
+    await Workspace.updateOne(
+      { _id: workspace._id },
+      {
+        $set: {
+          tenantId: company._id,
+          name: companyName,
+          slug: workspace.slug || testWorkspaceSlug,
+          plan: 'enterprise',
+          ownerId: testUser._id,
+        },
+        $unset: { companyId: '' },
+      }
+    );
+    workspace = await Workspace.findById(workspace._id);
+  }
+
+  await Membership.updateOne(
+    { tenantId: company._id, workspaceId: workspace._id, userId: testUser._id },
+    { $set: { role: 'admin', status: 'active' }, $unset: { companyId: '' } },
+    { upsert: true }
+  );
+}
+
 export async function ensureDevSeed() {
   if (process.env.NODE_ENV === 'production') return;
   const superAdminEmail = 'gitakshmi@gmail.com';

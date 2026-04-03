@@ -1,7 +1,5 @@
 import express from 'express';
 import multer from 'multer';
-import path from 'path';
-import fs from 'fs';
 import { z } from 'zod';
 
 import { requireAuth } from '../../../middleware/auth.middleware.js';
@@ -15,21 +13,10 @@ const router = express.Router();
 
 router.use(requireAuth);
 
-const uploadDir = path.join(process.cwd(), 'uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: function (_req, _file, cb) {
-    cb(null, 'uploads/');
-  },
-  filename: function (_req, file, cb) {
-    cb(null, Date.now() + '-' + path.extname(file.originalname));
-  },
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024, files: 10 },
 });
-
-const upload = multer({ storage });
 
 const statusEnum = z.enum(['backlog', 'todo', 'scheduled', 'in_progress', 'in_review', 'blocked', 'done']);
 const taskTypeEnum = z.enum(['operational', 'design', 'important']);

@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Sidebar } from '../components/Sidebar';
+import { MobileSidebar } from '../components/MobileSidebar';
 import { Topbar } from '../components/Topbar';
 import { useAppStore } from '../context/appStore';
 import { cn } from '../utils/helpers';
@@ -42,6 +43,7 @@ export const AppLayout: React.FC = () => {
   return (
     <div className="min-h-screen bg-surface-50 dark:bg-surface-950">
       <Sidebar />
+      <MobileSidebar />
       <Topbar />
       <main
         className={cn(

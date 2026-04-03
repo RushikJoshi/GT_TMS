@@ -93,6 +93,22 @@ export async function getUserPerformance({ companyId, workspaceId, targetUserId 
     const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     return due < todayMidnight;
   });
+  const dueToday = allAssigned.filter((task) => {
+    const due = asDate(task.dueDate);
+    if (!due || task.status === 'done') return false;
+    const today = new Date();
+    return due.getFullYear() === today.getFullYear()
+      && due.getMonth() === today.getMonth()
+      && due.getDate() === today.getDate();
+  });
+  const todayCompleted = completed.filter((task) => {
+    const completedAt = asDate(task.completionReview?.completedAt) || asDate(task.updatedAt);
+    if (!completedAt) return false;
+    const today = new Date();
+    return completedAt.getFullYear() === today.getFullYear()
+      && completedAt.getMonth() === today.getMonth()
+      && completedAt.getDate() === today.getDate();
+  });
   const onTimeCompleted = completed.filter((task) => {
     const completedAt = asDate(task.completionReview?.completedAt);
     const due = asDate(task.dueDate);
@@ -150,6 +166,26 @@ export async function getUserPerformance({ companyId, workspaceId, targetUserId 
       completedAt: asDate(task.completionReview?.completedAt)?.toISOString(),
     }));
 
+  const currentWorkload = allAssigned
+    .filter((task) => task.status !== 'done')
+    .sort((a, b) => {
+      const leftDue = asDate(a.dueDate)?.getTime() || Number.MAX_SAFE_INTEGER;
+      const rightDue = asDate(b.dueDate)?.getTime() || Number.MAX_SAFE_INTEGER;
+      if (leftDue !== rightDue) return leftDue - rightDue;
+      return new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime();
+    })
+    .slice(0, 8)
+    .map((task) => ({
+      id: String(task._id),
+      type: task.kind,
+      title: task.title,
+      status: task.status,
+      priority: task.priority,
+      dueDate: asDate(task.dueDate)?.toISOString(),
+      projectId: task.projectId ? String(task.projectId) : undefined,
+      projectName: task.projectId ? projects.find((project) => String(project._id) === String(task.projectId))?.name || '' : '',
+    }));
+
   const averageRating = rated.length
     ? Number((rated.reduce((sum, task) => sum + task.completionReview.rating, 0) / rated.length).toFixed(1))
     : 0;
@@ -172,7 +208,10 @@ export async function getUserPerformance({ companyId, workspaceId, targetUserId 
       approvedTasks: approved.length,
       pendingReviewTasks: pendingReview.length,
       changesRequestedTasks: changesRequested.length,
+      openAssignedTasks: allAssigned.length - completed.length,
       overdueOpenTasks: overdueOpen.length,
+      dueTodayTasks: dueToday.length,
+      todayCompletedTasks: todayCompleted.length,
       averageRating,
       completionRate,
       approvalRate,
@@ -188,6 +227,19 @@ export async function getUserPerformance({ companyId, workspaceId, targetUserId 
       status: project.status,
     })),
     recentEvaluations,
+    currentWorkload,
+    insight: {
+      headline: overdueOpen.length
+        ? `${overdueOpen.length} overdue task${overdueOpen.length === 1 ? '' : 's'} need follow-up.`
+        : todayCompleted.length
+          ? `Completed ${todayCompleted.length} task${todayCompleted.length === 1 ? '' : 's'} today.`
+          : 'Current work is on track.',
+      focusAreas: [
+        dueToday.length ? `${dueToday.length} task${dueToday.length === 1 ? '' : 's'} are due today.` : 'No items are due today.',
+        pendingReview.length ? `${pendingReview.length} completed task${pendingReview.length === 1 ? '' : 's'} are waiting for review.` : 'No items are waiting for review.',
+        projects.length ? `Active in ${projects.length} project${projects.length === 1 ? '' : 's'}.` : 'No active projects assigned.',
+      ],
+    },
   };
 }
 

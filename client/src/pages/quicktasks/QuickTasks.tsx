@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Search, Zap, User, Calendar, CheckCircle2, Upload, Lock, ChevronLeft, ChevronRight, SlidersHorizontal, X, ChevronDown } from 'lucide-react';
+import { Plus, Search, Zap, User, Calendar, CheckCircle2, Upload, Lock, ChevronLeft, ChevronRight, SlidersHorizontal, X, ChevronDown, Download } from 'lucide-react';
 import { cn, formatDate, isDueDateOverdue } from '../../utils/helpers';
 import { useAuthStore } from '../../context/authStore';
 import { useAppStore } from '../../context/appStore';
@@ -198,6 +198,36 @@ const STATUS_CARDS: Array<{
 
 function isOverdue(task: QuickTask) {
   return isDueDateOverdue(task.dueDate, task.status);
+}
+
+function formatExcelDate(value?: string) {
+  if (!value) return '-';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '-';
+  return parsed.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function formatExcelTime(value?: string) {
+  if (!value) return '-';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '-';
+  return parsed.toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function escapeExcelHtml(value: unknown) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 interface SearchableSelectOption {
@@ -529,6 +559,265 @@ export const QuickTasksPage: React.FC = () => {
     personFilter !== 'all',
   ].filter(Boolean).length;
 
+  const exportLabel = useMemo(() => {
+    const labels = [
+      status !== 'all' ? STATUS_FILTERS.find((item) => item.value === status)?.label || status : 'All',
+      scope === 'created_by_me' ? 'CreatedByMe' : scope === 'assigned_to_me' ? 'AssignedToMe' : '',
+      departmentFilter !== 'all' ? departmentFilter : '',
+      personFilter !== 'all' ? userMap.get(personFilter)?.name || 'Person' : '',
+    ].filter(Boolean);
+
+    return labels.join('-').replace(/\s+/g, '-');
+  }, [departmentFilter, personFilter, scope, status, userMap]);
+
+  const handleExportExcel = () => {
+    const generatedAt = new Date();
+    const rows = filtered.map((task, index) => {
+      const reporter = userMap.get(task.reporterId);
+      const assigneeNames = (task.assigneeIds || [])
+        .map((assigneeId) => userMap.get(assigneeId)?.name || '')
+        .filter(Boolean)
+        .join(', ');
+      const completedAt = task.completionReview?.completedAt;
+      const reviewedAt = task.completionReview?.reviewedAt;
+
+      return [
+        index + 1,
+        task.title || '-',
+        task.description || '-',
+        PRIORITY_CONFIG[task.priority]?.label || task.priority || '-',
+        STATUS_CONFIG[task.status]?.label || task.status || '-',
+        formatExcelDate(task.dueDate),
+        reporter?.name || '-',
+        reporter?.employeeId || '-',
+        reporter?.department || '-',
+        formatExcelDate(task.createdAt),
+        formatExcelTime(task.createdAt),
+        assigneeNames || '-',
+        completedAt ? formatExcelDate(completedAt) : '-',
+        completedAt ? formatExcelTime(completedAt) : '-',
+        task.completionReview?.reviewStatus || 'pending',
+        typeof task.completionReview?.rating === 'number' ? `${task.completionReview.rating}/5` : '-',
+        reviewedAt ? formatExcelDate(reviewedAt) : '-',
+        reviewedAt ? formatExcelTime(reviewedAt) : '-',
+        task.completionReview?.completionRemark || '-',
+        task.completionReview?.reviewRemark || '-',
+        task.isPrivate ? 'Yes' : 'No',
+        formatExcelDate(task.updatedAt),
+        formatExcelTime(task.updatedAt),
+      ];
+    });
+
+    const filterSummary = [
+      ['Scope', scope === 'created_by_me' ? 'Created by me' : scope === 'assigned_to_me' ? 'Assigned to me' : 'All'],
+      ['Status', STATUS_FILTERS.find((item) => item.value === status)?.label || status],
+      ['Department', departmentFilter === 'all' ? 'All' : departmentFilter],
+      ['Person', personFilter === 'all' ? 'All' : userMap.get(personFilter)?.name || 'Selected'],
+      ['Search', query.trim() || 'None'],
+      ['Exported At', generatedAt.toLocaleString('en-IN')],
+      ['Total Tasks', String(filtered.length)],
+    ];
+
+    const html = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+          <meta charset="utf-8" />
+          <!--[if gte mso 9]>
+          <xml>
+            <x:ExcelWorkbook>
+              <x:ExcelWorksheets>
+                <x:ExcelWorksheet>
+                  <x:Name>Quick Tasks</x:Name>
+                  <x:WorksheetOptions>
+                    <x:DisplayGridlines/>
+                    <x:FreezePanes/>
+                    <x:FrozenNoSplit/>
+                    <x:SplitHorizontal>10</x:SplitHorizontal>
+                    <x:TopRowBottomPane>10</x:TopRowBottomPane>
+                  </x:WorksheetOptions>
+                </x:ExcelWorksheet>
+              </x:ExcelWorksheets>
+            </x:ExcelWorkbook>
+          </xml>
+          <![endif]-->
+          <style>
+            body {
+              font-family: Calibri, Arial, sans-serif;
+              color: #0f172a;
+              margin: 20px;
+            }
+            table {
+              border-collapse: collapse;
+              width: 100%;
+              table-layout: fixed;
+            }
+            .report td, .report th,
+            .meta td, .meta th {
+              border: 1px solid #d7deea;
+              padding: 8px 10px;
+              vertical-align: top;
+              word-wrap: break-word;
+            }
+            .sheet-title {
+              background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+              color: #ffffff;
+              font-size: 22px;
+              font-weight: 700;
+              text-align: center;
+              letter-spacing: 0.04em;
+              padding: 14px 12px;
+            }
+            .meta-label {
+              width: 180px;
+              background: #eff6ff;
+              color: #1d4ed8;
+              font-weight: 700;
+            }
+            .meta-value {
+              background: #f8fbff;
+              color: #0f172a;
+            }
+            .section-gap {
+              height: 12px;
+              border: 0 !important;
+              background: transparent !important;
+            }
+            .table-header th {
+              background: #1d4ed8;
+              color: #ffffff;
+              font-weight: 700;
+              text-align: center;
+            }
+            .center { text-align: center; }
+            .wrap { white-space: pre-wrap; }
+            .muted {
+              color: #64748b;
+              font-size: 11px;
+            }
+          </style>
+        </head>
+        <body>
+          <table class="meta">
+            <colgroup>
+              <col style="width: 180px;" />
+              <col style="width: 220px;" />
+              <col style="width: 180px;" />
+              <col style="width: 220px;" />
+            </colgroup>
+            <tbody>
+              <tr>
+                <td class="sheet-title" colspan="4">Quick Task Export Report</td>
+              </tr>
+              <tr>
+                <td class="meta-label">Scope</td>
+                <td class="meta-value">${escapeExcelHtml(filterSummary[0][1])}</td>
+                <td class="meta-label">Status</td>
+                <td class="meta-value">${escapeExcelHtml(filterSummary[1][1])}</td>
+              </tr>
+              <tr>
+                <td class="meta-label">Department</td>
+                <td class="meta-value">${escapeExcelHtml(filterSummary[2][1])}</td>
+                <td class="meta-label">Person</td>
+                <td class="meta-value">${escapeExcelHtml(filterSummary[3][1])}</td>
+              </tr>
+              <tr>
+                <td class="meta-label">Search</td>
+                <td class="meta-value">${escapeExcelHtml(filterSummary[4][1])}</td>
+                <td class="meta-label">Exported At</td>
+                <td class="meta-value">${escapeExcelHtml(filterSummary[5][1])}</td>
+              </tr>
+              <tr>
+                <td class="meta-label">Total Tasks</td>
+                <td class="meta-value">${escapeExcelHtml(filterSummary[6][1])}</td>
+                <td class="meta-value muted center" colspan="2">Generated from the current quick task filter selection</td>
+              </tr>
+              <tr><td class="section-gap" colspan="4"></td></tr>
+            </tbody>
+          </table>
+          <table class="report">
+            <colgroup>
+              <col style="width: 60px;" />
+              <col style="width: 220px;" />
+              <col style="width: 260px;" />
+              <col style="width: 100px;" />
+              <col style="width: 110px;" />
+              <col style="width: 110px;" />
+              <col style="width: 160px;" />
+              <col style="width: 130px;" />
+              <col style="width: 140px;" />
+              <col style="width: 110px;" />
+              <col style="width: 95px;" />
+              <col style="width: 220px;" />
+              <col style="width: 110px;" />
+              <col style="width: 95px;" />
+              <col style="width: 120px;" />
+              <col style="width: 90px;" />
+              <col style="width: 110px;" />
+              <col style="width: 95px;" />
+              <col style="width: 230px;" />
+              <col style="width: 230px;" />
+              <col style="width: 95px;" />
+              <col style="width: 120px;" />
+              <col style="width: 95px;" />
+            </colgroup>
+            <thead>
+              <tr class="table-header">
+                ${[
+                  'Sr No',
+                  'Quick Task',
+                  'Description',
+                  'Priority',
+                  'Status',
+                  'Quick Task Date',
+                  'Created By',
+                  'Creator Employee ID',
+                  'Creator Department',
+                  'Creation Date',
+                  'Creation Time',
+                  'Assigned People',
+                  'Completed Date',
+                  'Completed Time',
+                  'Review Status',
+                  'Rating',
+                  'Reviewed Date',
+                  'Reviewed Time',
+                  'Completion Remark',
+                  'Review Remark',
+                  'Private Task',
+                  'Last Updated Date',
+                  'Last Updated Time',
+                ].map((heading) => `<th>${escapeExcelHtml(heading)}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map((row) => `
+                <tr>
+                  ${row.map((cell, index) => {
+                    const cellClass = [
+                      index === 0 || index === 3 || index === 4 || index === 5 || index === 9 || index === 10 || index === 12 || index === 13 || index === 14 || index === 15 || index === 16 || index === 17 || index === 20 || index === 21 || index === 22
+                        ? 'center'
+                        : '',
+                      index === 18 || index === 19 ? 'wrap' : '',
+                    ].filter(Boolean).join(' ');
+                    return `<td class="${cellClass}">${escapeExcelHtml(cell)}</td>`;
+                  }).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `;
+
+    const blob = new Blob([`\uFEFF${html}`], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `quick-tasks-${exportLabel || 'all'}-${generatedAt.toISOString().slice(0, 10)}.xls`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="max-w-full mx-auto">
       <div className="grid grid-cols-1 gap-3 mb-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -596,7 +885,7 @@ export const QuickTasksPage: React.FC = () => {
           </button>
 
           {showFilters ? (
-            <div className="absolute right-0 top-full z-30 mt-2 w-[320px] rounded-2xl border border-surface-200 bg-white p-4 shadow-modal dark:border-surface-700 dark:bg-surface-900">
+            <div className="absolute right-0 top-full z-30 mt-2 w-[min(320px,calc(100vw-2rem))] rounded-2xl border border-surface-200 bg-white p-4 shadow-modal dark:border-surface-700 dark:bg-surface-900">
               <div className="mb-4 flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold text-surface-900 dark:text-surface-100">Quick Task Filters</p>
@@ -680,6 +969,15 @@ export const QuickTasksPage: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 ml-auto w-full sm:w-auto justify-end">
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            className="btn-secondary btn-sm w-full sm:w-auto"
+            disabled={filtered.length === 0}
+          >
+            <Download size={16} />
+            <span>Export Excel</span>
+          </button>
           {['super_admin', 'admin', 'manager', 'team_leader'].includes(user?.role || '') && (
             <button
               type="button"
@@ -724,6 +1022,9 @@ export const QuickTasksPage: React.FC = () => {
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
+        <span className="text-xs text-surface-400">
+          Export uses the current quick-task card and filter selection.
+        </span>
         {scope !== 'all' ? (
           <span className="badge text-[10px] bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-300">
             {scope === 'created_by_me' ? 'Created by me' : 'Assigned to me'}

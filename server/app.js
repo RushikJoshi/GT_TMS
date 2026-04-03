@@ -26,6 +26,7 @@ import adminDashboardRoutes from './src/routes/admin/adminDashboard.routes.js';
 import adminNotificationRoutes from './src/routes/admin/adminNotification.routes.js';
 import { sendMail } from './src/services/mail.service.js';
 import { welcomeTemplate } from './src/templates/mail.templates.js';
+import { getStorageReadiness, getUploadsDirectoryPath } from './src/services/storage.service.js';
 
 const app = express();
 
@@ -122,15 +123,20 @@ app.use(
 // ─── Health checks ───────────────────────────────────────────────────────
 app.get('/healthz', (_req, res) => res.json({ ok: true }));
 
-app.get('/readyz', (_req, res) => {
+app.get('/readyz', async (_req, res) => {
   const ready = mongoose.connection.readyState === 1;
-  if (ready) return res.json({ ok: true, db: 'connected' });
-  res.status(503).json({ ok: false, db: 'disconnected' });
+  const storage = await getStorageReadiness();
+  if (ready && storage.ok) return res.json({ ok: true, db: 'connected', storage: storage.mode });
+  res.status(503).json({
+    ok: false,
+    db: ready ? 'connected' : 'disconnected',
+    storage,
+  });
 });
 
 // ─── Static files ─────────────────────────────────────────────────────────
 app.use('/assets', express.static(path.join(clientBuildDir, 'assets')));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(getUploadsDirectoryPath()));
 app.use(express.static(clientBuildDir));
 
 // ─── Maintenance gate ─────────────────────────────────────────────────────
