@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { getTenantModels } from '../config/tenantDb.js';
 import { sendTemplatedEmailSafe } from './mail.service.js';
 import { assertAllowedTaskTitle, normalizeTaskTitle } from '../utils/taskTitleValidation.js';
+import { uploadIncomingFiles } from './storage.service.js';
 
 function strId(value) {
   return value ? String(value) : '';
@@ -87,6 +88,13 @@ function canViewQuickTask({ role, userId, task }) {
 
 function canModifyQuickTask({ role, userId, task }) {
   return canViewQuickTask({ role, userId, task });
+}
+
+function canReviewQuickTask({ role, userId, quickTask }) {
+  const uid = strId(userId);
+  if (isPrivilegedRole(role)) return true;
+  if ((quickTask.assigneeIds || []).some((assigneeId) => strId(assigneeId) === uid)) return false;
+  return false;
 }
 
 function formatMailDate(value) {
@@ -712,8 +720,7 @@ export async function reviewQuickTask({ companyId, workspaceId, userId, role, id
   if (!quickTask) return null;
 
   const uid = strId(userId);
-  const canReview = isPrivilegedRole(role) || strId(quickTask.reporterId) === uid;
-  if (!canReview) {
+  if (!canReviewQuickTask({ role, userId, quickTask })) {
     const err = new Error('Forbidden');
     err.statusCode = 403;
     err.code = 'FORBIDDEN';
@@ -903,15 +910,26 @@ export async function addQuickTaskAttachments({ companyId, workspaceId, userId, 
     throw err;
   }
 
-  const attachments = (files || []).map((file) => ({
-    name: file.originalname,
-    url: `${requestBaseUrl}/uploads/${file.filename}`,
-    size: file.size,
-    type: file.mimetype,
+  const storedFiles = await uploadIncomingFiles({
+    files,
+    requestBaseUrl,
+    category: 'quick-task-attachments',
+    entityId: taskId,
+  });
+
+  const attachments = storedFiles.map((file, index) => ({
+    name: file.name,
+    url: file.url,
+    storageProvider: file.storageProvider,
+    objectKey: file.objectKey,
+    size: files[index]?.size || 0,
+    type: file.type,
     uploadedBy: userId,
   }));
 
-  await QuickTask.updateOne({ _id: taskId, tenantId, workspaceId }, { $push: { attachments } });
+  if (!attachments.length) return quickTask;
+
+  await QuickTask.updateOne({ _id: taskId, tenantId, workspaceId }, { $push: { attachments: { $each: attachments } } });
   const updated = await QuickTask.findOne({ _id: taskId, tenantId, workspaceId });
 
   if (attachments.length) {

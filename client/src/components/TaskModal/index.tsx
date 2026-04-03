@@ -21,6 +21,7 @@ interface TaskModalProps {
   task: Task | null;
   open: boolean;
   onClose: () => void;
+  initialTab?: 'details' | 'activity';
 }
 
 type ChecklistItem = { id: string; text: string; done: boolean };
@@ -85,7 +86,7 @@ function buildTaskTimeline(task: Task, comments: Comment[]) {
   return items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
-export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => {
+export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose, initialTab = 'details' }) => {
   const { tasks, updateTask, deleteTask, projects, users, bootstrap } = useAppStore();
   const { user } = useAuthStore();
   
@@ -154,6 +155,12 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => 
   }, [open]);
 
   useEffect(() => {
+    if (open) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab, open, currentTask?.id]);
+
+  useEffect(() => {
     if (!assigneeOpen) return;
     const handleOutside = (event: MouseEvent) => {
       if (assigneeRef.current?.contains(event.target as Node)) return;
@@ -184,8 +191,10 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => 
   const canReview = Boolean(
     user && (
       canManageTask ||
-      currentTask.reporterId === user.id ||
-      project?.reportingPersonIds?.includes(user.id)
+      (
+        !currentTask.assigneeIds.includes(user.id) &&
+        project?.reportingPersonIds?.includes(user.id)
+      )
     )
   );
 
@@ -422,7 +431,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose }) => 
                     )}
                     {!canReview && (
                       <p className="mt-3 text-xs text-surface-400">
-                        Only the reporter, assigned reporting person, or management can submit the review.
+                        Only admin, manager, team leadership, or a reporting person can submit the review.
                       </p>
                     )}
                   </div>

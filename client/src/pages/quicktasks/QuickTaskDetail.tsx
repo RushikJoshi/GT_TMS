@@ -215,7 +215,7 @@ export const QuickTaskDetailPage: React.FC = () => {
   const isReporter = Boolean(user && task.reporterId === user.id);
   const roleOk = Boolean(user && ['admin', 'super_admin', 'manager', 'team_leader'].includes(user.role || ''));
   const canComment = Boolean(user && (isAssignee || isReporter || roleOk));
-  const canReview = Boolean(user && (isReporter || roleOk));
+  const canReview = Boolean(user && roleOk);
   const activityItems = buildQuickTaskTimeline(task);
 
   const syncQuickTask = async (updates: Record<string, unknown>) => {
@@ -524,7 +524,7 @@ export const QuickTaskDetailPage: React.FC = () => {
               )}
               {!canReview && (
                 <p className="mt-3 text-xs text-surface-400">
-                  Only the reporter or management can submit the review for this quick task.
+                  Only admin, manager, or reporting-side leadership can submit the review for this quick task.
                 </p>
               )}
             </div>

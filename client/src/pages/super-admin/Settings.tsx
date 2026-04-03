@@ -17,6 +17,9 @@ type EmailTemplateKey =
   | 'paymentReceipt'
   | 'taskAssigned'
   | 'quickTaskAssigned'
+  | 'taskDueToday'
+  | 'quickTaskDueToday'
+  | 'dailyWorkReport'
   | 'userCredentials';
 
 type EmailTemplateState = {
@@ -52,6 +55,9 @@ type SystemSettingsState = {
       paymentReceipt: EmailTemplateState;
       taskAssigned: EmailTemplateState;
       quickTaskAssigned: EmailTemplateState;
+      taskDueToday: EmailTemplateState;
+      quickTaskDueToday: EmailTemplateState;
+      dailyWorkReport: EmailTemplateState;
       userCredentials: EmailTemplateState;
     };
   };
@@ -90,6 +96,9 @@ const EMAIL_TEMPLATE_ITEMS: Array<{
   { key: 'paymentReceipt', label: 'Payment Receipt', description: 'Used for payment and invoice receipts.' },
   { key: 'taskAssigned', label: 'Task Assigned', description: 'Sent when a project task is assigned to a user.' },
   { key: 'quickTaskAssigned', label: 'Quick Task Assigned', description: 'Sent when a quick task is assigned to a user.' },
+  { key: 'taskDueToday', label: 'Task Due Today', description: 'Sent on the due date for open project tasks.' },
+  { key: 'quickTaskDueToday', label: 'Quick Task Due Today', description: 'Sent on the due date for open quick tasks.' },
+  { key: 'dailyWorkReport', label: 'Daily Work Report', description: 'Sent when the automated daily workforce report is generated.' },
   { key: 'userCredentials', label: 'User Credentials', description: 'Sent when admin chooses to email new-user credentials.' },
 ];
 
@@ -143,6 +152,21 @@ const DEFAULT_SETTINGS: SystemSettingsState = {
         enabled: true,
         subject: 'New quick task assigned: {{taskTitle}}',
         body: 'Hi {{userName}},\n\nA quick task has been assigned to you.\n\nTask: {{taskTitle}}\nPriority: {{priority}}\nDue date: {{dueDate}}\nAssigned by: {{assignedBy}}\n\nOpen task: {{taskUrl}}\n\nRegards,\n{{siteName}}',
+      },
+      taskDueToday: {
+        enabled: true,
+        subject: 'Task due today: {{taskTitle}}',
+        body: 'Hi {{userName}},\n\nThis is a reminder that your task is due today.\n\nTask: {{taskTitle}}\nProject: {{projectName}}\nPriority: {{priority}}\nDue date: {{dueDate}}\n\nOpen task: {{taskUrl}}\n\nRegards,\n{{siteName}}',
+      },
+      quickTaskDueToday: {
+        enabled: true,
+        subject: 'Quick task due today: {{taskTitle}}',
+        body: 'Hi {{userName}},\n\nThis is a reminder that your quick task is due today.\n\nTask: {{taskTitle}}\nPriority: {{priority}}\nDue date: {{dueDate}}\n\nOpen task: {{taskUrl}}\n\nRegards,\n{{siteName}}',
+      },
+      dailyWorkReport: {
+        enabled: true,
+        subject: 'Daily work report for {{reportDate}}',
+        body: 'Hi {{userName}},\n\nThe daily work report for {{workspaceName}} is ready.\n\nCompleted today: {{totalCompletedToday}}\nOverdue open items: {{totalOverdueOpen}}\nAverage performance score: {{averagePerformanceScore}}\nTop performer: {{topPerformerName}}\n\nSummary: {{headline}}\n\nRegards,\n{{siteName}}',
       },
       userCredentials: {
         enabled: true,

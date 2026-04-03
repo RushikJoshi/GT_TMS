@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
+    "ops:predeploy-check": "node scripts/predeploy-safety-check.js",
+    "storage:migrate-local": "node scripts/migrate-local-uploads.js",
+    "storage:verify": "node scripts/verify-durable-storage.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch"
   },
@@ -16,6 +19,7 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1022.0",
     "axios": "^1.13.6",
     "bcryptjs": "^3.0.3",
     "compression": "^1.8.1",

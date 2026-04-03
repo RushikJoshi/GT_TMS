@@ -216,8 +216,8 @@ export const ProjectTodoPage: React.FC = () => {
     const title = (subDraft[taskId] || '').trim();
     if (!title) return;
     try {
-      const assigneeIds = subDraftAssignees[taskId] || [];
-      await tasksService.addSubtask(taskId, { title, assigneeIds });
+      const assigneeId = (subDraftAssignees[taskId] || [])[0];
+      await tasksService.addSubtask(taskId, { title, assigneeId });
       setSubDraft((d) => ({ ...d, [taskId]: '' }));
       setSubDraftAssignees((d) => ({ ...d, [taskId]: [] }));
       await loadTasks();
@@ -415,16 +415,16 @@ export const ProjectTodoPage: React.FC = () => {
                           disabled={!canModifySubtasks}
                         />
                         <span className={cn(s.isCompleted && 'line-through text-surface-400')}>{s.title}</span>
-                        {(s.assigneeIds ?? []).length > 0 && (
+                        {s.assigneeId && (
                           <div className="flex items-center gap-1 ml-auto">
-                            {(s.assigneeIds ?? []).map((uid) => {
-                              const assignee = users.find((u) => u.id === uid);
+                            {(() => {
+                              const assignee = users.find((u) => u.id === s.assigneeId);
                               return (
-                                <div key={uid} title={assignee?.name} className="text-[10px]">
+                                <div key={s.assigneeId} title={assignee?.name} className="text-[10px]">
                                   <UserAvatar name={assignee?.name || '?'} color={assignee?.color} size="xs" />
                                 </div>
                               );
-                            })}
+                            })()}
                           </div>
                         )}
                         {canModifySubtasks && (

@@ -21,6 +21,8 @@ const quickTaskSchema = new mongoose.Schema(
         _id: { type: mongoose.Schema.Types.ObjectId, auto: true },
         name: { type: String, required: true, trim: true, maxlength: 300 },
         url: { type: String, required: true, trim: true, maxlength: 2048 },
+        storageProvider: { type: String, trim: true, maxlength: 40, default: 'local' },
+        objectKey: { type: String, trim: true, maxlength: 1024, default: null },
         size: { type: Number, required: true, min: 0 },
         type: { type: String, required: true, trim: true, maxlength: 150 },
         uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },

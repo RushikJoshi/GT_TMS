@@ -195,6 +195,15 @@ export const misService = {
   getWeeklyReport: () => api.get('/mis/weekly-report'),
 };
 
+export const reportsService = {
+  getWeekly: () => api.get('/reports/weekly'),
+  getEmployee: () => api.get('/reports/employee'),
+  getProject: () => api.get('/reports/project'),
+  getDaily: (limit = 14) => api.get('/reports/daily', { params: { limit } }),
+  getDailyLatest: () => api.get('/reports/daily/latest'),
+  runDailyNow: () => api.post('/reports/daily/run'),
+};
+
 export const activityService = {
   getRecent: (limit = 50) => api.get('/activity', { params: { limit } }),
   list: (params?: { limit?: number; q?: string; type?: string; entityType?: string; days?: number }) =>

@@ -19,6 +19,7 @@ import ProjectTodoPage from '../pages/projects/ProjectTodoPage';
 import CalendarPage from '../pages/calendar/Calendar';
 import TeamsPage from '../pages/teams/Teams';
 import ReportsPage from '../pages/reports/Reports';
+import ReportManagementPage from '../pages/reports/ReportManagement';
 import QuickTasksPage from '../pages/quicktasks/QuickTasks';
 import QuickTaskDetailPage from '../pages/quicktasks/QuickTaskDetail';
 import MyTasksPage from '../pages/tasks/MyTasks';
@@ -38,6 +39,7 @@ import {
   AdminPermissionsPage,
   AdminBillingPage,
 } from '../pages/admin/Admin';
+import AdminUserProfilePage from '../pages/admin/AdminUserProfile';
 
 // Super Admin pages
 import {
@@ -121,6 +123,7 @@ export const router = createBrowserRouter([
       { path: 'calendar', element: <CalendarPage /> },
       { path: 'teams', element: <TeamsPage /> },
       { path: 'reports', element: <ReportsPage /> },
+      { path: 'reports-management', element: <ReportManagementPage /> },
       { path: 'mis-entry', element: <MISEntry /> },
       { path: 'mis-manager', element: <RequireRole roles={['super_admin', 'admin', 'manager', 'team_leader']}><MISManager /></RequireRole> },
       { path: 'mis-reports', element: <MISReports /> },
@@ -152,6 +155,7 @@ export const router = createBrowserRouter([
       // Admin
       { path: 'admin/workspaces', element: <AdminWorkspacesPage /> },
       { path: 'admin/users', element: <AdminUsersPage /> },
+      { path: 'admin/users/:id', element: <AdminUserProfilePage /> },
       { path: 'admin/permissions', element: <AdminPermissionsPage /> },
       { path: 'admin/billing', element: <AdminBillingPage /> },
       { path: 'planner', element: <PlannerPage /> },

@@ -17,12 +17,15 @@ interface AppStore {
   personalTasks: PersonalTask[];
   activeProjectId: string | null;
   sidebarCollapsed: boolean;
+  mobileSidebarOpen: boolean;
   darkMode: boolean;
 
   bootstrap: () => Promise<void>;
 
   setActiveProject: (id: string | null) => void;
   toggleSidebar: () => void;
+  toggleMobileSidebar: () => void;
+  closeMobileSidebar: () => void;
   toggleDarkMode: () => void;
 
   addUser: (user: User) => void;
@@ -66,6 +69,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   personalTasks: [],
   activeProjectId: null,
   sidebarCollapsed: false,
+  mobileSidebarOpen: false,
   darkMode: localStorage.getItem('darkMode') === 'true',
 
   bootstrap: async () => {
@@ -98,6 +102,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   setActiveProject: (id) => set({ activeProjectId: id }),
   toggleSidebar: () => set(s => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+  toggleMobileSidebar: () => set(s => ({ mobileSidebarOpen: !s.mobileSidebarOpen })),
+  closeMobileSidebar: () => set({ mobileSidebarOpen: false }),
   addUser: (user) => set(s => ({ users: [user, ...s.users] })),
   toggleDarkMode: () => {
     const newMode = !get().darkMode;

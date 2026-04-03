@@ -41,7 +41,10 @@ export interface PerformanceSummary {
   approvedTasks: number;
   pendingReviewTasks: number;
   changesRequestedTasks: number;
+  openAssignedTasks: number;
   overdueOpenTasks: number;
+  dueTodayTasks: number;
+  todayCompletedTasks: number;
   averageRating: number;
   completionRate: number;
   approvalRate: number;
@@ -75,6 +78,71 @@ export interface UserPerformance {
   monthlyTrend: PerformanceTrendPoint[];
   activeProjects: Array<{ id: string; name: string; status: ProjectStatus }>;
   recentEvaluations: PerformanceEvaluation[];
+  currentWorkload: Array<{
+    id: string;
+    type: 'project_task' | 'quick_task';
+    title: string;
+    status: string;
+    priority: Priority;
+    dueDate?: string;
+    projectId?: string;
+    projectName?: string;
+  }>;
+  insight?: {
+    headline: string;
+    focusAreas: string[];
+  };
+}
+
+export interface DailyWorkReportWorkItem {
+  id: string;
+  kind: 'project_task' | 'quick_task';
+  title: string;
+  status: string;
+  priority: Priority;
+  dueDate?: string | null;
+  projectId?: string | null;
+  projectName?: string | null;
+}
+
+export interface DailyWorkReportEmployeeSummary {
+  userId: string;
+  name: string;
+  email: string;
+  role: Role;
+  assignedOpenTasks: number;
+  completedToday: number;
+  dueToday: number;
+  overdueOpen: number;
+  approvedTasks: number;
+  averageRating: number;
+  performanceScore: number;
+  workItems: DailyWorkReportWorkItem[];
+  analysis: string;
+}
+
+export interface DailyWorkReport {
+  id?: string | null;
+  reportDate: string;
+  generatedAt: string;
+  summary: {
+    employeesCount: number;
+    activeEmployees: number;
+    totalOpenTasks: number;
+    totalCompletedToday: number;
+    totalDueToday: number;
+    totalOverdueOpen: number;
+    averagePerformanceScore: number;
+    topPerformerName: string;
+    topPerformerScore: number;
+  };
+  employeeSummaries: DailyWorkReportEmployeeSummary[];
+  analysis: {
+    headline: string;
+    strengths: string[];
+    risks: string[];
+    recommendations: string[];
+  };
 }
 
 export interface TaskCreationRequest {

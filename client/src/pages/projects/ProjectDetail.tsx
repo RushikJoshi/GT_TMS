@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   LayoutDashboard, List, BarChart3, Settings2, Plus, ListTodo,
@@ -24,6 +24,7 @@ import { ProjectTaskCreateModal, type ProjectTaskCreateValues } from '../../comp
 export const ProjectDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { projects, tasks, users, workspaces, addTask, updateProject, bootstrap } = useAppStore();
   const { user } = useAuthStore();
   const [activeView, setActiveView] = useState('kanban');
@@ -36,6 +37,8 @@ export const ProjectDetailPage: React.FC = () => {
   const [timelinePhases, setTimelinePhases] = useState<TimelinePhase[]>([]);
   const [taskRequests, setTaskRequests] = useState<TaskCreationRequest[]>([]);
   const [loadingTaskRequests, setLoadingTaskRequests] = useState(false);
+  const notificationTaskId = searchParams.get('taskId');
+  const notificationTab = searchParams.get('tab') === 'activity' ? 'activity' : 'details';
 
   const project = projects.find(p => p.id === id);
   const workspacePermissions = workspaces[0]?.settings?.permissions || {};
@@ -67,6 +70,14 @@ export const ProjectDetailPage: React.FC = () => {
       }
     })();
   }, [project?.id]);
+
+  useEffect(() => {
+    if (!notificationTaskId) return;
+    const targetTask = tasks.find((task) => task.id === notificationTaskId && task.projectId === project?.id);
+    if (!targetTask) return;
+    setSelectedTaskId(targetTask.id);
+    setShowTaskModal(true);
+  }, [notificationTaskId, project?.id, tasks]);
 
   useEffect(() => {
     if (selectedCategoryId === 'all') return;
@@ -731,7 +742,17 @@ export const ProjectDetailPage: React.FC = () => {
       <TaskModal
         task={selectedTask}
         open={showTaskModal}
-        onClose={() => { setShowTaskModal(false); setSelectedTaskId(null); }}
+        initialTab={notificationTab}
+        onClose={() => {
+          setShowTaskModal(false);
+          setSelectedTaskId(null);
+          if (notificationTaskId) {
+            const nextParams = new URLSearchParams(searchParams);
+            nextParams.delete('taskId');
+            nextParams.delete('tab');
+            setSearchParams(nextParams, { replace: true });
+          }
+        }}
       />
 
       <ProjectTaskCreateModal

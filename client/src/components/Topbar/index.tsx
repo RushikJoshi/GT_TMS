@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Bell, Sun, Moon, User, Settings, LogOut } from 'lucide-react';
+import { Search, Bell, Sun, Moon, User, Settings, LogOut, Menu } from 'lucide-react';
 import { cn } from '../../utils/helpers';
 import { useAuthStore } from '../../context/authStore';
 import { useAppStore } from '../../context/appStore';
@@ -36,7 +36,7 @@ export const Topbar: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
-  const { darkMode, toggleDarkMode, sidebarCollapsed, unreadNotificationsCount, projects, tasks, users } = useAppStore();
+  const { darkMode, toggleDarkMode, sidebarCollapsed, unreadNotificationsCount, projects, tasks, users, toggleMobileSidebar } = useAppStore();
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [notifOpen, setNotifOpen] = useState(false);
@@ -80,12 +80,20 @@ export const Topbar: React.FC = () => {
   return (
     <header
       className={cn(
-        'fixed top-0 right-0 h-[60px] bg-white dark:bg-surface-950 border-b border-surface-100 dark:border-surface-800 z-20 flex items-center px-4 gap-3 transition-all duration-250',
+        'fixed top-0 right-0 z-20 flex h-[60px] items-center gap-3 border-b border-surface-100 bg-white/88 px-4 backdrop-blur-xl transition-all duration-250 dark:border-surface-800 dark:bg-surface-950/88',
         sidebarCollapsed ? 'md:left-16' : 'md:left-[260px]',
         'left-0'
       )}
     >
       {/* Page Title - Always Uppercase */}
+      <button
+        type="button"
+        onClick={toggleMobileSidebar}
+        className="btn-ghost btn-sm h-10 w-10 rounded-2xl border border-surface-200 bg-white/80 md:hidden dark:border-surface-700 dark:bg-surface-900/80"
+        aria-label="Open navigation menu"
+      >
+        <Menu size={18} />
+      </button>
       <div className="flex-1 min-w-0 mr-4">
         <h1 className="text-xs sm:text-sm font-bold tracking-[0.2em] text-surface-900 dark:text-white uppercase">
           {breadcrumbs[breadcrumbs.length - 1]?.label || ''}

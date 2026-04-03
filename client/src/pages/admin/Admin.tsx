@@ -211,6 +211,7 @@ export const AdminWorkspacesPage: React.FC = () => {
 
 // ─── Users Admin ──────────────────────────────────────────────────────────────
 export const AdminUsersPage: React.FC = () => {
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -501,7 +502,7 @@ export const AdminUsersPage: React.FC = () => {
               key: 'actions', header: '', align: 'right',
               render: (u) => (
                 <div className="flex items-center gap-1 justify-end">
-                  <button onClick={() => setSelectedUser(u)} className="btn-ghost btn w-7 h-7"><Edit3 size={13} /></button>
+                  <button onClick={() => navigate(`/admin/users/${u.id}`)} className="btn-ghost btn w-7 h-7"><Edit3 size={13} /></button>
                   <button onClick={() => { void handleDeleteUser(u.id); }} className="btn-ghost btn w-7 h-7 text-rose-400 hover:bg-rose-50"><Trash2 size={13} /></button>
                 </div>
               )
@@ -509,7 +510,7 @@ export const AdminUsersPage: React.FC = () => {
           ]}
           data={filtered}
           keyExtractor={u => u.id}
-          onRowClick={setSelectedUser}
+          onRowClick={(u) => navigate(`/admin/users/${u.id}`)}
         />
       </div>
 
@@ -543,7 +544,11 @@ export const AdminUsersPage: React.FC = () => {
                 {isLoadingOverview && <p className="text-xs text-surface-400">Loading...</p>}
               </div>
               {userOverview ? (
-                <div className="mt-3 grid grid-cols-2 gap-3">
+                <div className="mt-3 space-y-3">
+                  <div className="rounded-xl bg-brand-50 px-3 py-2 text-sm text-brand-700 dark:bg-brand-950/20 dark:text-brand-200">
+                    {userOverview.insight?.headline || 'Overview loaded successfully.'}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-xl bg-surface-50 dark:bg-surface-800 p-3">
                     <p className="text-[11px] uppercase tracking-wide text-surface-400">Assigned</p>
                     <p className="mt-1 text-lg font-semibold text-surface-900 dark:text-surface-100">{userOverview.summary.assignedTasks}</p>
@@ -560,6 +565,46 @@ export const AdminUsersPage: React.FC = () => {
                     <p className="text-[11px] uppercase tracking-wide text-surface-400">Performance</p>
                     <p className="mt-1 text-lg font-semibold text-surface-900 dark:text-surface-100">{userOverview.summary.performanceScore}%</p>
                   </div>
+                  <div className="rounded-xl bg-surface-50 dark:bg-surface-800 p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-surface-400">Due Today</p>
+                    <p className="mt-1 text-lg font-semibold text-surface-900 dark:text-surface-100">{userOverview.summary.dueTodayTasks}</p>
+                  </div>
+                  <div className="rounded-xl bg-surface-50 dark:bg-surface-800 p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-surface-400">Completed Today</p>
+                    <p className="mt-1 text-lg font-semibold text-surface-900 dark:text-surface-100">{userOverview.summary.todayCompletedTasks}</p>
+                  </div>
+                  </div>
+                  {userOverview.currentWorkload?.length ? (
+                    <div className="rounded-xl border border-surface-100 dark:border-surface-800 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-surface-400">Current Focus</p>
+                      <div className="mt-3 space-y-2">
+                        {userOverview.currentWorkload.slice(0, 4).map((item) => (
+                          <div key={item.id} className="rounded-xl bg-surface-50 dark:bg-surface-800 px-3 py-2">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-medium text-surface-900 dark:text-surface-100">{item.title}</p>
+                                <p className="text-xs text-surface-400">
+                                  {item.type === 'project_task' ? (item.projectName || 'Project task') : 'Quick task'}
+                                  {item.dueDate ? ` • Due ${formatDate(item.dueDate)}` : ''}
+                                </p>
+                              </div>
+                              <span className="text-[11px] uppercase tracking-wide text-surface-500">{item.status.replace(/_/g, ' ')}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {userOverview.insight?.focusAreas?.length ? (
+                    <div className="rounded-xl border border-surface-100 dark:border-surface-800 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-surface-400">Focus Areas</p>
+                      <div className="mt-2 space-y-2">
+                        {userOverview.insight.focusAreas.map((item) => (
+                          <p key={item} className="text-sm text-surface-600 dark:text-surface-300">{item}</p>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 !isLoadingOverview ? <p className="mt-3 text-sm text-surface-400">Overview is not available for this user yet.</p> : null

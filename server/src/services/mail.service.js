@@ -32,6 +32,21 @@ const DEFAULT_TEMPLATE_MAP = {
     subject: 'New quick task assigned: {{taskTitle}}',
     body: 'Hi {{userName}},\n\nA quick task has been assigned to you.\n\nTask: {{taskTitle}}\nPriority: {{priority}}\nDue date: {{dueDate}}\nAssigned by: {{assignedBy}}\n\nOpen task: {{taskUrl}}\n\nRegards,\n{{siteName}}',
   },
+  taskDueToday: {
+    enabled: true,
+    subject: 'Task due today: {{taskTitle}}',
+    body: 'Hi {{userName}},\n\nThis is a reminder that your task is due today.\n\nTask: {{taskTitle}}\nProject: {{projectName}}\nPriority: {{priority}}\nDue date: {{dueDate}}\n\nOpen task: {{taskUrl}}\n\nRegards,\n{{siteName}}',
+  },
+  quickTaskDueToday: {
+    enabled: true,
+    subject: 'Quick task due today: {{taskTitle}}',
+    body: 'Hi {{userName}},\n\nThis is a reminder that your quick task is due today.\n\nTask: {{taskTitle}}\nPriority: {{priority}}\nDue date: {{dueDate}}\n\nOpen task: {{taskUrl}}\n\nRegards,\n{{siteName}}',
+  },
+  dailyWorkReport: {
+    enabled: true,
+    subject: 'Daily work report for {{reportDate}}',
+    body: 'Hi {{userName}},\n\nThe daily work report for {{workspaceName}} is ready.\n\nCompleted today: {{totalCompletedToday}}\nOverdue open items: {{totalOverdueOpen}}\nAverage performance score: {{averagePerformanceScore}}\nTop performer: {{topPerformerName}}\n\nSummary: {{headline}}\n\nRegards,\n{{siteName}}',
+  },
   userCredentials: {
     enabled: true,
     subject: 'Your {{siteName}} account credentials',

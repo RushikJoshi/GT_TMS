@@ -8,6 +8,11 @@ const companySchema = new mongoose.Schema(
     databaseName: { type: String, required: true, trim: true, maxlength: 63, unique: true },
     status: { type: String, enum: ['active', 'trial', 'suspended'], default: 'active' },
     color: { type: String, trim: true, maxlength: 32 },
+    systemFlags: {
+      isSystemTestTenant: { type: Boolean, default: false },
+      billingExempt: { type: Boolean, default: false },
+      moduleValidationExempt: { type: Boolean, default: false },
+    },
   },
   { timestamps: true }
 );

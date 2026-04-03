@@ -1,33 +1,62 @@
-import React, { useState, useEffect } from 'react';
-import api from '../../services/api';
+import React, { useEffect, useState } from 'react';
+import { formatDate } from '../../utils/helpers';
+import { reportsService } from '../../services/api';
+import type { DailyWorkReport } from '../../app/types';
 
 export default function MISReports() {
-  const [activeTab, setActiveTab] = useState<'weekly' | 'employee' | 'project'>('weekly');
+  const [activeTab, setActiveTab] = useState<'weekly' | 'employee' | 'project' | 'daily'>('weekly');
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<any[]>([]);
+  const [dailyReport, setDailyReport] = useState<DailyWorkReport | null>(null);
+  const [runningNow, setRunningNow] = useState(false);
 
   useEffect(() => {
-    fetchReport();
+    void fetchReport();
   }, [activeTab]);
 
   const fetchReport = async () => {
     try {
       setLoading(true);
-      const res = await api.get(`/reports/${activeTab}`);
-      if (res.data?.success) {
-        setData(res.data.data);
+      if (activeTab === 'daily') {
+        const res = await reportsService.getDailyLatest();
+        if (res.data?.success) {
+          setDailyReport(res.data.data);
+        } else {
+          setDailyReport(null);
+        }
+        return;
       }
+      const serviceMap = {
+        weekly: reportsService.getWeekly,
+        employee: reportsService.getEmployee,
+        project: reportsService.getProject,
+      } as const;
+      const res = await serviceMap[activeTab]();
+      setData(res.data?.success ? (res.data.data || []) : []);
     } catch (err) {
       console.error(err);
       setData([]);
+      setDailyReport(null);
     } finally {
       setLoading(false);
     }
   };
 
+  const runDailyReportNow = async () => {
+    try {
+      setRunningNow(true);
+      await reportsService.runDailyNow();
+      await fetchReport();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setRunningNow(false);
+    }
+  };
+
   const renderTabs = () => (
      <div className="flex space-x-1 bg-gray-100/80 dark:bg-surface-800/50 p-1 rounded-lg w-fit mb-4">
-      {['weekly', 'employee', 'project'].map((tab) => (
+      {['weekly', 'employee', 'project', 'daily'].map((tab) => (
         <button
           key={tab}
           onClick={() => setActiveTab(tab as any)}
@@ -46,6 +75,95 @@ export default function MISReports() {
   const renderTable = () => {
     if (loading) {
        return <div className="text-gray-500 text-center py-6 text-sm">Loading report data...</div>;
+    }
+
+    if (activeTab === 'daily') {
+      if (!dailyReport) {
+        return <div className="text-gray-500 text-center py-6 text-sm">No daily report available yet.</div>;
+      }
+
+      return (
+        <div className="space-y-4 p-4">
+          <div className="flex flex-col gap-3 rounded-xl border border-surface-200 bg-surface-50 p-4 dark:border-surface-800 dark:bg-surface-900/60 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-surface-900 dark:text-surface-100">{formatDate(dailyReport.reportDate)}</p>
+              <p className="text-xs text-surface-500 dark:text-surface-400">{dailyReport.analysis.headline}</p>
+            </div>
+            <button onClick={runDailyReportNow} disabled={runningNow} className="btn-primary btn-sm">
+              {runningNow ? 'Generating...' : 'Run Report Now'}
+            </button>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              { label: 'Employees', value: dailyReport.summary.employeesCount },
+              { label: 'Completed Today', value: dailyReport.summary.totalCompletedToday },
+              { label: 'Due Today', value: dailyReport.summary.totalDueToday },
+              { label: 'Overdue Open', value: dailyReport.summary.totalOverdueOpen },
+            ].map((item) => (
+              <div key={item.label} className="rounded-xl border border-surface-100 bg-white p-4 dark:border-surface-800 dark:bg-surface-900">
+                <p className="text-[11px] uppercase tracking-wide text-surface-400">{item.label}</p>
+                <p className="mt-1 text-2xl font-semibold text-surface-900 dark:text-surface-100">{item.value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+            <div className="rounded-xl border border-surface-100 bg-white dark:border-surface-800 dark:bg-surface-900">
+              <div className="border-b border-surface-100 px-4 py-3 dark:border-surface-800">
+                <p className="text-sm font-semibold text-surface-900 dark:text-surface-100">Employee Overview</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-surface-100 text-xs dark:divide-surface-800">
+                  <thead className="bg-surface-50 dark:bg-surface-950/40">
+                    <tr>
+                      <th className="px-4 py-3 text-left">Employee</th>
+                      <th className="px-4 py-3 text-center">Open</th>
+                      <th className="px-4 py-3 text-center">Done Today</th>
+                      <th className="px-4 py-3 text-center">Due Today</th>
+                      <th className="px-4 py-3 text-center">Overdue</th>
+                      <th className="px-4 py-3 text-center">Score</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-surface-100 dark:divide-surface-800">
+                    {dailyReport.employeeSummaries.map((row) => (
+                      <tr key={row.userId}>
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-surface-900 dark:text-surface-100">{row.name}</p>
+                          <p className="text-[11px] text-surface-400">{row.analysis}</p>
+                        </td>
+                        <td className="px-4 py-3 text-center">{row.assignedOpenTasks}</td>
+                        <td className="px-4 py-3 text-center">{row.completedToday}</td>
+                        <td className="px-4 py-3 text-center">{row.dueToday}</td>
+                        <td className="px-4 py-3 text-center">{row.overdueOpen}</td>
+                        <td className="px-4 py-3 text-center font-semibold text-brand-600">{row.performanceScore}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-xl border border-surface-100 bg-white p-4 dark:border-surface-800 dark:bg-surface-900">
+                <p className="text-sm font-semibold text-surface-900 dark:text-surface-100">Overall Analysis</p>
+                <div className="mt-3 space-y-3 text-sm text-surface-600 dark:text-surface-300">
+                  {dailyReport.analysis.strengths.map((item) => <p key={item}>{item}</p>)}
+                  {dailyReport.analysis.risks.map((item) => <p key={item}>{item}</p>)}
+                  {dailyReport.analysis.recommendations.map((item) => <p key={item}>{item}</p>)}
+                </div>
+              </div>
+              <div className="rounded-xl border border-surface-100 bg-white p-4 dark:border-surface-800 dark:bg-surface-900">
+                <p className="text-sm font-semibold text-surface-900 dark:text-surface-100">Top Performer</p>
+                <p className="mt-2 text-lg font-semibold text-brand-600">{dailyReport.summary.topPerformerName || 'Not available'}</p>
+                <p className="text-sm text-surface-500 dark:text-surface-400">
+                  Score: {dailyReport.summary.topPerformerScore}% • Avg workspace score: {dailyReport.summary.averagePerformanceScore}%
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
     }
 
     if (activeTab === 'weekly') {
