@@ -90,7 +90,6 @@ function StatusCell({ status, onChange, disabled }: { status: TaskStatus; onChan
 const LABEL_STYLES: Record<string, string> = {
   ASAP: 'bg-brand-600 text-white',
   Feedback: 'bg-sky-100 text-sky-800 dark:bg-sky-950/40 dark:text-sky-300',
-  blocked: 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
 };
 
 export const ProjectTodoPage: React.FC = () => {
@@ -216,7 +215,7 @@ export const ProjectTodoPage: React.FC = () => {
     const title = (subDraft[taskId] || '').trim();
     if (!title) return;
     try {
-      const assigneeId = (subDraftAssignees[taskId] || [])[0];
+      const assigneeId = (subDraftAssignees[taskId] || [])[0] || undefined;
       await tasksService.addSubtask(taskId, { title, assigneeId });
       setSubDraft((d) => ({ ...d, [taskId]: '' }));
       setSubDraftAssignees((d) => ({ ...d, [taskId]: [] }));
