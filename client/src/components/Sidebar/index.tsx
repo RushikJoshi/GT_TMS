@@ -35,7 +35,7 @@ const NAV_ITEMS: NavItem[] = [
   { 
     label: 'MIS', 
     icon: BarChart3, 
-    path: '#',
+    path: '/mis-entry',
     subItems: [
       { label: 'Entry', path: '/mis-entry' },
       { label: 'Reviews', path: '/mis-manager', roles: ['super_admin', 'admin', 'manager', 'team_leader'] },
@@ -59,7 +59,7 @@ const SUPER_ADMIN_NAV: NavItem[] = [
   { 
     label: 'MIS', 
     icon: BarChart3, 
-    path: '#',
+    path: '/mis-entry',
     subItems: [
       { label: 'Entry', path: '/mis-entry' },
       { label: 'Reviews', path: '/mis-manager' },
@@ -83,7 +83,7 @@ const PLATFORM_ADMIN_NAV: NavItem[] = [
   { 
     label: 'MIS', 
     icon: Zap, 
-    path: '#',
+    path: '/mis-entry',
     subItems: [
       { label: 'Entry', path: '/mis-entry' },
       { label: 'Reviews', path: '/mis-manager' },
@@ -279,8 +279,10 @@ export const Sidebar: React.FC = () => {
                 title={isCollapsed ? item.label : undefined}
                 onClick={(e) => {
                   if (item.subItems) {
-                    e.preventDefault();
-                    if (item.label === 'MIS') setMisExpanded(!misExpanded);
+                    if (!isCollapsed) {
+                      e.preventDefault();
+                      if (item.label === 'MIS') setMisExpanded(!misExpanded);
+                    }
                   }
                   if (item.label === 'Projects' && !isCollapsed) {
                     // Stay on page but toggle if needed, or just let both happen
