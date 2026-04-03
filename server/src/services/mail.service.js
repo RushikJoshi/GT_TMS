@@ -130,6 +130,21 @@ function resolveAppUrl() {
   );
 }
 
+function isTestEmailRecipient(value) {
+  const email = String(value || '').trim().toLowerCase();
+  if (!email || !email.includes('@')) return false;
+  const [localPart] = email.split('@');
+  if (!localPart) return false;
+  return localPart === 'test'
+    || localPart.startsWith('test+')
+    || localPart.includes('.test')
+    || localPart.includes('_test')
+    || localPart.includes('-test')
+    || localPart.startsWith('qa')
+    || localPart.startsWith('demo')
+    || localPart.startsWith('sample');
+}
+
 async function loadSystemMailSettings() {
   const settings = await SystemSetting.findOne({ key: 'system' }).lean();
   return normalizeEmailSettings(settings?.email || {}, settings?.general || {});
@@ -193,6 +208,9 @@ export async function sendTemplatedEmail({ to, templateKey, variables = {}, sett
 
 export async function sendTemplatedEmailSafe(options) {
   try {
+    if (isTestEmailRecipient(options?.to)) {
+      return { skipped: true, reason: 'test_recipient_filtered' };
+    }
     return await sendTemplatedEmail(options);
   } catch (error) {
     console.error('EMAIL_SEND_FAILED', {
@@ -214,4 +232,4 @@ export async function verifyMailSettings(emailSettingsOverride = null) {
   };
 }
 
-export { DEFAULT_TEMPLATE_MAP, normalizeEmailSettings };
+export { DEFAULT_TEMPLATE_MAP, normalizeEmailSettings, isTestEmailRecipient };

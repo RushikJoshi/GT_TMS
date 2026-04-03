@@ -110,7 +110,7 @@ export async function getUserPerformance({ companyId, workspaceId, targetUserId 
       && completedAt.getDate() === today.getDate();
   });
   const onTimeCompleted = completed.filter((task) => {
-    const completedAt = asDate(task.completionReview?.completedAt);
+    const completedAt = asDate(task.completionReview?.completedAt) || asDate(task.updatedAt);
     const due = asDate(task.dueDate);
     if (!completedAt || !due) return false;
     return completedAt <= due;
@@ -204,11 +204,16 @@ export async function getUserPerformance({ companyId, workspaceId, targetUserId 
     userId: String(user._id),
     summary: {
       assignedTasks: allAssigned.length,
+      assignedProjectTasks: projectTasks.length,
+      assignedQuickTasks: quickTasks.length,
       completedTasks: completed.length,
+      completedProjectTasks: completed.filter((task) => task.kind === 'project_task').length,
+      completedQuickTasks: completed.filter((task) => task.kind === 'quick_task').length,
       approvedTasks: approved.length,
       pendingReviewTasks: pendingReview.length,
       changesRequestedTasks: changesRequested.length,
       openAssignedTasks: allAssigned.length - completed.length,
+      openQuickTasks: quickTasks.filter((task) => task.status !== 'done').length,
       overdueOpenTasks: overdueOpen.length,
       dueTodayTasks: dueToday.length,
       todayCompletedTasks: todayCompleted.length,
