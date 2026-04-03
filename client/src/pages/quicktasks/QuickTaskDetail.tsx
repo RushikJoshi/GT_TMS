@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Calendar, Flag, Trash2, Zap, MessageSquare, Send, Plus, Lock } from 'lucide-react';
 import { cn, formatDate, generateId, isDueDateOverdue } from '../../utils/helpers';
 import { useAppStore } from '../../context/appStore';
@@ -177,15 +177,19 @@ function buildQuickTaskTimeline(task: QuickTask) {
 export const QuickTaskDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuthStore();
   const { users, quickTasks, updateQuickTask, deleteQuickTask, setQuickTaskStatus, bootstrap } = useAppStore();
   const task = quickTasks.find(t => t.id === id);
+  const activitySectionRef = useRef<HTMLDivElement | null>(null);
+  const commentsSectionRef = useRef<HTMLDivElement | null>(null);
 
   const [editOpen, setEditOpen] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [completionChecklist, setCompletionChecklist] = useState<ChecklistItem[]>(parseChecklist(task?.completionReview?.completionRemark));
   const [reviewChecklist, setReviewChecklist] = useState<ChecklistItem[]>(parseChecklist(task?.completionReview?.reviewRemark));
   const [rating, setRating] = useState<number>(task?.completionReview?.rating || 0);
+  const notificationSection = searchParams.get('section');
 
   if (!task) {
     return (
@@ -291,6 +295,27 @@ export const QuickTaskDetailPage: React.FC = () => {
   const addChecklistItem = (setter: React.Dispatch<React.SetStateAction<ChecklistItem[]>>) => {
     setter((items) => [...items, { id: generateId(), text: '', done: false }]);
   };
+
+  useEffect(() => {
+    if (!notificationSection) return;
+
+    const target =
+      notificationSection === 'comments'
+        ? commentsSectionRef.current
+        : notificationSection === 'activity'
+          ? activitySectionRef.current
+          : null;
+
+    if (!target) return;
+
+    window.requestAnimationFrame(() => {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('section');
+    setSearchParams(nextParams, { replace: true });
+  }, [notificationSection, searchParams, setSearchParams]);
 
   return (
     <div className="max-w-full mx-auto">
@@ -537,7 +562,7 @@ export const QuickTaskDetailPage: React.FC = () => {
             {task.completionReview?.reviewedAt && <p className="text-sm text-surface-400 mt-1">Reviewed {formatDate(task.completionReview.reviewedAt)}</p>}
             {task.completionReview?.rating ? <p className="text-sm text-surface-400 mt-1">Rating {task.completionReview.rating}/5</p> : null}
           </div>
-          <div className="card p-5">
+          <div ref={activitySectionRef} className="card p-5">
             <h3 className="font-display font-semibold text-surface-900 dark:text-white mb-3">Activity</h3>
             <div className="space-y-3">
               {activityItems.length ? activityItems.map((item) => {
@@ -605,7 +630,7 @@ export const QuickTaskDetailPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="card p-5">
+          <div ref={commentsSectionRef} className="card p-5">
             <h3 className="font-display font-semibold text-surface-900 dark:text-white mb-3 flex items-center gap-2">
               <MessageSquare size={16} />
               Comments

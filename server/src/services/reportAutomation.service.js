@@ -1,10 +1,12 @@
 import mongoose from 'mongoose';
 import Company from '../models/Company.js';
 import { getTenantModels } from '../config/tenantDb.js';
-import { sendTemplatedEmailSafe } from './mail.service.js';
+import { isTestEmailRecipient, sendTemplatedEmailSafe } from './mail.service.js';
 
 const AUTOMATION_INTERVAL_MS = Math.max(60_000, Number(process.env.REPORT_AUTOMATION_INTERVAL_MS || 15 * 60 * 1000));
 const REPORT_RECIPIENT_ROLES = new Set(['admin', 'manager', 'team_leader']);
+const DAILY_REPORT_EMAILS_ENABLED = String(process.env.DAILY_REPORT_EMAILS_ENABLED || 'false').trim().toLowerCase() === 'true';
+const DAILY_REPORT_NOTIFICATIONS_ENABLED = String(process.env.DAILY_REPORT_NOTIFICATIONS_ENABLED || 'false').trim().toLowerCase() === 'true';
 const AUTOMATION_STATE = {
   timer: null,
   isRunning: false,
@@ -72,16 +74,16 @@ function normalizeName(value, fallback) {
   return String(value || '').trim() || fallback;
 }
 
-function buildPerformanceScore({ assignedTasks, completedTasks, approvedTasks, overdueOpen, averageRating }) {
+function buildPerformanceScore({ assignedTasks, completedTasks, approvedTasks, overdueOpen, averageRating, onTimeCompleted }) {
   const completionRate = assignedTasks ? Math.round((completedTasks / assignedTasks) * 100) : 0;
   const approvalRate = completedTasks ? Math.round((approvedTasks / completedTasks) * 100) : 0;
-  const overduePenalty = assignedTasks ? Math.round((overdueOpen / assignedTasks) * 100) : 0;
-  const ratingWeight = averageRating ? (averageRating / 5) * 100 : 0;
+  const onTimeRate = completedTasks ? Math.round((onTimeCompleted / completedTasks) * 100) : 0;
+  const ratingScore = averageRating ? (averageRating / 5) * 100 : 0;
   return Math.max(
     0,
     Math.min(
       100,
-      Math.round((completionRate * 0.45) + (approvalRate * 0.25) + (ratingWeight * 0.2) + ((100 - overduePenalty) * 0.1))
+      Math.round((completionRate * 0.35) + (approvalRate * 0.25) + (onTimeRate * 0.2) + (ratingScore * 0.2) - (overdueOpen * 4))
     )
   );
 }
@@ -147,6 +149,13 @@ function buildOverallAnalysis(employeeSummaries, summary) {
 
 function extractCompletionDate(task) {
   return asDate(task?.completionReview?.completedAt) || asDate(task?.updatedAt);
+}
+
+function isOnTimeCompletion(task) {
+  const completedAt = extractCompletionDate(task);
+  const dueDate = asDate(task?.dueDate);
+  if (!completedAt || !dueDate) return false;
+  return completedAt.getTime() <= dueDate.getTime();
 }
 
 function createWorkItem(task, projectMap, kind) {
@@ -249,6 +258,7 @@ export async function buildDailyWorkspaceReport({
     const dueTodayItems = openItems.filter((task) => isSameDay(task.dueDate, reportDay));
     const overdueItems = openItems.filter((task) => isBeforeDay(task.dueDate, reportDay));
     const approvedItems = completedItems.filter((task) => task.completionReview?.reviewStatus === 'approved');
+    const onTimeCompletedItems = completedItems.filter((task) => isOnTimeCompletion(task));
     const ratedItems = approvedItems.filter((task) => typeof task.completionReview?.rating === 'number');
     const averageRating = ratedItems.length
       ? Number((ratedItems.reduce((sum, task) => sum + Number(task.completionReview.rating || 0), 0) / ratedItems.length).toFixed(1))
@@ -259,6 +269,7 @@ export async function buildDailyWorkspaceReport({
       approvedTasks: approvedItems.length,
       overdueOpen: overdueItems.length,
       averageRating,
+      onTimeCompleted: onTimeCompletedItems.length,
     });
     const workItems = [...openItems, ...completedItems]
       .sort((left, right) => {
@@ -299,10 +310,19 @@ export async function buildDailyWorkspaceReport({
     return left.overdueOpen - right.overdueOpen;
   });
 
-  const totalOpenTasks = employeeSummaries.reduce((sum, employee) => sum + employee.assignedOpenTasks, 0);
-  const totalCompletedToday = employeeSummaries.reduce((sum, employee) => sum + employee.completedToday, 0);
-  const totalDueToday = employeeSummaries.reduce((sum, employee) => sum + employee.dueToday, 0);
-  const totalOverdueOpen = employeeSummaries.reduce((sum, employee) => sum + employee.overdueOpen, 0);
+  const uniqueAssignedItems = allAssigned.filter((task) => {
+    const assigneeIds = Array.isArray(task.assigneeIds) ? task.assigneeIds.map((id) => String(id)) : [];
+    return assigneeIds.some((assigneeId) => membershipMap.has(assigneeId));
+  });
+  const uniqueOpenItems = uniqueAssignedItems.filter((task) => task.status !== 'done');
+  const uniqueCompletedToday = uniqueAssignedItems.filter((task) => task.status === 'done' && isSameDay(extractCompletionDate(task), reportDay));
+  const uniqueDueToday = uniqueOpenItems.filter((task) => isSameDay(task.dueDate, reportDay));
+  const uniqueOverdueItems = uniqueOpenItems.filter((task) => isBeforeDay(task.dueDate, reportDay));
+
+  const totalOpenTasks = uniqueOpenItems.length;
+  const totalCompletedToday = uniqueCompletedToday.length;
+  const totalDueToday = uniqueDueToday.length;
+  const totalOverdueOpen = uniqueOverdueItems.length;
   const activeEmployees = employeeSummaries.filter((employee) => employee.assignedOpenTasks > 0 || employee.completedToday > 0).length;
   const averagePerformanceScore = employeeSummaries.length
     ? Number((employeeSummaries.reduce((sum, employee) => sum + employee.performanceScore, 0) / employeeSummaries.length).toFixed(1))
@@ -344,7 +364,7 @@ export async function buildDailyWorkspaceReport({
   const report = await DailyWorkReport.findOneAndUpdate(
     { tenantId, workspaceId: workspaceObjectId, reportDate: reportDateKey },
     { $set: payload },
-    { new: true, upsert: true }
+    { returnDocument: 'after', upsert: true }
   );
   return report.toJSON();
 }
@@ -472,6 +492,10 @@ export async function sendDueDateReminderSweep({ companyId, workspaceId, date = 
 }
 
 export async function sendDailyReportSummary({ companyId, workspaceId, report }) {
+  if (!DAILY_REPORT_EMAILS_ENABLED && !DAILY_REPORT_NOTIFICATIONS_ENABLED) {
+    return { emailsSent: 0, skipped: true, reason: 'daily_report_delivery_disabled' };
+  }
+
   const tenantId = companyId;
   const workspaceObjectId = asObjectId(workspaceId) || workspaceId;
   const { User, Membership, Notification, Workspace } = await getTenantModels(companyId);
@@ -499,6 +523,7 @@ export async function sendDailyReportSummary({ companyId, workspaceId, report })
   let emailsSent = 0;
 
   for (const user of users) {
+    if (isTestEmailRecipient(user.email)) continue;
     if (user.preferences?.notifications?.emailNotifs === false) continue;
     if (user.preferences?.notifications?.weeklyDigest === false) continue;
 
@@ -513,32 +538,36 @@ export async function sendDailyReportSummary({ companyId, workspaceId, report })
 
     if (existing) continue;
 
-    await Notification.create({
-      tenantId,
-      workspaceId: workspaceObjectId,
-      userId: user._id,
-      type: 'daily_work_report_generated',
-      title: 'Daily work report generated',
-      message: `Daily work report for ${formatDateLabel(reportDate)} is ready.`,
-      relatedId: String(report.id || report._id || ''),
-      isRead: false,
-    });
+    if (DAILY_REPORT_NOTIFICATIONS_ENABLED) {
+      await Notification.create({
+        tenantId,
+        workspaceId: workspaceObjectId,
+        userId: user._id,
+        type: 'daily_work_report_generated',
+        title: 'Daily work report generated',
+        message: `Daily work report for ${formatDateLabel(reportDate)} is ready.`,
+        relatedId: String(report.id || report._id || ''),
+        isRead: false,
+      });
+    }
 
-    await sendTemplatedEmailSafe({
-      to: user.email,
-      templateKey: 'dailyWorkReport',
-      variables: {
-        userName: user.name,
-        reportDate: formatDateLabel(reportDate),
-        workspaceName: workspace?.name || 'Workspace',
-        totalCompletedToday: report.summary?.totalCompletedToday || 0,
-        totalOverdueOpen: report.summary?.totalOverdueOpen || 0,
-        averagePerformanceScore: report.summary?.averagePerformanceScore || 0,
-        topPerformerName: report.summary?.topPerformerName || 'Not available',
-        headline: report.analysis?.headline || 'Daily work report generated.',
-      },
-    });
-    emailsSent += 1;
+    if (DAILY_REPORT_EMAILS_ENABLED) {
+      await sendTemplatedEmailSafe({
+        to: user.email,
+        templateKey: 'dailyWorkReport',
+        variables: {
+          userName: user.name,
+          reportDate: formatDateLabel(reportDate),
+          workspaceName: workspace?.name || 'Workspace',
+          totalCompletedToday: report.summary?.totalCompletedToday || 0,
+          totalOverdueOpen: report.summary?.totalOverdueOpen || 0,
+          averagePerformanceScore: report.summary?.averagePerformanceScore || 0,
+          topPerformerName: report.summary?.topPerformerName || 'Not available',
+          headline: report.analysis?.headline || 'Daily work report generated.',
+        },
+      });
+      emailsSent += 1;
+    }
   }
 
   return { emailsSent };

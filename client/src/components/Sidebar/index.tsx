@@ -79,7 +79,6 @@ const PLATFORM_ADMIN_NAV: NavItem[] = [
   { label: 'Companies', icon: Building2, path: '/companies' },
   { label: 'Users List', icon: UserCircle, path: '/users' },
   { label: 'Report Management', icon: Activity, path: '/reports-management' },
-  { label: 'Reports & Analytics', icon: BarChart3, path: '/reports' },
   { 
     label: 'MIS', 
     icon: Zap, 
