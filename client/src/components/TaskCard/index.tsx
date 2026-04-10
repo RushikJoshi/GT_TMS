@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Calendar, MessageSquare, Paperclip, Clock } from 'lucide-react';
-import { cn, formatDate, isDueDateOverdue } from '../../utils/helpers';
+import { Calendar, MessageSquare, Paperclip, Clock, AlertTriangle } from 'lucide-react';
+import { cn, formatDate, isDueDateOverdue, isTaskOverdue } from '../../utils/helpers';
 import { PRIORITY_CONFIG } from '../../app/constants';
 import { UserAvatar, AvatarGroup } from '../UserAvatar';
 import { SubtaskBar } from '../SubtaskBar';
@@ -19,7 +19,10 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, isDragging, c
   const priority = PRIORITY_CONFIG[task.priority];
   const { users, projects, allLabels } = useAppStore();
   const assignees = users.filter(u => task.assigneeIds.includes(u.id));
-  const isOverdue = isDueDateOverdue(task.dueDate, task.status);
+  
+  // Single source of truth for overdue status (ignores potentially stale DB flags)
+  const isOverdue = isTaskOverdue(task);
+  const localIsOverdue = isOverdue;
   const project = projects.find((item) => item.id === task.projectId);
   const category = project?.subcategories?.find((item) => item.id === task.subcategoryId);
 
@@ -98,19 +101,34 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, isDragging, c
             {category.name}
           </span>
         )}
+
+        {localIsOverdue && (
+          <div className="flex items-center gap-1 text-[10px] font-bold text-rose-600 bg-rose-50 dark:bg-rose-950/20 px-2 py-0.5 rounded-full border border-rose-100 dark:border-rose-900/40 w-fit">
+            <AlertTriangle size={10} />
+            OVERDUE
+          </div>
+        )}
+
+        {task.isReassignPending && (
+          <div className="flex items-center gap-1 text-[9px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/20 px-2 py-0.5 rounded-full border border-amber-100 dark:border-amber-900/40 w-fit">
+            <Clock size={10} />
+            {task.reassignRequestedBy && task.requestedAssigneeId 
+               ? `${users.find(u => u.id === task.reassignRequestedBy)?.name?.split(' ')[0]} reassigning`
+               : 'Reassign Pending'}
+          </div>
+        )}
+
+        {task.extensionStatus === 'pending' && (
+          <div className="flex items-center gap-1 text-[9px] font-bold text-rose-600 bg-rose-50 dark:bg-rose-950/20 px-2 py-0.5 rounded-full border border-rose-100 dark:border-rose-900/40 w-fit">
+            <Clock size={10} />
+            Extension Pending
+            {task.latestRequestedDueDate && (
+              <span className="opacity-60 ml-1">({formatDate(task.latestRequestedDueDate, 'MMM d')})</span>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Title */}
-      {task.isReassignPending && (
-        <div className="flex items-center gap-1 text-[9px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/20 px-2 py-0.5 rounded-full border border-amber-100 dark:border-amber-900/40 mb-2 w-fit">
-          <Clock size={10} />
-          {task.reassignRequestedBy && task.requestedAssigneeId 
-             ? `${users.find(u => u.id === task.reassignRequestedBy)?.name?.split(' ')[0]} requested reassign to ${users.find(u => u.id === task.requestedAssigneeId)?.name?.split(' ')[0]}`
-             : task.requestedAssigneeId
-               ? `Reassigning to ${users.find(u => u.id === task.requestedAssigneeId)?.name || '...'}`
-               : 'Reassign Pending'}
-        </div>
-      )}
       <h4 className="text-sm font-medium text-surface-800 dark:text-surface-200 leading-snug group-hover:text-brand-700 dark:group-hover:text-brand-300 transition-colors">
         {task.title}
       </h4>
@@ -127,7 +145,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, isDragging, c
       )}
 
       {task.description && (
-        <p className="mt-1 text-[11px] text-surface-400 line-clamp-2 leading-relaxed">
+        <p className="mt-1 text-[11px] text-surface-400 line-clamp-3 break-words leading-relaxed">
           {task.description}
         </p>
       )}
@@ -150,7 +168,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, onClick, isDragging, c
           {task.dueDate && (
             <span className={cn('flex items-center gap-1 text-[11px]', isOverdue ? 'text-rose-500 font-medium' : '')}>
               <Calendar size={11} />
-              {isOverdue ? 'Overdue' : formatDate(task.dueDate, 'MMM d')}
+              {formatDate(task.dueDate, 'MMM d')}
             </span>
           )}
           {task.estimatedHours && (

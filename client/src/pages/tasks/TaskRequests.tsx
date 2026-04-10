@@ -10,8 +10,10 @@ import { emitErrorToast, emitSuccessToast } from '../../context/toastBus';
 import type { TaskCreationRequest } from '../../app/types';
 import { cn, formatDate } from '../../utils/helpers';
 import { tasksService } from '../../services/api';
+import api from '../../services/api';
 
 type RequestStatusFilter = 'all' | 'pending' | 'approved' | 'rejected';
+type RequestType = 'creation' | 'extension';
 
 const REQUEST_STATUS_META = {
   pending: {
@@ -46,6 +48,9 @@ const TaskRequestsPage: React.FC = () => {
   const [processingRequestId, setProcessingRequestId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedRequest, setSelectedRequest] = useState<TaskCreationRequest | null>(null);
+  const [requestType, setRequestType] = useState<RequestType>('creation');
+  const [extensionRequests, setExtensionRequests] = useState<any[]>([]);
+  const [allExtensionRequests, setAllExtensionRequests] = useState<any[]>([]);
   const itemsPerPage = 10;
 
   const isProjectView = Boolean(projectId);
@@ -55,42 +60,50 @@ const TaskRequestsPage: React.FC = () => {
     void (async () => {
       try {
         setLoading(true);
-        const response = await tasksService.getRequests({
+        // Fetch Creation Requests
+        const creationResponse = await tasksService.getRequests({
           ...(projectId ? { projectId } : {}),
         });
-        const rows = response.data?.data ?? response.data ?? [];
-        if (!cancelled) {
-          setAllRequests(rows);
-        }
+        setAllRequests(creationResponse.data?.data ?? creationResponse.data ?? []);
+
+        // Fetch Extension Requests
+        const extensionResponse = await api.get('/extension-requests');
+        const extRows = extensionResponse.data?.data ?? extensionResponse.data ?? [];
+        setAllExtensionRequests(extRows);
       } catch (error: any) {
-        if (!cancelled) {
-          setAllRequests([]);
-          setRequests([]);
-        }
-        emitErrorToast(
-          error?.response?.data?.error?.message ||
-            error?.response?.data?.message ||
-            'Task requests could not be loaded.',
-          'Task Requests'
-        );
+        emitErrorToast('Requests could not be loaded.', 'Error');
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        setLoading(false);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
   }, [projectId]);
+
+  const currentRequests = useMemo(() => {
+    return requestType === 'creation' 
+      ? allRequests 
+      : allExtensionRequests.map(r => ({
+          ...r,
+          id: (r as any)._id || r.id,
+          title: r.tasks && r.tasks[0] ? r.tasks[0].title : 'Extension Request',
+          projectId: r.tasks && r.tasks[0] ? r.tasks[0].projectId : undefined,
+          priority: '---',
+          requestStatus: r.status,
+          requestedBy: r.userId,
+          createdAt: r.createdAt,
+          startDate: r.tasks && r.tasks[0] ? r.tasks[0].originalDueDate : undefined,
+          dueDate: r.requestedDueDate,
+          description: r.reason,
+          isExtension: true
+        }));
+  }, [requestType, allRequests, allExtensionRequests]);
 
   useEffect(() => {
     setRequests(
       statusFilter === 'all'
-        ? allRequests
-        : allRequests.filter((request) => request.requestStatus === statusFilter)
+        ? currentRequests
+        : currentRequests.filter((request) => request.requestStatus === statusFilter)
     );
-  }, [allRequests, statusFilter]);
+  }, [currentRequests, statusFilter]);
 
   const filteredRequests = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -101,11 +114,11 @@ const TaskRequestsPage: React.FC = () => {
 
       const requesterName = users.find((member) => member.id === request.requestedBy)?.name || '';
       const reviewerNames = users
-        .filter((member) => request.requestedToIds?.includes(member.id))
+        .filter((member) => (request as any).requestedToIds?.includes(member.id))
         .map((member) => member.name)
         .join(' ');
       const assigneeNames = users
-        .filter((member) => request.assigneeIds?.includes(member.id))
+        .filter((member) => (request as any).assigneeIds?.includes(member.id))
         .map((member) => member.name)
         .join(' ');
       const projectName = projects.find((item) => item.id === request.projectId)?.name || '';
@@ -134,28 +147,47 @@ const TaskRequestsPage: React.FC = () => {
   }, [statusFilter, projectFilter, priorityFilter, search]);
 
   const summary = useMemo(
-    () => ({
-      all: allRequests.length,
-      pending: allRequests.filter((request) => request.requestStatus === 'pending').length,
-      approved: allRequests.filter((request) => request.requestStatus === 'approved').length,
-      rejected: allRequests.filter((request) => request.requestStatus === 'rejected').length,
-    }),
-    [allRequests]
+    () => {
+      const activeList = requestType === 'creation' ? allRequests : allExtensionRequests;
+      const statusKey = requestType === 'creation' ? 'requestStatus' : 'status';
+      return {
+        all: activeList.length,
+        pending: activeList.filter((r) => r[statusKey] === 'pending').length,
+        approved: activeList.filter((r) => r[statusKey] === 'approved').length,
+        rejected: activeList.filter((r) => r[statusKey] === 'rejected').length,
+      };
+    },
+    [requestType, allRequests, allExtensionRequests]
   );
 
   const handleReview = async (requestId: string, action: 'approve' | 'reject') => {
     try {
       setProcessingRequestId(requestId);
       const reviewNote = action === 'reject' ? window.prompt('Add rejection note (optional):') || '' : '';
-      const response = await tasksService.reviewRequest(requestId, { action, reviewNote });
-      const result = response.data?.data ?? response.data;
-      if (result?.request) {
-        setAllRequests((prev) => prev.map((request) => (request.id === requestId ? result.request : request)));
+      
+      if (requestType === 'creation') {
+        const response = await tasksService.reviewRequest(requestId, { action, reviewNote });
+        const result = response.data?.data ?? response.data;
+        if (result?.request) {
+          setAllRequests((prev) => prev.map((request) => (request.id === requestId ? result.request : request)));
+        }
+      } else {
+        // Import extensionRequestsService if needed, but it's in api.ts
+        const { extensionRequestsService } = await import('../../services/api');
+        if (action === 'approve') {
+          await extensionRequestsService.approve(requestId, reviewNote || undefined);
+        } else {
+          await extensionRequestsService.reject(requestId, reviewNote || 'Rejected by manager');
+        }
+        // Refresh extension requests
+        const extensionResponse = await api.get('/extension-requests');
+        setAllExtensionRequests(extensionResponse.data?.data ?? extensionResponse.data ?? []);
       }
+
       await bootstrap();
       emitSuccessToast(
-        action === 'approve' ? 'Task request approved and created successfully.' : 'Task request rejected successfully.',
-        action === 'approve' ? 'Request Approved' : 'Request Rejected'
+        action === 'approve' ? 'Request approved successfully.' : 'Request rejected successfully.',
+        action === 'approve' ? 'Approved' : 'Rejected'
       );
     } catch (error: any) {
       emitErrorToast(
@@ -169,9 +201,13 @@ const TaskRequestsPage: React.FC = () => {
     }
   };
 
-  const canReviewRequest = (request: TaskCreationRequest) => {
+  const canReviewRequest = (request: any) => {
     const privileged = ['super_admin', 'admin', 'manager', 'team_leader'].includes(user?.role || '');
-    return privileged || request.requestedToIds.includes(user?.id || '');
+    if (requestType === 'creation') {
+      return privileged || (request.requestedToIds && request.requestedToIds.includes(user?.id || ''));
+    }
+    // For extensions, only managers/admins for now, or the specific reviewer
+    return privileged || request.reviewerId === user?.id;
   };
 
   return (
@@ -185,6 +221,31 @@ const TaskRequestsPage: React.FC = () => {
           Back to project
         </Link>
       )}
+
+      <div className="flex items-center gap-4 bg-white dark:bg-surface-900 p-1.5 rounded-2xl border border-surface-100 dark:border-surface-800 shadow-sm w-fit">
+        <button
+          onClick={() => setRequestType('creation')}
+          className={cn(
+            "px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all",
+            requestType === 'creation'
+              ? "bg-brand-600 text-white shadow-lg shadow-brand-500/20"
+              : "text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
+          )}
+        >
+          Task Creation
+        </button>
+        <button
+          onClick={() => setRequestType('extension')}
+          className={cn(
+            "px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all",
+            requestType === 'extension'
+              ? "bg-brand-600 text-white shadow-lg shadow-brand-500/20"
+              : "text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
+          )}
+        >
+          Due Date Extensions
+        </button>
+      </div>
 
       {/* 1. Header Toolbar (Search + Combined Filters) */}
       <div className="bg-white dark:bg-surface-900 border border-surface-100 dark:border-surface-800 rounded-2xl p-3 shadow-sm">
@@ -322,7 +383,7 @@ const TaskRequestsPage: React.FC = () => {
                 <tbody className="divide-y divide-surface-100 dark:divide-surface-800/70">
                   {paginatedRequests.map((request) => {
                     const linkedProject = projects.find((item) => item.id === request.projectId);
-                    const requester = users.find((u) => u.id === request.requestedBy);
+                    const requester = users.find((u) => u.id === request.requestedBy) || (typeof request.requestedBy === 'object' ? request.requestedBy : null);
                     const meta = REQUEST_STATUS_META[request.requestStatus];
                     const StatusIcon = meta.icon;
                     const canReview = canReviewRequest(request);
@@ -472,10 +533,10 @@ const RequestDetailOverlay: React.FC<{
 }> = ({ request, onClose, onReview, isProcessing, canReview }) => {
   const { users, projects } = useAppStore();
   const linkedProject = projects.find((p) => p.id === request.projectId);
-  const requester = users.find((m) => m.id === request.requestedBy);
-  const reviewers = users.filter((m) => request.requestedToIds.includes(m.id));
-  const assignees = users.filter((m) => request.assigneeIds.includes(m.id));
-  const meta = REQUEST_STATUS_META[request.requestStatus];
+  const requester = (request as any).requesterObject || users.find((m) => m.id === request.requestedBy) || (typeof request.requestedBy === 'object' ? request.requestedBy : null);
+  const reviewers = users.filter((m) => (request as any).requestedToIds?.includes(m.id));
+  const assignees = users.filter((m) => (request as any).assigneeIds?.includes(m.id));
+  const meta = REQUEST_STATUS_META[request.requestStatus as keyof typeof REQUEST_STATUS_META];
   const StatusIcon = meta.icon;
 
   return (

@@ -6,6 +6,7 @@ import { hasWorkspacePermission } from './permission.service.js';
 import { assertAllowedTaskTitle, normalizeTaskTitle } from '../utils/taskTitleValidation.js';
 import { getTaskActivityModel } from '../models/TaskActivity.js';
 import { uploadIncomingFiles } from './storage.service.js';
+import { isTaskOverdue, getOverdueQueryFilter } from '../utils/task.utils.js';
 
 function strId(x) {
   return x ? String(x) : '';
@@ -37,7 +38,7 @@ async function updateTaskStatusHistory({ tenantId, taskId, userId, fromStatus, t
 
     const now = new Date();
     const history = task.statusHistory || [];
-    
+
     // Close previous status if exists
     if (history.length > 0) {
       const lastEntry = history[history.length - 1];
@@ -55,6 +56,50 @@ async function updateTaskStatusHistory({ tenantId, taskId, userId, fromStatus, t
     });
 
     task.statusHistory = history;
+    await task.save();
+
+    // 2. Implement Step 2: timeLogs
+    const timeLogs = task.timeLogs || [];
+    // Case 2: Exiting previous status - close open logs
+    for (const log of timeLogs) {
+      if (!log.endTime) {
+        log.endTime = now;
+        log.duration = Math.max(0, Math.floor((now.getTime() - new Date(log.startTime).getTime()) / 1000));
+      }
+    }
+
+    // Case 1: Entering a status (unless already completed)
+    if (toStatus !== 'done') {
+      timeLogs.push({
+        status: toStatus,
+        startTime: now,
+        endTime: null,
+        duration: 0,
+        userId: userId
+      });
+    }
+
+    task.timeLogs = timeLogs;
+
+    // 3. Step 5: Calculation Logic
+    let total = 0;
+    let inProgress = 0;
+    for (const log of timeLogs) {
+      const start = new Date(log.startTime).getTime();
+      const end = log.endTime ? new Date(log.endTime).getTime() : now.getTime();
+      const dur = Math.max(0, Math.floor((end - start) / 1000));
+
+      total += dur;
+      if (log.status?.toLowerCase() === 'in_progress') {
+        inProgress += dur;
+      }
+    }
+
+    task.timeAnalytics = {
+      totalTimeSpent: total,
+      inProgressTime: inProgress
+    };
+
     await task.save();
 
     // Also log to TaskActivity
@@ -83,7 +128,7 @@ export function calculateTimeSpent(statusHistory) {
     const start = new Date(entry.startTime);
     const end = entry.endTime ? new Date(entry.endTime) : now;
     const duration = Math.max(0, Math.floor((end.getTime() - start.getTime()) / 1000));
-    
+
     timeSpentByStatus[entry.status] = (timeSpentByStatus[entry.status] || 0) + duration;
     totalTimeSpent += duration;
 
@@ -439,6 +484,16 @@ async function attachTaskActivity({ companyId, workspaceId, tasks }) {
 
 export async function assertProjectAccess({ tenantId, workspaceId, userId, role, projectId }) {
   if (!projectId) return true; // Allow access to workspace-level tasks that don't belong to a project
+
+  const { Project } = await getTenantModels(tenantId);
+  const project = await Project.findOne({ _id: projectId, tenantId, workspaceId }).select('_id').lean();
+  if (!project) {
+    const err = new Error('Project not found');
+    err.statusCode = 404;
+    err.code = 'PROJECT_NOT_FOUND';
+    throw err;
+  }
+
   const allowed = await getAccessibleProjectIds({ tenantId, workspaceId, userId, role });
   if (allowed === null) return true;
   return allowed.some((id) => strId(id) === strId(projectId));
@@ -460,51 +515,18 @@ export async function listTasks({
 }) {
   const tenantId = companyId;
   const { Task } = await getTenantModels(companyId);
-  const filter = {
+  const filter = await buildTaskVisibilityFilter({
     tenantId,
     workspaceId,
-    $or: [{ parentTaskId: null }, { parentTaskId: { $exists: false } }],
-  };
-
-  if (labels && Array.isArray(labels)) {
-    const validLabels = labels.filter(l => l && typeof l === 'string' && l.trim().length > 0);
-    if (validLabels.length > 0) {
-      filter.labels = { $in: validLabels };
-    }
-  }
-  if (tags && Array.isArray(tags)) {
-    const validTags = tags.filter(t => t && typeof t === 'string' && t.trim().length > 0);
-    if (validTags.length > 0) {
-      filter.tags = { $in: validTags };
-    }
-  }
-
-  const allowed = await getAccessibleProjectIds({ tenantId, workspaceId, userId, role });
-  if (allowed !== null) {
-    if (projectId) {
-      filter.projectId = projectId;
-      if (!allowed.some((id) => strId(id) === strId(projectId))) {
-        Object.assign(filter, buildDirectTaskAccessFilter(userId));
-      }
-    } else {
-      filter.$and = [
-        { $or: [{ parentTaskId: null }, { parentTaskId: { $exists: false } }] },
-        {
-          $or: [
-            ...(allowed.length ? [{ projectId: { $in: allowed } }] : []),
-            buildDirectTaskAccessFilter(userId),
-          ],
-        },
-      ];
-      delete filter.$or;
-    }
-  } else if (projectId) {
-    filter.projectId = projectId;
-  }
-
-  if (assigneeId) filter.assigneeIds = assigneeId;
-  if (status) filter.status = status;
-  if (priority) filter.priority = priority;
+    projectId,
+    userId,
+    role,
+    labels,
+    tags,
+    assigneeId,
+    status,
+    priority,
+  });
 
   const skip = (page - 1) * limit;
   const [items, total] = await Promise.all([
@@ -514,8 +536,98 @@ export async function listTasks({
   return { items: await attachTaskActivity({ companyId, workspaceId, tasks: items }), total, page, limit };
 }
 
+export async function buildTaskVisibilityFilter({
+  tenantId,
+  workspaceId,
+  projectId,
+  userId,
+  role,
+  labels,
+  tags,
+  assigneeId,
+  status,
+  priority,
+}) {
+  const base = {
+    tenantId,
+    workspaceId,
+    $or: [{ parentTaskId: null }, { parentTaskId: { $exists: false } }],
+  };
+
+  if (labels && Array.isArray(labels)) {
+    const validLabels = labels.filter((l) => l && typeof l === 'string' && l.trim().length > 0);
+    if (validLabels.length > 0) base.labels = { $in: validLabels };
+  }
+  if (tags && Array.isArray(tags)) {
+    const validTags = tags.filter((t) => t && typeof t === 'string' && t.trim().length > 0);
+    if (validTags.length > 0) base.tags = { $in: validTags };
+  }
+
+  const allowed = await getAccessibleProjectIds({ tenantId, workspaceId, userId, role });
+  if (allowed !== null) {
+    if (projectId) {
+      base.projectId = projectId;
+      if (!allowed.some((id) => strId(id) === strId(projectId))) {
+        Object.assign(base, buildDirectTaskAccessFilter(userId));
+      }
+    } else {
+      base.$and = [
+        { $or: [{ parentTaskId: null }, { parentTaskId: { $exists: false } }] },
+        {
+          $or: [
+            ...(allowed.length ? [{ projectId: { $in: allowed } }] : []),
+            buildDirectTaskAccessFilter(userId),
+          ],
+        },
+      ];
+      delete base.$or;
+    }
+  } else if (projectId) {
+    base.projectId = projectId;
+  }
+
+  if (assigneeId) base.assigneeIds = assigneeId;
+  if (status) {
+    if (status === 'overdue') {
+      const { dueDate, status: filteredStatus } = getOverdueQueryFilter(new Date());
+      base.dueDate = dueDate;
+      base.status = filteredStatus;
+    } else {
+      base.status = status;
+    }
+  }
+  if (priority) base.priority = priority;
+
+  // GLOBAL ARCHIVE FILTER: Exclude tasks from archived projects unless a specific projectId is requested
+  if (!projectId) {
+    const { Project } = await getTenantModels(tenantId);
+    const archivedProjects = await Project.find({ tenantId, workspaceId, status: 'archived' }).select('_id').lean();
+    if (archivedProjects.length > 0) {
+      const archivedIds = archivedProjects.map(p => p._id);
+      if (base.$and) {
+        base.$and.push({ projectId: { $nin: archivedIds } });
+      } else {
+        base.projectId = { $nin: archivedIds };
+      }
+    }
+  }
+
+  return base;
+}
+
 export async function createTask({ companyId, workspaceId, userId, role, data }) {
   const tenantId = companyId;
+  const { Task, Project, ActivityLog, Notification } = await getTenantModels(companyId);
+
+  // Validate project existence early
+  const project = await Project.findOne({ _id: data.projectId, tenantId, workspaceId }).select('name').lean();
+  if (!project) {
+    const err = new Error('Project not found');
+    err.statusCode = 404;
+    err.code = 'PROJECT_NOT_FOUND';
+    throw err;
+  }
+
   const ok = await assertProjectAccess({ tenantId, workspaceId, userId, role, projectId: data.projectId });
   if (!ok) {
     const err = new Error('Forbidden: no access to this project');
@@ -524,8 +636,6 @@ export async function createTask({ companyId, workspaceId, userId, role, data })
     throw err;
   }
 
-  const { Task, Project, ActivityLog, Notification } = await getTenantModels(companyId);
-  const project = await Project.findOne({ _id: data.projectId, tenantId, workspaceId }).select('name').lean();
   const normalizedTitle = normalizeTaskTitle(data.title);
   assertAllowedTaskTitle(normalizedTitle);
   const { startDate, dueDate, durationDays } = resolveTaskSchedule(data);
@@ -594,6 +704,9 @@ export async function createTask({ companyId, workspaceId, userId, role, data })
     tenantId,
     workspaceId,
     userId,
+    type: 'task_created',
+    description: `Created task "${task.title}"`,
+    entityType: 'TASK',
     entityId: task._id,
     metadata: { projectId: task.projectId },
   });
@@ -1047,7 +1160,7 @@ export async function updateTask({ companyId, workspaceId, userId, role, taskId,
   const actualGenericChanges = [];
   for (const field of Object.keys(updates || {})) {
     if (specializedOnlyFields.has(field)) continue;
-    
+
     let isChanged = false;
     const oldVal = existing[field];
     const newVal = updates[field];
@@ -1338,6 +1451,18 @@ export async function addSubtask({ companyId, workspaceId, userId, role, taskId,
     message: `added subtask: "${title}"`
   });
 
+  const { ActivityLog: ActivityLogModel } = await getTenantModels(tenantId);
+  await ActivityLogModel.create({
+    tenantId,
+    workspaceId,
+    userId,
+    type: 'subtask_added',
+    description: `Added subtask "${title}" to "${task.title}"`,
+    entityType: 'TASK',
+    entityId: task._id,
+    metadata: { projectId: task.projectId, subtaskTitle: title },
+  });
+
   if (subAssignee) {
     await createSubtaskNotification({
       tenantId,
@@ -1380,6 +1505,20 @@ export async function updateSubtask({ companyId, workspaceId, userId, role, task
   const sub = task.subtasks.id(subtaskId);
   if (!sub) return null;
   const prevAssignee = sub.assigneeId ? String(sub.assigneeId) : null;
+  if (updates.isCompleted !== undefined && updates.isCompleted !== sub.isCompleted) {
+    const { ActivityLog: ActivityLogModel } = await getTenantModels(tenantId);
+    await ActivityLogModel.create({
+      tenantId,
+      workspaceId,
+      userId,
+      type: 'subtask_status_changed',
+      description: `Marked subtask "${sub.title}" as ${updates.isCompleted ? 'completed' : 'uncompleted'} in task "${task.title}"`,
+      entityType: 'TASK',
+      entityId: taskId,
+      metadata: { projectId: task.projectId, subtaskTitle: sub.title, isCompleted: updates.isCompleted },
+    });
+  }
+
   if (updates.title !== undefined) sub.title = updates.title;
   if (updates.isCompleted !== undefined) sub.isCompleted = Boolean(updates.isCompleted);
   if (updates.order !== undefined) sub.order = updates.order;
@@ -1397,6 +1536,20 @@ export async function updateSubtask({ companyId, workspaceId, userId, role, task
       taskTitle: task.title,
       subtaskTitle: sub.title,
       taskId,
+    });
+  }
+
+  const { ActivityLog: ActivityLogModel } = await getTenantModels(tenantId);
+  if (newAssignee && newAssignee !== prevAssignee) {
+    await ActivityLogModel.create({
+      tenantId,
+      workspaceId,
+      userId,
+      type: 'subtask_assignee_changed',
+      description: `Changed assignee for subtask "${sub.title}" in task "${task.title}"`,
+      entityType: 'TASK',
+      entityId: taskId,
+      metadata: { projectId: task.projectId, subtaskTitle: sub.title },
     });
   }
 
@@ -1475,6 +1628,18 @@ export async function addTaskAttachments({ companyId, workspaceId, userId, role,
       message: `added attachment: "${attachment.name}"`
     });
   }
+
+  const { ActivityLog: ActivityLogModel } = await getTenantModels(tenantId);
+  await ActivityLogModel.create({
+    tenantId,
+    workspaceId,
+    userId,
+    type: 'attachment_added',
+    description: `Added ${attachments.length} attachment(s) to "${task.title}"`,
+    entityType: 'TASK',
+    entityId: taskId,
+    metadata: { projectId: task.projectId, count: attachments.length },
+  });
   return Task.findOne({ _id: taskId, tenantId, workspaceId });
 }
 
@@ -1536,6 +1701,18 @@ export async function addTaskComment({ companyId, workspaceId, userId, role, tas
     message: `added a comment`
   });
 
+  const { ActivityLog: ActivityLogModel } = await getTenantModels(tenantId);
+  await ActivityLogModel.create({
+    tenantId,
+    workspaceId: task.workspaceId,
+    userId,
+    type: 'COMMENT_ADDED',
+    description: `Commented on "${task.title}": ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`,
+    entityType: 'TASK',
+    entityId: taskId,
+    metadata: { projectId: task.projectId },
+  });
+
   // 2. Notifications
   const sender = await User.findById(userId).select('name').lean();
   const recipients = new Set();
@@ -1564,54 +1741,59 @@ export async function addTaskComment({ companyId, workspaceId, userId, role, tas
     .populate('subtasks.assigneeId', 'name avatar color fontColor');
 }
 
-export async function getOverdueTasks({ tenantId, userId, role }) {
-  const { Task, QuickTask, Project } = await getTenantModels(tenantId);
+export async function getOverdueTasks({ tenantId, workspaceId, userId, role }) {
+  const { Task } = await getTenantModels(tenantId);
   const now = new Date();
-  now.setHours(0, 0, 0, 0); // Align with frontend (only tasks due BEFORE today)
 
-  // 1. Get active project IDs (exclude archived)
-  const activeProjects = await Project.find({
-    tenantId,
-    status: { $ne: 'archived' }
-  }).select('_id').lean();
-  const activeProjectIds = activeProjects.map(p => p._id);
+  const allowedProjects = await getAccessibleProjectIds({ tenantId, workspaceId, userId, role });
 
-  const query = {
+  // Use centralized filter logic
+  const taskFilter = {
     tenantId,
-    dueDate: { $lt: now },
-    status: { $ne: 'done' }
+    workspaceId,
+    ...getOverdueQueryFilter(now),
+    $or: [{ parentTaskId: null }, { parentTaskId: { $exists: false } }],
   };
 
-  if (!isAdminRole(role) && role !== 'manager') {
-    query.assigneeIds = userId;
+  // Exclude tasks from archived projects
+  const { Project } = await getTenantModels(tenantId);
+  const archivedProjects = await Project.find({ tenantId, workspaceId, status: 'archived' }).select('_id').lean();
+  if (archivedProjects.length > 0) {
+    const archivedIds = archivedProjects.map(p => p._id);
+    if (taskFilter.$and) {
+      taskFilter.$and.push({ projectId: { $nin: archivedIds } });
+    } else {
+      taskFilter.$and = [{ projectId: { $nin: archivedIds } }];
+    }
   }
 
-  // Fetch both regular tasks (active projects or no project) and quick tasks
-  const [tasks, quickTasks] = await Promise.all([
-    Task.find({
-      ...query,
-      $or: [
-        { projectId: { $in: activeProjectIds } },
-        { projectId: { $exists: false } },
-        { projectId: null }
-      ]
-    }).populate('assigneeIds', 'name').sort({ dueDate: 1 }).lean(),
-    QuickTask.find(query).populate('assigneeIds', 'name').sort({ dueDate: 1 }).lean()
-  ]);
+  if (allowedProjects !== null) {
+    taskFilter.$and = [
+      {
+        $or: [
+          ...(allowedProjects.length ? [{ projectId: { $in: allowedProjects } }] : []),
+          buildDirectTaskAccessFilter(userId),
+        ],
+      },
+    ];
+  }
 
-  const allTasks = [...tasks, ...quickTasks];
+  const tasks = await Task.find(taskFilter).populate('assigneeIds', 'name').sort({ dueDate: 1 }).lean();
 
-  const formattedTasks = allTasks.map(t => ({
-    id: String(t._id),
-    title: t.title,
-    dueDate: t.dueDate ? new Date(t.dueDate).toISOString().split('T')[0] : null,
-    assignedToName: t.assigneeIds && t.assigneeIds.length > 0
-      ? t.assigneeIds.map(u => u.name).join(', ')
-      : 'Unassigned'
-  })).sort((a, b) => new Date(a.dueDate || 0).getTime() - new Date(b.dueDate || 0).getTime());
+  const formattedTasks = tasks
+    .map((t) => ({
+      id: String(t._id),
+      title: t.title,
+      dueDate: t.dueDate ? new Date(t.dueDate).toISOString().split('T')[0] : null,
+      assignedToName:
+        t.assigneeIds && t.assigneeIds.length > 0
+          ? t.assigneeIds.map((u) => u.name).join(', ')
+          : 'Unassigned',
+    }))
+    .sort((a, b) => new Date(a.dueDate || 0).getTime() - new Date(b.dueDate || 0).getTime());
 
   return {
     count: formattedTasks.length,
-    tasks: formattedTasks
+    tasks: formattedTasks,
   };
 }

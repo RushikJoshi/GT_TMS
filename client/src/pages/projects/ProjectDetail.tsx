@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion';
 import {
   LayoutDashboard, List, BarChart3, Settings2, Plus, ListTodo,
-  ArrowLeft, Edit3, Calendar, Flag, Users, ChevronDown
+  ArrowLeft, Edit3, Calendar, Flag, Users, ChevronDown, Clock
 } from 'lucide-react';
 import { cn, formatDate, getProgressColor } from '../../utils/helpers';
 import { useAppStore } from '../../context/appStore';
@@ -20,6 +20,7 @@ import { emitErrorToast, emitSuccessToast } from '../../context/toastBus';
 import { ProjectTimelineModule } from '../../components/ProjectTimelineModule';
 import { Modal } from '../../components/Modal';
 import { ProjectTaskCreateModal, type ProjectTaskCreateValues } from '../../components/ProjectTaskCreateModal';
+import { ProjectActivityTab } from '../../components/ProjectActivityTab';
 
 export const ProjectDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -308,6 +309,7 @@ export const ProjectDetailPage: React.FC = () => {
     { value: 'timeline', label: 'Timeline', icon: <Calendar size={14} /> },
     { value: 'overview', label: 'Overview', icon: <BarChart3 size={14} /> },
     { value: 'team', label: 'Team', icon: <Users size={14} /> },
+    { value: 'activity', label: 'Activity', icon: <Clock size={14} /> },
   ];
 
   return (
@@ -809,6 +811,9 @@ export const ProjectDetailPage: React.FC = () => {
               );
             })}
           </div>
+        </TabsContent>
+        <TabsContent value="activity" className="pt-6">
+          <ProjectActivityTab projectId={project.id} />
         </TabsContent>
       </Tabs>
 
