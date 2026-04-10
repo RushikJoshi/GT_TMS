@@ -86,6 +86,11 @@ const taskSchema = new mongoose.Schema(
     isReassignPending: { type: Boolean, default: false, index: true },
     requestedAssigneeId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     reassignRequestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    isOverdue: { type: Boolean, default: false, index: true },
+    overdueSince: { type: Date, default: null },
+    extensionStatus: { type: String, enum: ['none', 'pending', 'approved', 'rejected'], default: 'none' },
+    latestExtensionReason: { type: String, trim: true, maxlength: 10000 },
+    latestRequestedDueDate: { type: Date, default: null },
     statusHistory: [
       {
         status: { type: String, required: true },
@@ -93,6 +98,19 @@ const taskSchema = new mongoose.Schema(
         endTime: { type: Date, default: null },
       },
     ],
+    timeLogs: [
+      {
+        status: { type: String, required: true },
+        startTime: { type: Date, required: true, default: Date.now },
+        endTime: { type: Date, default: null },
+        duration: { type: Number, default: 0 }, // in seconds
+        userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      },
+    ],
+    timeAnalytics: {
+      totalTimeSpent: { type: Number, default: 0 }, // in seconds
+      inProgressTime: { type: Number, default: 0 }, // in seconds
+    },
   },
   { timestamps: true }
 );
@@ -209,6 +227,11 @@ taskSchema.set('toJSON', {
     ret.isReassignPending = !!ret.isReassignPending;
     ret.requestedAssigneeId = ret.requestedAssigneeId ? String(ret.requestedAssigneeId) : undefined;
     ret.reassignRequestedBy = ret.reassignRequestedBy ? String(ret.reassignRequestedBy) : undefined;
+    ret.isOverdue = !!ret.isOverdue;
+    ret.overdueSince = ret.overdueSince ? new Date(ret.overdueSince).toISOString() : undefined;
+    ret.extensionStatus = ret.extensionStatus || 'none';
+    ret.latestExtensionReason = ret.latestExtensionReason || undefined;
+    ret.latestRequestedDueDate = ret.latestRequestedDueDate ? new Date(ret.latestRequestedDueDate).toISOString().split('T')[0] : undefined;
     ret.statusHistory = Array.isArray(ret.statusHistory)
       ? ret.statusHistory.map(h => ({
           status: h.status,
@@ -216,6 +239,17 @@ taskSchema.set('toJSON', {
           endTime: h.endTime?.toISOString?.() || h.endTime,
         }))
       : [];
+    ret.timeLogs = Array.isArray(ret.timeLogs)
+      ? ret.timeLogs.map(l => ({
+          status: l.status,
+          startTime: l.startTime?.toISOString?.() || l.startTime,
+          endTime: l.endTime?.toISOString?.() || l.endTime,
+          duration: l.duration || 0,
+          userId: l.userId ? String(l.userId) : undefined,
+        }))
+      : [];
+    ret.totalTimeSpent = ret.timeAnalytics?.totalTimeSpent || 0;
+    ret.inProgressTime = ret.timeAnalytics?.inProgressTime || 0;
     delete ret._id;
     delete ret.__v;
     delete ret.tenantId;

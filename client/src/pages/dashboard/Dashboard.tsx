@@ -6,17 +6,19 @@ import {
   FolderKanban, Users, BarChart3, Plus, Zap, Building2, Activity
 } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { cn, formatDate, formatRelativeTime, getProgressColor, isDueDateOverdue } from '../../utils/helpers';
+import { cn, formatDate, formatRelativeTime, getProgressColor, isDueDateOverdue, isTaskOverdue } from '../../utils/helpers';
 import { useAuthStore } from '../../context/authStore';
 import { useAppStore } from '../../context/appStore';
 import { PRIORITY_CONFIG, STATUS_CONFIG } from '../../app/constants';
-import { companiesService, activityService } from '../../services/api';
+import { companiesService, activityService, tasksService } from '../../services/api';
 import api from '../../services/api';
 import { UserAvatar, AvatarGroup } from '../../components/UserAvatar';
 import { ProgressBar } from '../../components/ui';
 import { TaskCard } from '../../components/TaskCard';
 import { ReassignRequestsPanel } from '../../components/ReassignRequestsPanel';
+import { ExtensionRequestsPanel } from '../../components/ExtensionRequestsPanel';
 import { OverdueTasksPopup } from '../../components/dashboard/OverdueTasksPopup';
+import { ExtensionRequestsPopup } from '../../components/dashboard/ExtensionRequestsPopup';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -92,6 +94,8 @@ export const DashboardPage: React.FC = () => {
   const [activityLoading, setActivityLoading] = useState(false);
   const [overviewTasks, setOverviewTasks] = useState<any[]>([]);
   const [overviewLoading, setOverviewLoading] = useState(false);
+  const [overdueApi, setOverdueApi] = useState<{ count: number; tasks: any[] }>({ count: 0, tasks: [] });
+  const [overdueLoading, setOverdueLoading] = useState(false);
 
   const isSuperAdmin = user?.role === 'super_admin';
 
@@ -127,6 +131,19 @@ export const DashboardPage: React.FC = () => {
         .then(res => setOverviewTasks(res.data?.data || []))
         .catch(console.error)
         .finally(() => setOverviewLoading(false));
+
+      // Keep overdue card in sync with backend (same as popup)
+      setOverdueLoading(true);
+      tasksService.getOverdue()
+        .then(res => {
+          const data = res.data || {};
+          setOverdueApi({
+            count: Number(data.count) || 0,
+            tasks: Array.isArray(data.tasks) ? data.tasks : [],
+          });
+        })
+        .catch(() => setOverdueApi({ count: 0, tasks: [] }))
+        .finally(() => setOverdueLoading(false));
     }
   }, []);
 
@@ -151,15 +168,24 @@ export const DashboardPage: React.FC = () => {
     ];
   }, [activeProjectTasks, quickTasks, user?.id]);
 
-  const overdueTasks = isManagerOrAdmin
-    ? [
-      ...activeProjectTasks.filter(t => isDueDateOverdue(t.dueDate, t.status)),
-      ...quickTasks.filter(t => isDueDateOverdue(t.dueDate, t.status))
-    ]
-    : [
-      ...activeProjectTasks.filter(t => t.assigneeIds?.includes(user?.id || '') && isDueDateOverdue(t.dueDate, t.status)),
-      ...quickTasks.filter(t => (t.assigneeIds || []).includes(user?.id || '') && isDueDateOverdue(t.dueDate, t.status))
+  // Prefer backend-sourced overdue count to avoid drift with UI popup
+  const overdueTasks = useMemo(() => {
+    if (!isManagerOrAdmin) {
+      const uid = user?.id || '';
+      return [
+        ...activeProjectTasks.filter(t => (t.assigneeIds || []).includes(uid) && isTaskOverdue(t)),
+        ...quickTasks.filter(t => (t.assigneeIds || []).includes(uid) && isTaskOverdue(t))
+      ];
+    }
+    // Managers/Admins: trust API count when available
+    if (overdueApi.count > 0 && overdueApi.tasks.length > 0) {
+      return overdueApi.tasks;
+    }
+    return [
+      ...activeProjectTasks.filter(t => isTaskOverdue(t)),
+      ...quickTasks.filter(t => isTaskOverdue(t))
     ];
+  }, [isManagerOrAdmin, activeProjectTasks, quickTasks, user?.id, overdueApi]);
 
   const completedThisWeek = isManagerOrAdmin
     ? [
@@ -528,7 +554,10 @@ export const DashboardPage: React.FC = () => {
         {/* Right: My tasks + Activity Feed */}
         <div className="space-y-6">
           {['admin', 'manager', 'team_leader'].includes(user?.role || '') && (
-            <ReassignRequestsPanel />
+            <>
+              <ReassignRequestsPanel />
+              <ExtensionRequestsPanel />
+            </>
           )}
           {/* Team Tasks Overview */}
           <motion.div
@@ -637,6 +666,7 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
       <OverdueTasksPopup />
+      <ExtensionRequestsPopup />
     </div>
   );
 };

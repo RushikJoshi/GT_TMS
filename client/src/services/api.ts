@@ -223,6 +223,7 @@ export const activityService = {
   getRecent: (limit = 50) => api.get('/activity', { params: { limit } }),
   list: (params?: { limit?: number; q?: string; type?: string; entityType?: string; days?: number }) =>
     api.get('/activity', { params }),
+  getByProject: (projectId: string) => api.get(`/activity/project/${projectId}`),
 };
 
 export const systemSettingsService = {
@@ -257,4 +258,12 @@ export const reassignService = {
   approve: (id: string) => api.put(`/tasks/reassign-request/${id}/approve`),
   reject: (id: string, note?: string) => api.put(`/tasks/reassign-request/${id}/reject`, { note }),
   getStatus: (taskId: string) => api.get(`/tasks/reassign-request/status/${taskId}`),
+};
+
+export const extensionRequestsService = {
+  create: (data: { taskIds: string[]; reason: string; requestedDueDate?: string; isExplanationOnly: boolean }) =>
+    api.post('/extension-requests', data),
+  getAll: () => api.get('/extension-requests'),
+  approve: (id: string, comment?: string) => api.put(`/extension-requests/${id}/approve`, { comment }),
+  reject: (id: string, comment: string) => api.put(`/extension-requests/${id}/reject`, { comment }),
 };

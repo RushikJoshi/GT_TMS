@@ -62,3 +62,59 @@ export async function listActivity({ companyId, workspaceId, limit = 50, q, type
   });
 }
 
+
+export async function listProjectActivity({ companyId, workspaceId, projectId, limit = 200 }) {
+  const { ActivityLog, User, Task } = await getTenantModels(companyId);
+
+  // Get all task IDs for this project to fetch their activities
+  const projectTasks = await Task.find({ projectId }).select('_id title').lean();
+  const taskIds = projectTasks.map((t) => t._id);
+  const taskNames = new Map(projectTasks.map((t) => [String(t._id), t.title]));
+
+  const filter = {
+    tenantId: companyId,
+    workspaceId,
+    $or: [
+      { entityType: { $in: ['TASK', 'task'] }, entityId: { $in: taskIds } },
+      { entityType: { $in: ['PROJECT', 'project'] }, entityId: projectId },
+    ],
+  };
+
+  const items = await ActivityLog.find(filter)
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .lean();
+
+  const userIds = [...new Set(items.map((item) => String(item.userId)).filter(Boolean))];
+  const users = userIds.length > 0
+    ? await User.find({ _id: { $in: userIds } }).select('name email role color').lean()
+    : [];
+
+  const userMap = new Map(users.map((user) => [String(user._id), user]));
+
+  return items.map((item) => {
+    const user = userMap.get(String(item.userId));
+    const isTask = ['TASK', 'task'].includes(item.entityType);
+    const entityName = isTask ? taskNames.get(String(item.entityId)) : undefined;
+
+    return {
+      id: String(item._id),
+      type: item.type,
+      description: item.description,
+      entityType: item.entityType,
+      entityId: String(item.entityId),
+      entityName, // Include task name for grouping
+      metadata: item.metadata || {},
+      createdAt: item.createdAt?.toISOString?.() || item.createdAt,
+      user: user
+        ? {
+            id: String(user._id),
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            color: user.color,
+          }
+        : null,
+    };
+  });
+}

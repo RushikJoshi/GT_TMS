@@ -430,9 +430,40 @@ export interface Task {
   isReassignPending?: boolean;
   requestedAssigneeId?: string;
   reassignRequestedBy?: string;
+  isOverdue?: boolean;
+  overdueSince?: string;
+  extensionStatus?: 'none' | 'pending' | 'approved' | 'rejected';
+  latestExtensionReason?: string;
+  latestRequestedDueDate?: string;
+  totalTimeSpent?: number;
+  inProgressTime?: number;
+  timeLogs?: Array<{
+    status: string;
+    startTime: string;
+    endTime: string | null;
+    duration: number;
+    userId?: string;
+  }>;
   order: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ExtensionRequest {
+  id: string;
+  _id?: string;
+  userId: string;
+  taskIds: string[];
+  reason: string;
+  requestedDueDate: string;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewerId?: string;
+  reviewerComment?: string;
+  createdAt: string;
+  updatedAt: string;
+  tasks?: Array<{ id: string; title: string }>;
+  user?: Partial<User>;
+  reviewer?: Partial<User>;
 }
 
 export interface QuickTask {

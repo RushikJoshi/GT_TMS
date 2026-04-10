@@ -25,3 +25,22 @@ export async function list(req, res, next) {
   }
 }
 
+
+export async function getByProject(req, res, next) {
+  try {
+    const { companyId, workspaceId } = req.auth;
+    const { projectId } = req.params;
+    const limit = req.query.limit ? Math.min(Number(req.query.limit), 500) : 200;
+
+    const items = await ActivityService.listProjectActivity({
+      companyId,
+      workspaceId,
+      projectId,
+      limit,
+    });
+
+    return res.status(200).json({ success: true, data: items });
+  } catch (e) {
+    return next(e);
+  }
+}
