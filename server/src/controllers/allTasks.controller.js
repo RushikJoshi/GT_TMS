@@ -113,6 +113,7 @@ export async function getAllTasks(req, res, next) {
     }
 
     const tasks = await Task.find(taskFilter)
+      .select('title status priority dueDate estimatedHours projectId assigneeIds reporterId createdAt')
       .populate('assigneeIds', 'name avatar')
       .populate('reporterId', 'name avatar')
       .populate('projectId', 'name')
@@ -145,12 +146,14 @@ export async function getAllTasks(req, res, next) {
     }
 
     const quickTasks = await QuickTask.find(qtBaseFilter)
+      .select('title status priority dueDate estimatedHours assigneeIds reporterId createdAt')
       .populate('assigneeIds', 'name avatar')
       .populate('reporterId', 'name avatar')
       .sort({ createdAt: -1 })
       .lean();
 
     const personalTasks = await PersonalTask.find({ userId: uid })
+      .select('title status priority dueDate createdAt')
       .sort({ createdAt: -1 })
       .lean();
 
@@ -170,9 +173,6 @@ export async function getAllTasks(req, res, next) {
       priority: t.priority,
       dueDate: t.dueDate,
       estimatedHours: t.estimatedHours ?? undefined,
-      subtasks: t.subtasks || [],
-      attachments: t.attachments || [],
-      description: t.description || '',
     }));
 
     const mappedQuickTasks = quickTasks.map(qt => ({
@@ -191,8 +191,6 @@ export async function getAllTasks(req, res, next) {
       priority: qt.priority,
       dueDate: qt.dueDate,
       estimatedHours: qt.estimatedHours ?? undefined,
-      attachments: qt.attachments || [],
-      description: qt.description || '',
     }));
 
     const mappedPersonalTasks = personalTasks.map(pt => ({
