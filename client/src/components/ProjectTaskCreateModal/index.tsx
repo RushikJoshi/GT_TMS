@@ -179,7 +179,7 @@ export const ProjectTaskCreateModal: React.FC<ProjectTaskCreateModalProps> = ({
     try {
       const res = await labelsService.create({ name: newLabelName.trim(), color: newLabelColor });
       const newL = res.data.data;
-      await bootstrap(); 
+      await bootstrap();
       setField('labels', [...form.labels, newL.id]);
       setNewLabelName('');
       setIsCreatingLabel(false);
@@ -268,23 +268,23 @@ export const ProjectTaskCreateModal: React.FC<ProjectTaskCreateModalProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <label className="label">Start Date *</label>
-            <input 
-              className="input" 
-              type="date" 
-              value={form.startDate} 
-              onChange={(event) => handleStartDateChange(event.target.value)} 
-              required 
+            <input
+              className="input"
+              type="date"
+              value={form.startDate}
+              onChange={(event) => handleStartDateChange(event.target.value)}
+              required
             />
           </div>
           <div>
             <label className="label">Due Date *</label>
-            <input 
-              className="input" 
-              type="date" 
-              min={form.startDate} 
-              value={form.dueDate} 
-              onChange={(event) => handleDueDateChange(event.target.value)} 
-              required 
+            <input
+              className="input"
+              type="date"
+              min={form.startDate}
+              value={form.dueDate}
+              onChange={(event) => handleDueDateChange(event.target.value)}
+              required
             />
           </div>
           <div>
@@ -404,8 +404,8 @@ export const ProjectTaskCreateModal: React.FC<ProjectTaskCreateModalProps> = ({
             <div className="flex items-center justify-between mb-2">
               <label className="label mb-0">Labels</label>
               {!isCreatingLabel && (
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setIsCreatingLabel(true)}
                   className="text-[10px] font-bold text-brand-600 hover:text-brand-700 flex items-center gap-1"
                 >
@@ -414,11 +414,11 @@ export const ProjectTaskCreateModal: React.FC<ProjectTaskCreateModalProps> = ({
                 </button>
               )}
             </div>
-            
+
             {isCreatingLabel ? (
               <div className="p-3 border border-brand-100 dark:border-brand-900/30 bg-brand-50/30 dark:bg-brand-950/20 rounded-xl space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
                 <div className="flex gap-2">
-                  <input 
+                  <input
                     autoFocus
                     className="input h-8 text-xs py-1 flex-1"
                     placeholder="Label name..."
@@ -428,7 +428,7 @@ export const ProjectTaskCreateModal: React.FC<ProjectTaskCreateModalProps> = ({
                   />
                   <div className="flex gap-1 overflow-x-auto pb-1 max-w-[120px]">
                     {['#6366f1', '#ef4444', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#71717a'].map(c => (
-                      <button 
+                      <button
                         key={c}
                         type="button"
                         onClick={() => setNewLabelColor(c)}
@@ -442,16 +442,16 @@ export const ProjectTaskCreateModal: React.FC<ProjectTaskCreateModalProps> = ({
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     onClick={() => void handleCreateLabel()}
                     disabled={!newLabelName.trim()}
                     className="btn-primary btn-xs flex-1 h-7 text-[10px]"
                   >
                     Create
                   </button>
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     onClick={() => { setIsCreatingLabel(false); setNewLabelName(''); }}
                     className="btn-secondary btn-xs flex-1 h-7 text-[10px]"
                   >
@@ -472,8 +472,8 @@ export const ProjectTaskCreateModal: React.FC<ProjectTaskCreateModalProps> = ({
                         "px-2 py-0.5 rounded-md text-[10px] font-bold transition-all border",
                         isSelected ? "shadow-sm" : "opacity-40 hover:opacity-100 border-transparent text-surface-500 dark:text-surface-400"
                       )}
-                      style={{ 
-                        backgroundColor: isSelected ? `${l.color}20` : 'transparent', 
+                      style={{
+                        backgroundColor: isSelected ? `${l.color}20` : 'transparent',
                         color: isSelected ? l.color : undefined,
                         borderColor: isSelected ? l.color : 'transparent'
                       }}
@@ -500,7 +500,7 @@ export const ProjectTaskCreateModal: React.FC<ProjectTaskCreateModalProps> = ({
                   </button>
                 </span>
               ))}
-              <input 
+              <input
                 value={tagInput}
                 onChange={e => setTagInput(e.target.value)}
                 onKeyDown={e => {

@@ -161,7 +161,7 @@ export const ProjectsPage: React.FC = () => {
     const incoming = searchParams.get('status');
     return ['active', 'on_hold', 'completed', 'archived'].includes(incoming as any) ? incoming as any : 'all';
   });
-  
+
   const [showModal, setShowModal] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [selectedColor, setSelectedColor] = useState(PROJECT_COLORS[0]);
@@ -176,7 +176,7 @@ export const ProjectsPage: React.FC = () => {
   const [showReporterDrop, setShowReporterDrop] = useState(false);
   const [memberQuery, setMemberQuery] = useState('');
   const [reporterQuery, setReporterQuery] = useState('');
-  
+
   const memberRef = useRef<HTMLDivElement>(null);
   const reporterRef = useRef<HTMLDivElement>(null);
 
@@ -193,7 +193,7 @@ export const ProjectsPage: React.FC = () => {
 
   const watchSdlc = watch('sdlcPlan');
   const watchStart = watch('startDate');
-  
+
   const totalDays = useMemo(() => {
     return watchSdlc?.reduce((acc, s) => s.enabled ? acc + (Number(s.durationDays) || 0) : acc, 0) || 0;
   }, [watchSdlc]);
@@ -221,8 +221,8 @@ export const ProjectsPage: React.FC = () => {
     return () => document.removeEventListener('mousedown', clickOut);
   }, []);
 
-  const filteredUsers = (q: string) => users.filter(u => 
-    u.name.toLowerCase().includes(q.toLowerCase()) || 
+  const filteredUsers = (q: string) => users.filter(u =>
+    u.name.toLowerCase().includes(q.toLowerCase()) ||
     u.email.toLowerCase().includes(q.toLowerCase())
   ).slice(0, 10);
 
@@ -387,22 +387,22 @@ export const ProjectsPage: React.FC = () => {
               <div><label className="label">Project Name *</label><input {...register('name', { required: true })} className="input" placeholder="e.g. Website Redesign" /></div>
               <div><label className="label">Description</label><textarea {...register('description')} className="input h-24 resize-none" placeholder="What is this project about?" /></div>
               <div><label className="label">Department</label>
-                <Dropdown 
-                  value={watch('department')} 
+                <Dropdown
+                  value={watch('department')}
                   onChange={(v) => setValue('department', v)}
-                  items={DEPARTMENTS.map(d => ({ id: d, label: d }))} 
+                  items={DEPARTMENTS.map(d => ({ id: d, label: d }))}
                 />
               </div>
             </div>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <DatePicker 
+                <DatePicker
                   label="Start Date"
                   value={watch('startDate')}
                   onChange={(v) => setValue('startDate', v)}
                   minDate={new Date().toISOString().split('T')[0]}
                 />
-                <DatePicker 
+                <DatePicker
                   label="Due Date"
                   value={watch('endDate')}
                   onChange={(v) => setValue('endDate', v)}
@@ -412,10 +412,10 @@ export const ProjectsPage: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="label">Budget</label><input type="number" {...register('budget')} className="input" placeholder="0.00" /></div>
                 <div><label className="label">Currency</label>
-                  <Dropdown 
-                    value={watch('budgetCurrency')} 
+                  <Dropdown
+                    value={watch('budgetCurrency')}
                     onChange={(v) => setValue('budgetCurrency', v)}
-                    items={['INR', 'USD', 'EUR', 'GBP'].map(c => ({ id: c, label: c }))} 
+                    items={['INR', 'USD', 'EUR', 'GBP'].map(c => ({ id: c, label: c }))}
                   />
                 </div>
               </div>

@@ -245,9 +245,9 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose, initi
 
   const handleCompletionSubmit = async (remark: string, files: File[]) => {
     try {
-      const response = await tasksService.update(currentTask.id, { 
-        status: 'in_review', 
-        completionRemark: remark 
+      const response = await tasksService.update(currentTask.id, {
+        status: 'in_review',
+        completionRemark: remark
       });
 
       if (files.length > 0) {
@@ -412,23 +412,23 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose, initi
                         </span>
                       )}
                     </div>
-                    
+
                     <div className="text-sm text-surface-600 dark:text-surface-300 bg-white dark:bg-surface-900 border border-surface-100 dark:border-surface-800 rounded-xl p-3 shadow-sm italic">
-                       "{currentTask.completionReview?.completionRemark || 'No completion notes provided.'}"
+                      "{currentTask.completionReview?.completionRemark || 'No completion notes provided.'}"
                     </div>
 
                     {(currentTask.attachments || []).length > 0 && (
                       <div className="mt-3 flex flex-wrap gap-2">
                         {(currentTask.attachments || []).map((file) => (
-                           <a 
-                             key={file.id} 
-                             href={file.url} 
-                             target="_blank" 
-                             className="flex items-center gap-2 px-2 py-1 rounded-lg bg-surface-100 dark:bg-surface-800 text-[10px] text-surface-500 hover:text-brand-600 transition-colors"
-                           >
-                             <Paperclip size={10} />
-                             {file.name}
-                           </a>
+                          <a
+                            key={file.id}
+                            href={file.url}
+                            target="_blank"
+                            className="flex items-center gap-2 px-2 py-1 rounded-lg bg-surface-100 dark:bg-surface-800 text-[10px] text-surface-500 hover:text-brand-600 transition-colors"
+                          >
+                            <Paperclip size={10} />
+                            {file.name}
+                          </a>
                         ))}
                       </div>
                     )}
@@ -460,8 +460,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose, initi
                     {canReview && (currentTask.status === 'in_review') ? (
                       <div className="space-y-4">
                         <div>
-                           <label className="text-[10px] font-bold text-surface-400 uppercase tracking-widest block mb-2 px-1">Quality Rating</label>
-                           <div className="flex gap-2">
+                          <label className="text-[10px] font-bold text-surface-400 uppercase tracking-widest block mb-2 px-1">Quality Rating</label>
+                          <div className="flex gap-2">
                             {[1, 2, 3, 4, 5].map((value) => (
                               <button
                                 key={value}
@@ -491,18 +491,18 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose, initi
                         </div>
 
                         <div className="flex gap-2 pt-2">
-                          <button 
-                            type="button" 
-                            onClick={() => { void handleReview('approve'); }} 
-                            className="btn-primary flex-1 h-11 shadow-lg shadow-brand-500/20" 
+                          <button
+                            type="button"
+                            onClick={() => { void handleReview('approve'); }}
+                            className="btn-primary flex-1 h-11 shadow-lg shadow-brand-500/20"
                             disabled={rating < 1}
                           >
                             <CheckCircle2 size={16} />
                             Approve & Complete
                           </button>
-                          <button 
-                            type="button" 
-                            onClick={() => { void handleReview('changes_requested'); }} 
+                          <button
+                            type="button"
+                            onClick={() => { void handleReview('changes_requested'); }}
                             className="btn-secondary flex-1 h-11"
                           >
                             <RefreshCw size={16} />
@@ -518,14 +518,14 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose, initi
                           </div>
                         )}
                         {completionReview?.rating ? (
-                           <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-50/50 dark:bg-amber-950/20 w-fit">
-                              <Flag size={12} className="text-amber-500" />
-                              <span className="text-xs font-bold text-amber-700 dark:text-amber-400">Rating: {completionReview.rating}/5</span>
-                           </div>
+                          <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-50/50 dark:bg-amber-950/20 w-fit">
+                            <Flag size={12} className="text-amber-500" />
+                            <span className="text-xs font-bold text-amber-700 dark:text-amber-400">Rating: {completionReview.rating}/5</span>
+                          </div>
                         ) : null}
                         {completionReview?.reviewedAt && (
                           <p className="text-[10px] text-surface-400">
-                             Reviewed {formatRelativeTime(completionReview.reviewedAt)}
+                            Reviewed {formatRelativeTime(completionReview.reviewedAt)}
                           </p>
                         )}
                       </div>
@@ -1362,7 +1362,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose, initi
           }}
         />
 
-        <TaskCompletionModal 
+        <TaskCompletionModal
           open={completeModalOpen}
           onClose={() => setCompleteModalOpen(false)}
           onSubmit={handleCompletionSubmit}

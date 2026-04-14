@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Calendar, Check, CheckCircle2, Clock3, Eye, FolderKanban, ListFilter, MoreHorizontal, Plus, RotateCcw, Star, User, X, XCircle } from 'lucide-react';
+import { ArrowLeft, Calendar, Check, CheckCircle2, Clock3, ExternalLink, Eye, FileText, FolderKanban, ListFilter, MoreHorizontal, Plus, RotateCcw, Star, User, X, XCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { EmptyState } from '../../components/ui';
 import { UserAvatar } from '../../components/UserAvatar';
@@ -8,7 +8,7 @@ import { useAppStore } from '../../context/appStore';
 import { useAuthStore } from '../../context/authStore';
 import { emitErrorToast, emitSuccessToast } from '../../context/toastBus';
 import type { Task, TaskCreationRequest } from '../../app/types';
-import { cn, formatDate } from '../../utils/helpers';
+import { cn, formatDate, formatFileSize } from '../../utils/helpers';
 import { tasksService } from '../../services/api';
 import api from '../../services/api';
 
@@ -42,68 +42,61 @@ const RevertNotesModal: React.FC<{
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-surface-950/40 backdrop-blur-[2px] px-4"
       onClick={onClose}
     >
       <motion.div
-        initial={{ scale: 0.95, y: 20 }}
-        animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.95, y: 20 }}
-        transition={{ type: 'spring', damping: 28, stiffness: 280 }}
-        className="w-full max-w-md rounded-3xl bg-white dark:bg-surface-900 shadow-2xl overflow-hidden"
+        initial={{ scale: 0.98, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.98, opacity: 0 }}
+        className="w-full max-w-md rounded-2xl bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-7 py-5 border-b border-surface-200 dark:border-surface-800 bg-gradient-to-r from-amber-50 to-rose-50 dark:from-amber-950/30 dark:to-rose-950/20">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-surface-100 dark:border-surface-800">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-600">Revert Task</p>
-            <h2 className="text-base font-bold text-surface-900 dark:text-white mt-0.5 line-clamp-1">{task.title}</h2>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600">Revert Task</p>
+            <h2 className="text-sm font-bold text-surface-900 dark:text-white truncate max-w-[300px]">{task.title}</h2>
           </div>
-          <button onClick={onClose} className="p-2 rounded-full hover:bg-white/60 dark:hover:bg-surface-800 transition-colors text-surface-400">
-            <X size={18} />
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors text-surface-400">
+            <X size={16} />
           </button>
         </div>
 
         {/* Body */}
-        <div className="p-7 space-y-5">
-          <div className="bg-amber-50/60 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/40 rounded-2xl p-4">
-            <p className="text-xs font-bold text-amber-700 dark:text-amber-400 mb-1">What happens next?</p>
-            <p className="text-xs text-amber-600/80 dark:text-amber-400/70 leading-relaxed">
-              This task will be moved back to <strong>In Progress</strong> and the assigned employee will receive your revert note as feedback to act on.
-            </p>
-          </div>
-
-          <div>
-            <label className="label mb-2 flex items-center gap-1">
-              Revert Note <span className="text-rose-500">*</span>
-            </label>
-            <textarea
-              value={note}
-              onChange={e => setNote(e.target.value)}
-              autoFocus
-              placeholder="Explain what needs to be corrected or improved before resubmitting..."
-              rows={4}
-              className="input resize-none w-full"
-            />
-            <p className="text-[11px] text-surface-400 mt-1">{note.trim().length}/500 characters</p>
+        <div className="p-6">
+          <div className="space-y-4">
+            <div>
+              <label className="text-[11px] font-bold text-surface-500 uppercase tracking-tight mb-2 block">
+                Revert Reason / Feedback <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                value={note}
+                onChange={e => setNote(e.target.value)}
+                autoFocus
+                placeholder="Describe what needs to be changed..."
+                rows={5}
+                className="w-full bg-surface-50 dark:bg-surface-800/50 border border-surface-200 dark:border-surface-700 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all resize-none"
+              />
+            </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="px-7 py-5 border-t border-surface-100 dark:border-surface-800 flex gap-3 bg-surface-50/50 dark:bg-surface-800/30">
+        <div className="px-6 py-4 border-t border-surface-50 dark:border-surface-800 flex items-center justify-end gap-3">
           <button
             onClick={onClose}
-            className="px-5 h-11 rounded-2xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-600 dark:text-surface-300 text-sm font-bold hover:bg-surface-50 transition-all"
+            className="px-4 py-2 rounded-xl text-xs font-bold text-surface-500 hover:text-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800 transition-all"
           >
             Cancel
           </button>
           <button
             onClick={() => onSubmit(task.id, note.trim())}
             disabled={isProcessing || !note.trim()}
-            className="flex-1 bg-gradient-to-r from-amber-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 disabled:opacity-50 disabled:cursor-not-allowed text-white h-11 rounded-2xl font-bold transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2"
+            className="flex items-center gap-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:bg-surface-200 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all"
           >
-            {isProcessing ? <Clock3 size={16} className="animate-spin" /> : <RotateCcw size={16} />}
-            Send Revert Request
+            {isProcessing ? <Clock3 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+            Confirm Revert
           </button>
         </div>
       </motion.div>
@@ -120,8 +113,10 @@ const CompletionReviewModal: React.FC<{
   mode?: 'review';
 }> = ({ task, onClose, onSubmit, isProcessing }) => {
   const { users, projects } = useAppStore();
-  const [rating, setRating] = useState(0);
-  const [remark, setRemark] = useState('');
+  const review = (task as any).completionReview || {};
+  const isApproved = review.reviewStatus === 'approved';
+  const [rating, setRating] = useState(review.rating || 0);
+  const [remark, setRemark] = useState(review.reviewRemark || '');
   const [hoveredStar, setHoveredStar] = useState(0);
 
   const assignees = useMemo(
@@ -135,117 +130,147 @@ const CompletionReviewModal: React.FC<{
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-surface-950/40 backdrop-blur-[2px] px-4"
       onClick={onClose}
     >
       <motion.div
-        initial={{ scale: 0.95, y: 20 }}
-        animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.95, y: 20 }}
-        transition={{ type: 'spring', damping: 28, stiffness: 280 }}
-        className="w-full max-w-lg rounded-3xl bg-white dark:bg-surface-900 shadow-2xl overflow-hidden"
+        initial={{ scale: 0.98, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.98, opacity: 0 }}
+        className="w-full max-w-lg rounded-2xl bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-800 overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-7 py-5 border-b border-surface-200 dark:border-surface-800 bg-gradient-to-r from-violet-50 to-blue-50 dark:from-violet-950/30 dark:to-blue-950/20">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-surface-100 dark:border-surface-800">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-500">Completion Review</p>
-            <h2 className="text-lg font-bold text-surface-900 dark:text-white mt-0.5 line-clamp-1">{task.title}</h2>
-            {project && <p className="text-xs text-surface-500 mt-0.5">{project.name}</p>}
+            <p className="text-[10px] font-bold uppercase tracking-wider text-brand-600">Completion Review</p>
+            <h2 className="text-sm font-bold text-surface-900 dark:text-white truncate max-w-[350px]">{task.title}</h2>
           </div>
-          <button onClick={onClose} className="p-2 rounded-full hover:bg-white/60 dark:hover:bg-surface-800 transition-colors text-surface-400">
-            <X size={18} />
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors text-surface-400">
+            <X size={16} />
           </button>
         </div>
 
         {/* Body */}
-        <div className="p-7 space-y-6">
-          {/* Assignees */}
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-surface-400 mb-2">Submitted By</p>
-            <div className="flex flex-wrap gap-2">
-              {assignees.map(a => (
-                <div key={a.id} className="flex items-center gap-2 bg-surface-50 dark:bg-surface-800 rounded-xl px-3 py-1.5 border border-surface-100 dark:border-surface-700">
-                  <UserAvatar name={a.name} color={a.color} size="xs" />
-                  <span className="text-xs font-bold text-surface-700 dark:text-surface-300">{a.name}</span>
-                </div>
-              ))}
-              {!assignees.length && <span className="text-sm text-surface-400">No assignees</span>}
-            </div>
-          </div>
-
+        <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto custom-scrollbar">
           {/* Completion note if any */}
           {(task as any).completionReview?.note && (
+            <div className="bg-surface-50 dark:bg-surface-800/40 border border-surface-100 dark:border-surface-700/50 rounded-xl p-3.5">
+              <p className="text-[10px] font-bold text-surface-400 uppercase tracking-tight mb-2">Assignee Note</p>
+              <p className="text-sm text-surface-600 dark:text-surface-300 italic">"{(task as any).completionReview.note}"</p>
+            </div>
+          )}
+
+          {/* Attachments / Deliverables */}
+          {task.attachments && task.attachments.length > 0 && (
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-widest text-surface-400 mb-2">Completion Note</p>
-              <div className="bg-blue-50/60 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/50 rounded-2xl p-4 text-sm text-blue-900 dark:text-blue-200 leading-relaxed italic">
-                "{(task as any).completionReview.note}"
+              <p className="text-[11px] font-bold text-surface-500 uppercase tracking-tight mb-3">Deliverables</p>
+              <div className="grid grid-cols-1 gap-2">
+                {task.attachments.map((file) => (
+                  <div key={file.id} className="group flex items-center justify-between p-2.5 rounded-xl border border-surface-100 dark:border-surface-800 bg-surface-50/50 dark:bg-surface-950/30">
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      <div className="w-8 h-8 rounded-lg bg-white dark:bg-surface-900 flex items-center justify-center text-brand-600 border border-surface-100 dark:border-surface-800 shadow-sm">
+                        <FileText size={16} />
+                      </div>
+                      <div className="overflow-hidden">
+                        <p className="text-xs font-bold text-surface-700 dark:text-surface-200 truncate">{file.name}</p>
+                        <p className="text-[10px] text-surface-400">{formatFileSize(file.size)} • {file.type.split('/')[1]?.toUpperCase() || 'FILE'}</p>
+                      </div>
+                    </div>
+                    <a
+                      href={file.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1.5 rounded-lg hover:bg-white dark:hover:bg-surface-700 text-surface-400 hover:text-brand-600 transition-all"
+                    >
+                      <ExternalLink size={14} />
+                    </a>
+                  </div>
+                ))}
               </div>
             </div>
           )}
 
-          {/* Star Rating */}
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-surface-400 mb-3">Rating <span className="text-surface-300">(optional)</span></p>
-            <div className="flex gap-1.5">
-              {[1, 2, 3, 4, 5].map(star => (
-                <button
-                  key={star}
-                  type="button"
-                  onMouseEnter={() => setHoveredStar(star)}
-                  onMouseLeave={() => setHoveredStar(0)}
-                  onClick={() => setRating(prev => prev === star ? 0 : star)}
-                  className="transition-transform hover:scale-110"
-                >
-                  <Star
-                    size={28}
+          {/* Review Input */}
+          <div className="space-y-4 pt-2">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[11px] font-bold text-surface-500 uppercase tracking-tight">Rating</label>
+                {rating > 0 && <span className="text-[11px] font-black text-amber-500">{rating} / 5</span>}
+              </div>
+              <div className="flex gap-2">
+                {[1, 2, 3, 4, 5].map(star => (
+                  <button
+                    key={star}
+                    type="button"
+                    onMouseEnter={() => !isApproved && setHoveredStar(star)}
+                    onMouseLeave={() => !isApproved && setHoveredStar(0)}
+                    onClick={() => !isApproved && setRating(prev => prev === star ? 0 : star)}
                     className={cn(
-                      'transition-colors',
-                      star <= (hoveredStar || rating)
-                        ? 'fill-amber-400 text-amber-400'
-                        : 'fill-surface-100 text-surface-200 dark:fill-surface-700 dark:text-surface-700'
+                      "flex-1 h-10 rounded-xl border border-surface-200 dark:border-surface-700 flex items-center justify-center transition-all",
+                      !isApproved && "hover:border-brand-400",
+                      isApproved && "cursor-default"
                     )}
-                  />
-                </button>
-              ))}
-              {rating > 0 && (
-                <span className="ml-2 self-center text-sm font-black text-amber-500">{rating}/5</span>
-              )}
+                  >
+                    <Star
+                      size={18}
+                      className={cn(
+                        'transition-colors',
+                        star <= (hoveredStar || rating)
+                          ? 'fill-amber-400 text-amber-400'
+                          : 'fill-transparent text-surface-300 dark:text-surface-600'
+                      )}
+                    />
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
 
-          {/* Review Remark */}
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-surface-400 mb-2">Review Remark <span className="text-surface-300">(optional)</span></p>
-            <textarea
-              value={remark}
-              onChange={e => setRemark(e.target.value)}
-              placeholder="Add feedback or remarks for the team member..."
-              rows={3}
-              className="input resize-none w-full"
-            />
+            <div>
+              <label className="text-[11px] font-bold text-surface-500 uppercase tracking-tight mb-2 block">Feedback Remarks</label>
+              <textarea
+                value={remark}
+                onChange={e => setRemark(e.target.value)}
+                readOnly={isApproved}
+                placeholder={isApproved ? "No feedback provided." : "Add your review notes here..."}
+                rows={3}
+                className={cn(
+                  "w-full bg-surface-50 dark:bg-surface-800/50 border border-surface-200 dark:border-surface-700 rounded-xl px-4 py-3 text-sm focus:outline-none transition-all resize-none",
+                  !isApproved ? "focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500" : "cursor-default opacity-80"
+                )}
+              />
+            </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="px-7 py-5 border-t border-surface-100 dark:border-surface-800 flex gap-3 bg-surface-50/50 dark:bg-surface-800/30">
-          <button
-            onClick={() => onSubmit(task.id, 'approve', rating, remark)}
-            disabled={isProcessing}
-            className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 disabled:opacity-50 text-white h-12 rounded-2xl font-bold transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
-          >
-            {isProcessing ? <Clock3 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-            Approve Completion
-          </button>
-          <button
-            onClick={() => onSubmit(task.id, 'changes_requested', rating, remark)}
-            disabled={isProcessing}
-            className="flex-1 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 h-12 rounded-2xl font-bold hover:bg-rose-50 hover:text-rose-600 hover:border-rose-100 transition-all flex items-center justify-center gap-2"
-          >
-            <XCircle size={16} />
-            Request Changes
-          </button>
-        </div>
+        {!isApproved && (
+          <div className="px-6 py-4 border-t border-surface-50 dark:border-surface-800 flex items-center gap-3">
+            <button
+              onClick={() => onSubmit(task.id, 'changes_requested', rating, remark)}
+              disabled={isProcessing}
+              className="flex-1 px-4 py-2.5 rounded-xl border border-surface-200 dark:border-surface-700 text-xs font-bold text-surface-600 dark:text-surface-300 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-100 transition-all"
+            >
+              Request Changes
+            </button>
+            <button
+              onClick={() => onSubmit(task.id, 'approve', rating, remark)}
+              disabled={isProcessing}
+              className="flex-[1.5] bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-brand-600/10"
+            >
+              {isProcessing ? <Clock3 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+              Approve Task
+            </button>
+          </div>
+        )}
+        {isApproved && (
+          <div className="px-6 py-4 border-t border-surface-50 dark:border-surface-800 flex items-center justify-end">
+             <div className="flex items-center gap-2 text-emerald-600 font-bold text-xs bg-emerald-50 px-4 py-2 rounded-xl">
+                <CheckCircle2 size={16} />
+                Task Approved
+             </div>
+          </div>
+        )}
       </motion.div>
     </motion.div>
   );
@@ -262,13 +287,17 @@ const CompletionReviewTab: React.FC<{ projectId?: string }> = ({ projectId }) =>
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [projectFilter, setProjectFilter] = useState('all');
+  const [priorityFilter, setPriorityFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<RequestStatusFilter>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   const isPrivileged = ['super_admin', 'admin', 'manager', 'team_leader'].includes(user?.role || '');
 
   const fetchTasks = async () => {
     try {
       setLoading(true);
-      const res = await tasksService.getCompletionReviews(projectId);
+      const res = await tasksService.getCompletionReviews(projectId, 1, 500); // Fetch a larger set for frontend filtering
       const items: any[] = res.data?.data ?? [];
       // Normalize
       setTasks(items.map((t: any) => ({
@@ -289,6 +318,7 @@ const CompletionReviewTab: React.FC<{ projectId?: string }> = ({ projectId }) =>
   };
 
   useEffect(() => { void fetchTasks(); }, [projectId]);
+  useEffect(() => { setCurrentPage(1); }, [search, projectFilter, priorityFilter, statusFilter]);
 
   const handleReview = async (taskId: string, action: 'approve' | 'changes_requested', rating: number, remark: string) => {
     try {
@@ -314,40 +344,33 @@ const CompletionReviewTab: React.FC<{ projectId?: string }> = ({ projectId }) =>
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
     return tasks.filter(t => {
+      const crStatus = (t as any).completionReview?.reviewStatus;
+      if (!crStatus && t.status !== 'in_review') return false; // Only show if it has a review status or is in review status
+      
       if (!projectId && projectFilter !== 'all' && t.projectId !== projectFilter) return false;
+      if (priorityFilter !== 'all' && t.priority !== priorityFilter) return false;
+      
+      if (statusFilter === 'pending' && crStatus !== 'pending') return false;
+      if (statusFilter === 'approved' && crStatus !== 'approved') return false;
+      if (statusFilter === 'rejected' && crStatus !== 'rejected' && crStatus !== 'changes_requested') return false;
+
       if (!q) return true;
       const assigneeNames = t.assigneeIds.map(id => users.find(u => u.id === id)?.name || '').join(' ');
       const proj = projects.find(p => p.id === t.projectId)?.name || '';
       return [t.title, assigneeNames, proj].join(' ').toLowerCase().includes(q);
     });
-  }, [tasks, search, projectFilter, projectId, users, projects]);
+  }, [tasks, search, projectFilter, priorityFilter, projectId, users, projects, statusFilter]);
+
+  const paginated = useMemo(() => {
+    return filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  }, [filtered, currentPage]);
 
   if (loading) {
     return <div className="card p-10 text-center text-sm text-surface-400">Loading completion reviews...</div>;
   }
 
   return (
-    <div className="space-y-4">
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          { label: 'Awaiting Review', value: tasks.length, icon: <Clock3 size={16} />, color: 'text-violet-600 bg-violet-50 dark:bg-violet-950/30' },
-          { label: 'Urgent', value: tasks.filter(t => t.priority === 'urgent').length, icon: <XCircle size={16} />, color: 'text-rose-600 bg-rose-50 dark:bg-rose-950/30' },
-          { label: 'High', value: tasks.filter(t => t.priority === 'high').length, icon: <Star size={16} />, color: 'text-amber-600 bg-amber-50 dark:bg-amber-950/30' },
-          { label: 'Total Projects', value: new Set(tasks.map(t => t.projectId)).size, icon: <FolderKanban size={16} />, color: 'text-brand-600 bg-brand-50 dark:bg-brand-950/30' },
-        ].map(s => (
-          <div key={s.label} className="card p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-surface-400">{s.label}</p>
-                <p className="text-2xl font-bold text-surface-900 dark:text-white leading-none mt-1">{s.value}</p>
-              </div>
-              <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center', s.color)}>{s.icon}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-
+    <div className="space-y-4 pb-20">
       {/* Filters */}
       <div className="bg-white dark:bg-surface-900 border border-surface-100 dark:border-surface-800 rounded-2xl p-3 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -360,19 +383,70 @@ const CompletionReviewTab: React.FC<{ projectId?: string }> = ({ projectId }) =>
               className="w-full bg-surface-50/50 dark:bg-surface-800/30 border border-surface-100 dark:border-surface-800 focus:border-brand-500/50 rounded-xl pl-11 pr-4 py-2 text-[13px] transition-all focus:outline-none focus:ring-4 focus:ring-brand-500/10 placeholder:text-surface-400 font-medium"
             />
           </div>
-          {!projectId && (
-            <div className="flex items-center bg-surface-50/50 dark:bg-surface-800/30 rounded-xl px-1 border border-surface-100 dark:border-surface-800 max-w-[200px]">
+          <div className="flex flex-wrap items-center gap-2">
+            {!projectId && (
+              <div className="flex items-center bg-surface-50/50 dark:bg-surface-800/30 rounded-xl px-1 border border-surface-100 dark:border-surface-800 max-w-[200px]">
+                <select
+                  value={projectFilter}
+                  onChange={e => setProjectFilter(e.target.value)}
+                  className="bg-transparent border-none py-2 px-3 text-[13px] font-bold text-surface-600 dark:text-surface-300 focus:ring-0 cursor-pointer outline-none truncate"
+                >
+                  <option value="all">All Projects</option>
+                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+            )}
+            <div className="flex items-center bg-surface-50/50 dark:bg-surface-800/30 rounded-xl px-1 border border-surface-100 dark:border-surface-800">
               <select
-                value={projectFilter}
-                onChange={e => setProjectFilter(e.target.value)}
-                className="bg-transparent border-none py-2 px-3 text-[13px] font-bold text-surface-600 dark:text-surface-300 focus:ring-0 cursor-pointer outline-none truncate"
+                value={priorityFilter}
+                onChange={e => setPriorityFilter(e.target.value)}
+                className="bg-transparent border-none py-2 px-3 text-[13px] font-bold text-surface-600 dark:text-surface-300 focus:ring-0 cursor-pointer outline-none"
               >
-                <option value="all">All Projects</option>
-                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                <option value="all">All Priorities</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
               </select>
             </div>
-          )}
+          </div>
         </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {(['all', 'pending', 'approved', 'rejected'] as const).map((key) => {
+          const summary = {
+            all: tasks.filter(t => (t as any).completionReview?.reviewStatus || t.status === 'in_review').length,
+            pending: tasks.filter(t => (t as any).completionReview?.reviewStatus === 'pending').length,
+            approved: tasks.filter(t => (t as any).completionReview?.reviewStatus === 'approved').length,
+            rejected: tasks.filter(t => (t as any).completionReview?.reviewStatus === 'rejected' || (t as any).completionReview?.reviewStatus === 'changes_requested').length,
+          };
+          return (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setStatusFilter(key)}
+            className={cn(
+              'group rounded-xl border p-4 text-left transition-all duration-200',
+              statusFilter === key
+                ? 'border-brand-500 bg-white shadow-sm ring-1 ring-brand-500/10'
+                : 'border-surface-100 bg-white dark:border-surface-800 dark:bg-surface-900 hover:border-surface-200'
+            )}
+          >
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <p className={cn("text-[10px] font-bold uppercase tracking-[0.15em]", statusFilter === key ? "text-brand-600" : "text-surface-400")}>
+                  {key === 'all' ? 'All Tasks' : key.charAt(0).toUpperCase() + key.slice(1)}
+                </p>
+                <p className="text-2xl font-bold text-surface-900 dark:text-white leading-none">{summary[key]}</p>
+              </div>
+              <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", statusFilter === key ? "bg-brand-50 text-brand-600 dark:bg-brand-950/40" : "bg-surface-50 dark:bg-surface-800 text-surface-400")}>
+                {key === 'all' ? <FolderKanban size={16} /> : key === 'pending' ? <Clock3 size={16} /> : key === 'approved' ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+              </div>
+            </div>
+          </button>
+        )})}
       </div>
 
       {/* Table */}
@@ -383,104 +457,147 @@ const CompletionReviewTab: React.FC<{ projectId?: string }> = ({ projectId }) =>
           description="All submitted tasks have been reviewed, or no tasks are waiting for completion approval."
         />
       ) : (
-        <div className="bg-white dark:bg-surface-900 border border-surface-100 dark:border-surface-800 rounded-2xl overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border-collapse">
-              <thead className="bg-surface-50/50 dark:bg-surface-800/50 text-surface-400 font-semibold border-b border-surface-100 dark:border-surface-800">
-                <tr>
-                  <th className="px-6 py-4 font-bold uppercase tracking-wider min-w-[240px]">Task</th>
-                  <th className="px-4 py-4 font-bold uppercase tracking-wider text-center">Priority</th>
-                  <th className="px-4 py-4 font-bold uppercase tracking-wider">Assignees</th>
-                  <th className="px-4 py-4 font-bold uppercase tracking-wider text-center">Due Date</th>
-                  {!projectId && <th className="px-4 py-4 font-bold uppercase tracking-wider">Project</th>}
-                  <th className="px-6 py-4 font-bold uppercase tracking-wider text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-surface-100 dark:divide-surface-800/70">
-                {filtered.map(task => {
-                  const assignees = task.assigneeIds.map(id => users.find(u => u.id === id)).filter(Boolean) as any[];
-                  const proj = projects.find(p => p.id === task.projectId);
-                  const isProcessing = processingId === task.id;
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-surface-900 border border-surface-100 dark:border-surface-800 rounded-2xl overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left border-collapse">
+                <thead className="bg-surface-50/50 dark:bg-surface-800/50 text-surface-400 font-semibold border-b border-surface-100 dark:border-surface-800">
+                  <tr>
+                    <th className="px-6 py-4 font-bold uppercase tracking-wider min-w-[240px]">Task Name</th>
+                    <th className="px-4 py-4 font-bold uppercase tracking-wider text-center">Priority</th>
+                    <th className="px-4 py-4 font-bold uppercase tracking-wider text-center">Due Date</th>
+                    <th className="px-4 py-4 font-bold uppercase tracking-wider">Assignees</th>
+                    <th className="px-6 py-4 font-bold uppercase tracking-wider text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-100 dark:divide-surface-800/70">
+                  {paginated.map(task => {
+                    const assignees = task.assigneeIds.map(id => users.find(u => u.id === id)).filter(Boolean) as any[];
+                    const proj = projects.find(p => p.id === task.projectId);
+                    const isProcessing = processingId === task.id;
 
-                  return (
-                    <tr
-                      key={task.id}
-                      className="group hover:bg-violet-50/40 dark:hover:bg-violet-950/10 transition-colors cursor-pointer"
-                      onClick={() => setSelectedTask(task)}
-                    >
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col gap-0.5">
-                          <span className="text-[13px] font-bold text-surface-900 dark:text-white group-hover:text-violet-600 transition-colors truncate max-w-[280px]">
-                            {task.title}
-                          </span>
-                          <span className="text-[10px] text-surface-400 font-medium">
-                            Due {task.dueDate ? formatDate(task.dueDate) : '---'}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 text-center">
-                        <span className={cn('px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider', PRIORITY_COLORS[task.priority] || PRIORITY_COLORS.low)}>
-                          {task.priority}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-1.5">
-                          <div className="flex -space-x-1.5">
-                            {assignees.slice(0, 3).map(a => (
-                              <UserAvatar key={a.id} name={a.name} color={a.color} size="xs" className="ring-2 ring-white dark:ring-surface-900" />
-                            ))}
+                    return (
+                      <tr
+                        key={task.id}
+                        className="group hover:bg-brand-50/40 dark:hover:bg-brand-950/10 transition-colors cursor-pointer"
+                        onClick={() => setSelectedTask(task)}
+                      >
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-[13px] font-bold text-surface-900 dark:text-white group-hover:text-brand-600 transition-colors truncate max-w-[280px]">
+                              {task.title}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              {proj && (
+                                <span className="text-[9px] bg-brand-50 text-brand-600 px-1.5 py-0.5 rounded font-black tracking-widest uppercase">
+                                  {proj.name}
+                                </span>
+                              )}
+                              <span className="text-[10px] text-surface-400 font-medium">
+                                Created {task.createdAt ? formatDate(task.createdAt) : '---'}
+                              </span>
+                            </div>
                           </div>
-                          {assignees.length > 0 && (
-                            <span className="text-[11px] font-bold text-surface-600 dark:text-surface-300 ml-1">
-                              {assignees[0]?.name}{assignees.length > 1 ? ` +${assignees.length - 1}` : ''}
-                            </span>
-                          )}
-                          {!assignees.length && <span className="text-[11px] text-surface-400 italic">Unassigned</span>}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 text-center">
-                        <span className="text-[11px] font-bold text-surface-600 dark:text-surface-400">
-                          {task.dueDate ? formatDate(task.dueDate) : '---'}
-                        </span>
-                      </td>
-                      {!projectId && (
-                        <td className="px-4 py-4">
-                          {proj ? (
-                            <span className="text-[10px] bg-brand-50 text-brand-600 px-2 py-0.5 rounded font-black tracking-widest uppercase">
-                              {proj.name}
-                            </span>
-                          ) : <span className="text-surface-400">—</span>}
                         </td>
-                      )}
-                      <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-2">
-                          {/* View button — always visible */}
-                          <button
-                            onClick={e => { e.stopPropagation(); setSelectedTask(task); }}
-                            className="w-8 h-8 rounded-lg flex items-center justify-center bg-blue-50 text-blue-600 hover:bg-blue-500 hover:text-white transition-all shadow-sm"
-                            title="View details"
-                          >
-                            <Eye size={14} />
-                          </button>
-                          {/* Revert — only privileged */}
-                          {isPrivileged && (
+                        <td className="px-4 py-4 text-center">
+                          <span className={cn('px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider', PRIORITY_COLORS[task.priority] || PRIORITY_COLORS.low)}>
+                            {task.priority}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-center">
+                          <span className="text-[11px] font-bold text-surface-600 dark:text-surface-400">
+                            {task.dueDate ? formatDate(task.dueDate) : '---'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="flex items-center gap-1.5">
+                            <div className="flex -space-x-1.5">
+                              {assignees.slice(0, 3).map(a => (
+                                <UserAvatar key={a.id} name={a.name} color={a.color} size="xs" className="ring-2 ring-white dark:ring-surface-900" />
+                              ))}
+                            </div>
+                            {assignees.length > 0 && (
+                              <span className="text-[11px] font-bold text-surface-600 dark:text-surface-300 ml-1">
+                                {assignees[0]?.name}{assignees.length > 1 ? ` +${assignees.length - 1}` : ''}
+                              </span>
+                            )}
+                            {!assignees.length && <span className="text-[11px] text-surface-400 italic">Unassigned</span>}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4" onClick={e => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-2">
                             <button
-                              onClick={e => { e.stopPropagation(); setRevertTask(task); }}
-                              disabled={isProcessing}
-                              className="w-8 h-8 rounded-lg flex items-center justify-center bg-amber-50 text-amber-600 hover:bg-amber-500 hover:text-white transition-all shadow-sm disabled:opacity-50"
-                              title="Revert — request changes from employee"
+                              onClick={e => { e.stopPropagation(); setSelectedTask(task); }}
+                              className="w-8 h-8 rounded-lg flex items-center justify-center bg-blue-50 text-blue-600 hover:bg-brand-500 hover:text-white transition-all shadow-sm"
+                              title="View details"
                             >
-                              {isProcessing ? <Clock3 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+                              <Eye size={14} />
                             </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                            {isPrivileged && (
+                              (task as any).completionReview?.reviewStatus === 'approved' ? (
+                                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-emerald-50 text-emerald-600 shadow-sm" title="Approved">
+                                  <Check size={14} />
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={e => { e.stopPropagation(); setRevertTask(task); }}
+                                  disabled={isProcessing}
+                                  className="w-8 h-8 rounded-lg flex items-center justify-center bg-amber-50 text-amber-600 hover:bg-amber-500 hover:text-white transition-all shadow-sm disabled:opacity-50"
+                                  title="Revert — request changes"
+                                >
+                                  {isProcessing ? <Clock3 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+                                </button>
+                              )
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
+
+          {filtered.length > itemsPerPage && (
+            <div className="px-6 py-4 border-t border-surface-100 dark:border-surface-800 bg-surface-50/30 dark:bg-surface-800/20 flex items-center justify-between rounded-2xl">
+              <p className="text-[11px] font-bold text-surface-400 uppercase tracking-widest">
+                Showing <span className="text-surface-900 dark:text-white">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="text-surface-900 dark:text-white">{Math.min(currentPage * itemsPerPage, filtered.length)}</span> of <span className="text-surface-900 dark:text-white">{filtered.length}</span> tasks
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 rounded-lg border border-surface-200 dark:border-surface-700 text-[11px] font-bold disabled:opacity-30 hover:bg-white dark:hover:bg-surface-800 transition-all font-mono"
+                >
+                  PREV
+                </button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: Math.ceil(filtered.length / itemsPerPage) }).map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setCurrentPage(i + 1)}
+                      className={cn(
+                        "w-8 h-8 rounded-lg text-[11px] font-bold transition-all",
+                        currentPage === i + 1
+                          ? "bg-brand-600 text-white shadow-lg shadow-brand-600/20"
+                          : "text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800"
+                      )}
+                    >
+                      {i + 1}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(Math.ceil(filtered.length / itemsPerPage), p + 1))}
+                  disabled={currentPage === Math.ceil(filtered.length / itemsPerPage)}
+                  className="px-3 py-1.5 rounded-lg border border-surface-200 dark:border-surface-700 text-[11px] font-bold disabled:opacity-30 hover:bg-white dark:hover:bg-surface-800 transition-all font-mono"
+                >
+                  NEXT
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -562,19 +679,19 @@ const TaskRequestsPage: React.FC = () => {
     return requestType === 'creation'
       ? allRequests
       : allExtensionRequests.map(r => ({
-          ...r,
-          id: (r as any)._id || r.id,
-          title: r.tasks && r.tasks[0] ? r.tasks[0].title : 'Extension Request',
-          projectId: r.tasks && r.tasks[0] ? r.tasks[0].projectId : undefined,
-          priority: '---',
-          requestStatus: r.status,
-          requestedBy: r.userId,
-          createdAt: r.createdAt,
-          startDate: r.tasks && r.tasks[0] ? r.tasks[0].originalDueDate : undefined,
-          dueDate: r.requestedDueDate,
-          description: r.reason,
-          isExtension: true
-        }));
+        ...r,
+        id: (r as any)._id || r.id,
+        title: r.tasks && r.tasks[0] ? r.tasks[0].title : 'Extension Request',
+        projectId: r.tasks && r.tasks[0] ? r.tasks[0].projectId : undefined,
+        priority: '---',
+        requestStatus: r.status,
+        requestedBy: r.userId,
+        createdAt: r.createdAt,
+        startDate: r.tasks && r.tasks[0] ? r.tasks[0].originalDueDate : undefined,
+        dueDate: r.requestedDueDate,
+        description: r.reason,
+        isExtension: true
+      }));
   }, [requestType, allRequests, allExtensionRequests]);
 
   useEffect(() => {
@@ -698,9 +815,7 @@ const TaskRequestsPage: React.FC = () => {
             className={cn(
               "px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all",
               requestType === tab.value
-                ? tab.value === 'completion'
-                  ? "bg-violet-600 text-white shadow-lg shadow-violet-500/20"
-                  : "bg-brand-600 text-white shadow-lg shadow-brand-500/20"
+                ? "bg-brand-600 text-white shadow-lg shadow-brand-500/20"
                 : "text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
             )}
           >

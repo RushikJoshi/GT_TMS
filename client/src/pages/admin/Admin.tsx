@@ -508,8 +508,8 @@ export const AdminUsersPage: React.FC = () => {
                   }}
                   className={cn(
                     "badge text-[10px] font-bold uppercase tracking-wider transition-all min-w-[72px] text-center cursor-pointer",
-                    u.isActive 
-                      ? "bg-emerald-50 text-emerald-600 border border-emerald-100 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-100" 
+                    u.isActive
+                      ? "bg-emerald-50 text-emerald-600 border border-emerald-100 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-100"
                       : "bg-surface-100 text-surface-500 border border-surface-200 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-100"
                   )}
                 >

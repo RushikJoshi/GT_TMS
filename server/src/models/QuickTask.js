@@ -51,6 +51,7 @@ const quickTaskSchema = new mongoose.Schema(
     },
     labels: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Label' }],
     tags: [{ type: String, trim: true }],
+    repeatSchedule: { type: String, default: "Don't Repeat" },
   },
   { timestamps: true }
 );
@@ -123,6 +124,7 @@ quickTaskSchema.set('toJSON', {
       }).filter(Boolean)
       : [];
     ret.tags = Array.isArray(ret.tags) ? ret.tags.filter(t => typeof t === 'string' && t.trim()) : [];
+    ret.repeatSchedule = ret.repeatSchedule || "Don't Repeat";
 
     delete ret._id;
     delete ret.__v;

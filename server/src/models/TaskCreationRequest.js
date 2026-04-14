@@ -23,6 +23,9 @@ const taskCreationRequestSchema = new mongoose.Schema(
     order: { type: Number, default: 0 },
     tags: { type: [String], default: [] },
     labels: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Label', default: [] }],
+    repeatSchedule: { type: String, default: "Don't Repeat" },
+    isRecurring: { type: Boolean, default: false },
+    recurrenceRule: { type: Object, default: null },
     subtasks: [
       {
         _id: { type: mongoose.Schema.Types.ObjectId, auto: true },
@@ -66,6 +69,7 @@ taskCreationRequestSchema.set('toJSON', {
           order: subtask.order ?? 0,
         }))
       : [];
+    ret.repeatSchedule = ret.repeatSchedule || "Don't Repeat";
     delete ret._id;
     delete ret.__v;
     delete ret.tenantId;

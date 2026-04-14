@@ -361,7 +361,7 @@ export const ProjectTimelineModule: React.FC<ProjectTimelineModuleProps> = ({ pr
 
       // Routing: Go from (fromX, fromY) to (toX, toY)
       // To ensure arrow points RIGHT, the last segment must be L (toX - epsilon) (toY) to (toX) (toY)
-      const approachX = toX - 6; 
+      const approachX = toX - 6;
       const d = `M ${fromX} ${fromY} L ${approachX} ${fromY} L ${approachX} ${toY} L ${toX - 1} ${toY}`;
 
       return `<path d="${d}" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrowhead)" />`;

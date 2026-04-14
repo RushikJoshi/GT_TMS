@@ -47,6 +47,7 @@ const taskSchema = new mongoose.Schema(
     color: { type: String, trim: true, maxlength: 32 },
     isRecurring: { type: Boolean, default: false },
     recurrenceRule: { type: Object, default: null }, // { frequency: 'daily' | 'weekly' | 'monthly', interval: number }
+    repeatSchedule: { type: String, default: "Don't Repeat" },
     estimatedHours: { type: Number, default: null, min: 0 },
     trackedHours: { type: Number, default: null, min: 0 },
     order: { type: Number, default: 0, index: true },
@@ -252,6 +253,7 @@ taskSchema.set('toJSON', {
           userId: l.userId ? String(l.userId) : undefined,
         }))
       : [];
+    ret.repeatSchedule = ret.repeatSchedule || "Don't Repeat";
     ret.totalTimeSpent = ret.timeAnalytics?.totalTimeSpent || 0;
     ret.inProgressTime = ret.timeAnalytics?.inProgressTime || 0;
     delete ret._id;
