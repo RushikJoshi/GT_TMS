@@ -4,12 +4,16 @@ import NotFound404 from '../pages/errors/NotFound404';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import AppLayout from '../layouts/AppLayout';
 import AuthLayout from '../layouts/AuthLayout';
-import { useAuthStore } from '../context/authStore';
-import type { Role } from '../app/types';
+import { useAuth } from '../context/AuthContext';
+import PrivateRoute from '../components/PrivateRoute';
+import UnauthorizedPage from '../pages/errors/UnauthorizedPage';
+import AccessDeniedPage from '../pages/errors/AccessDeniedPage';
+import { mapGtOneRole } from '../utils/roleMapping';
 
 // Auth pages
-import LoginPage from '../pages/auth/Login';
 import { ForgotPasswordPage, ResetPasswordPage } from '../pages/auth/ForgotPassword';
+import SSOCallbackPage from '../pages/auth/SSOCallback';
+import SSOErrorPage from '../pages/auth/SSOError';
 
 // App pages
 import DashboardPage from '../pages/dashboard/Dashboard';
@@ -52,28 +56,10 @@ import {
   Support as SASupport,
 } from '../pages/super-admin';
 
-// Guard component
-const RequireAuth: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated } = useAuthStore();
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
-  return <>{children}</>;
-};
-
-const RequireGuest: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated } = useAuthStore();
-  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
-  return <>{children}</>;
-};
-
-const RequireRole: React.FC<{ roles: Role[]; children: React.ReactNode }> = ({ roles, children }) => {
-  const { user } = useAuthStore();
-  if (!user || !roles.includes(user.role)) return <Navigate to="/dashboard" replace />;
-  return <>{children}</>;
-};
-
 const SettingsRoute: React.FC = () => {
-  const { user } = useAuthStore();
-  if (user?.role === 'super_admin' || user?.role === 'admin') {
+  const { user } = useAuth();
+  const role = mapGtOneRole(user?.role);
+  if (role === 'super_admin' || role === 'admin' || role === 'company_admin') {
     return <SASettings />;
   }
   return <UserSettingsPage />;
@@ -85,18 +71,18 @@ export const router = createBrowserRouter([
     path: '/',
     element: <AuthLayout />,
     children: [
-      { index: true, element: <Navigate to="/login" replace /> },
+      { index: true, element: <Navigate to="/dashboard" replace /> },
       {
         path: 'login',
-        element: <RequireGuest><LoginPage /></RequireGuest>,
+        element: <Navigate to="/dashboard" replace />,
       },
       {
         path: 'register',
-        element: <Navigate to="/login" replace />,
+        element: <Navigate to="/dashboard" replace />,
       },
       {
         path: 'loginWithId',
-        element: <Navigate to="/login" replace />,
+        element: <Navigate to="/dashboard" replace />,
       },
       {
         path: 'forgot-password',
@@ -106,12 +92,24 @@ export const router = createBrowserRouter([
         path: 'reset-password',
         element: <ResetPasswordPage />,
       },
+      {
+        path: 'sso/callback',
+        element: <SSOCallbackPage />,
+      },
+      {
+        path: 'sso/error',
+        element: <SSOErrorPage />,
+      },
     ],
   },
   // App routes
   {
     path: '/',
-    element: <RequireAuth><AppLayout /></RequireAuth>,
+    element: (
+      <PrivateRoute>
+        <AppLayout />
+      </PrivateRoute>
+    ),
     children: [
       { path: 'dashboard', element: <DashboardPage /> },
 
@@ -125,7 +123,14 @@ export const router = createBrowserRouter([
       { path: 'reports', element: <ReportsPage /> },
       { path: 'reports-management', element: <ReportManagementPage /> },
       { path: 'mis-entry', element: <MISEntry /> },
-      { path: 'mis-manager', element: <RequireRole roles={['super_admin', 'admin', 'manager', 'team_leader']}><MISManager /></RequireRole> },
+      {
+        path: 'mis-manager',
+        element: (
+          <PrivateRoute roles={['super_admin', 'company_admin', 'admin', 'manager', 'team_leader']}>
+            <MISManager />
+          </PrivateRoute>
+        ),
+      },
       { path: 'mis-reports', element: <MISReports /> },
       { path: 'notifications', element: <NotificationsPage /> },
       { path: 'quick-tasks', element: <QuickTasksPage /> },
@@ -143,9 +148,9 @@ export const router = createBrowserRouter([
       {
         path: 'logs',
         element: (
-          <RequireRole roles={['super_admin', 'admin', 'manager', 'team_leader']}>
+          <PrivateRoute roles={['super_admin', 'company_admin', 'admin', 'manager', 'team_leader']}>
             <SALogs />
-          </RequireRole>
+          </PrivateRoute>
         ),
       },
       { path: 'support', element: <SASupport /> },
@@ -163,6 +168,14 @@ export const router = createBrowserRouter([
     ],
   },
   {
+    path: '/unauthorized',
+    element: <UnauthorizedPage />,
+  },
+  {
+    path: '/access-denied',
+    element: <AccessDeniedPage />,
+  },
+  {
     path: '/500',
     element: <Error500Page />,
   },
@@ -173,6 +186,8 @@ export const router = createBrowserRouter([
 ], {
   future: {
     v7_relativeSplatPath: true,
+    // @ts-expect-error: supported at runtime in newer router future flags.
+    v7_startTransition: true,
   },
 });
 

@@ -6,6 +6,19 @@ function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
 
+async function safeList<T>(
+  label: string,
+  request: Promise<{ data: unknown }>
+): Promise<T[]> {
+  try {
+    const res = await request;
+    return asArray<T>((res.data as { data?: unknown })?.data ?? res.data);
+  } catch (error) {
+    console.warn(`[appStore.bootstrap] ${label} fetch failed`, error);
+    return [];
+  }
+}
+
 interface AppStore {
   users: User[];
   workspaces: Workspace[];
@@ -75,32 +88,50 @@ export const useAppStore = create<AppStore>((set, get) => ({
   darkMode: localStorage.getItem('darkMode') === 'true',
 
   bootstrap: async () => {
+    const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+    const isPublicPath = ['/login', '/forgot-password', '/reset-password', '/unauthorized', '/access-denied'].some((path) =>
+      currentPath.startsWith(path)
+    );
+    if (isPublicPath) {
+      return;
+    }
+
     // Apply dark mode on initial load
     if (localStorage.getItem('darkMode') === 'true') {
       document.documentElement.classList.add('dark');
     }
 
-    const [usersRes, workspacesRes, projectsRes, tasksRes, teamsRes, quickRes, notifRes, personalRes, labelsRes] = await Promise.all([
-      usersService.getAll(),
-      workspacesService.getAll(),
-      projectsService.getAll(),
-      tasksService.getAll(),
-      teamsService.getAll(),
-      quickTasksService.getAll(),
-      notificationsService.getAll(),
-      personalTasksService.getAll(),
-      labelsService.getAll(),
+    const [
+      users,
+      workspaces,
+      projects,
+      tasks,
+      teams,
+      quickTasks,
+      notifications,
+      personalTasks,
+      labels,
+    ] = await Promise.all([
+      safeList<User>('users', usersService.getAll()),
+      safeList<Workspace>('workspaces', workspacesService.getAll()),
+      safeList<Project>('projects', projectsService.getAll()),
+      safeList<Task>('tasks', tasksService.getAll()),
+      safeList<Team>('teams', teamsService.getAll()),
+      safeList<QuickTask>('quick-tasks', quickTasksService.getAll()),
+      safeList<Notification>('notifications', notificationsService.getAll()),
+      safeList<PersonalTask>('personal-tasks', personalTasksService.getAll()),
+      safeList<Label>('labels', labelsService.getAll()),
     ]);
     set({
-      users: asArray<User>(usersRes.data.data ?? usersRes.data),
-      workspaces: asArray<Workspace>(workspacesRes.data.data ?? workspacesRes.data),
-      projects: asArray<Project>(projectsRes.data.data ?? projectsRes.data),
-      tasks: asArray<Task>(tasksRes.data.data ?? tasksRes.data),
-      teams: asArray<Team>(teamsRes.data.data ?? teamsRes.data),
-      quickTasks: asArray<QuickTask>(quickRes.data.data ?? quickRes.data),
-      notifications: asArray<Notification>(notifRes.data.data ?? notifRes.data),
-      personalTasks: asArray<PersonalTask>(personalRes.data.data ?? personalRes.data),
-      allLabels: asArray<Label>(labelsRes.data.data ?? labelsRes.data),
+      users,
+      workspaces,
+      projects,
+      tasks,
+      teams,
+      quickTasks,
+      notifications,
+      personalTasks,
+      allLabels: labels,
     });
   },
 

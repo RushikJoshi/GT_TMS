@@ -82,6 +82,7 @@ const importSchema = z.object({
 });
 
 router.get('/', ProjectsController.list);
+router.get('/all-with-tasks', ProjectsController.listWithTasks);
 router.post('/', validateBody(projectCreateSchema), ProjectsController.create);
 router.post('/import', validateBody(importSchema), ProjectsController.importBulk);
 router.get('/:id', ProjectsController.get);
