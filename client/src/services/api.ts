@@ -40,7 +40,7 @@ export const projectsService = {
 };
 
 export const tasksService = {
-  getAll: (projectId?: string, status?: string, priority?: string, page?: number, limit?: number, q?: string) => 
+  getAll: (projectId?: string, status?: string, priority?: string, page?: number, limit?: number, q?: string) =>
     api.get('/tasks', { params: { projectId, status, priority, page, limit, q } }),
   getById: (id: string) => api.get(`/tasks/${id}`),
   create: (data: unknown) => api.post('/tasks', data),
@@ -49,7 +49,7 @@ export const tasksService = {
   getOverview: () => api.get('/tasks/overview'),
   getRequests: (params?: unknown) => api.get('/tasks/requests', { params }),
   createRequest: (data: unknown) => api.post('/tasks/requests', data),
-  getCompletionReviews: (projectId?: string, page: number = 1, limit: number = 500) => 
+  getCompletionReviews: (projectId?: string, page: number = 1, limit: number = 500) =>
     api.get('/tasks', { params: { projectId, page, limit, status: 'in_review' } }),
   getOverdue: (params?: unknown) => api.get('/tasks/overdue', { params }),
   reviewRequest: (id: string, data: unknown) => api.post(`/tasks/requests/${id}/review`, data),
@@ -93,10 +93,15 @@ export const usersService = {
   create: (data: unknown) => api.post('/users', data),
   update: (id: string, data: unknown) => api.put(`/users/${id}`, data),
   delete: (id: string) => api.delete(`/users/${id}`),
+  getPerformance: (id: string) => api.get(`/users/${id}/performance`),
+  setPassword: (id: string, data: unknown) => api.put(`/users/${id}/set-password`, data),
+  importBulk: (users: unknown[]) => api.post('/users/import-bulk', { users }),
 };
 
 export const workspacesService = {
   getAll: () => api.get('/workspaces'),
+  getById: (id: string) => api.get(`/workspaces/${id}`),
+  update: (id: string, data: unknown) => api.put(`/workspaces/${id}`, data),
 };
 
 export const companiesService = {
@@ -176,6 +181,8 @@ export const authService = {
 };
 
 export default api;
+
+
 
 
 
