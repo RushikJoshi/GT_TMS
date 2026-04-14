@@ -479,77 +479,25 @@ export const DashboardPage: React.FC = () => {
               )}
             </div>
 
-            <div className="max-h-[300px] overflow-y-auto">
-              {selectedDailyProject ? (
-                <div className="space-y-0">
-                  <div className="border-b border-surface-50 px-4 py-3 dark:border-surface-800">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-surface-900 dark:text-white">{selectedDailyProject.name}</p>
-                        <p className="text-[11px] text-surface-400">
-                          {selectedDailyProject.tasksCount} tasks - {selectedDailyProject.completedTasksCount} done
-                        </p>
-                      </div>
-                      <div className="w-24 flex-shrink-0">
-                        <ProgressBar
-                          value={selectedDailyProject.progress}
-                          size="sm"
-                          color={getProgressColor(selectedDailyProject.progress)}
-                        />
-                        <p className="mt-1 text-right text-[11px] text-surface-400">{selectedDailyProject.progress}%</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {selectedDailyProject.tasks.length > 0 ? (
-                    <div className="space-y-1 px-4 py-3">
-                      {/* Task groups rendered in business-priority order */}
-                      {(['todo', 'in_progress', 'done'] as DailyTaskSection[]).map((section) => {
-                        const sectionTasks = selectedDailyProjectSections[section];
-                        if (!sectionTasks.length) return null;
-
-                        return (
-                          <div key={section} className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <p className="text-[11px] font-bold uppercase tracking-widest text-surface-400">
-                                {getDailyTaskSectionLabel(section)}
-                              </p>
-                              <span className="rounded-full bg-surface-100 px-2 py-0.5 text-[10px] font-semibold text-surface-500 dark:bg-surface-800 dark:text-surface-300">
-                                {sectionTasks.length}
-                              </span>
-                            </div>
-                            <div className="space-y-2">
-                              {sectionTasks.map((task) => (
-                                <div key={task.id} className="rounded-xl border border-surface-100 bg-surface-50/60 px-3 py-3 transition-colors dark:border-surface-800 dark:bg-surface-900/40">
-                                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                    <div className="min-w-0">
-                                      <p className="truncate text-sm font-medium text-surface-800 dark:text-surface-200">{task.title}</p>
-                                      <p className="mt-0.5 text-[11px] text-surface-400">
-                                        Due: {task.dueDate ? formatDate(task.dueDate) : 'No due date'}
-                                        {task.assigneeNames.length ? ` - ${task.assigneeNames.join(', ')}` : ''}
-                                      </p>
-                                    </div>
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      {task.priority && (
-                                        <span className="rounded-full bg-surface-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-surface-500 dark:bg-surface-800 dark:text-surface-300">
-                                          {task.priority}
-                                        </span>
-                                      )}
-                                      <span className={cn(
-                                        'rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider',
-                                        section === 'done'
-                                          ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-300'
-                                          : section === 'in_progress'
-                                            ? 'bg-brand-50 text-brand-600 dark:bg-brand-950/30 dark:text-brand-300'
-                                            : 'bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-300'
-                                      )}>
-                                        {getDailyTaskSectionLabel(section)}
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
+            <div className="max-h-[300px] overflow-y-auto custom-scrollbar overflow-x-hidden">
+              <table className="w-full text-xs text-left table-fixed">
+                <thead className="bg-surface-50 dark:bg-surface-900 text-surface-500 dark:text-surface-400 font-semibold tracking-wide uppercase text-[10px] sticky top-0 border-b border-surface-100 dark:border-surface-800 z-10">
+                  <tr>
+                    <th className="px-4 py-2.5 font-semibold w-[40%]">Employee</th>
+                    <th className="px-4 py-2.5 font-semibold w-[40%]">Task</th>
+                    <th className="px-4 py-2.5 font-semibold w-[20%]">Project</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-50 dark:divide-surface-800">
+                  {overviewLoading ? (
+                    <tr><td colSpan={3} className="px-4 py-8 text-center text-surface-400">Loading tasks...</td></tr>
+                  ) : overviewTasks.length > 0 ? (
+                    overviewTasks.map((task) => (
+                      <tr key={task.id} className="hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors">
+                        <td className="px-4 py-3 overflow-hidden">
+                          <div className="flex items-center gap-2">
+                            <UserAvatar name={task.assignedTo || 'U'} avatar={task.assigneeAvatar} size="xs" />
+                            <span className="font-medium text-surface-800 dark:text-surface-200 truncate">{task.assignedTo}</span>
                           </div>
                         );
                       })}
