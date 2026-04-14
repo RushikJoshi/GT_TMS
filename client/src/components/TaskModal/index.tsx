@@ -284,7 +284,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose, initi
   };
 
   const persistTaskUpdate = async (updates: Partial<Task>, errorTitle = 'Task update failed') => {
-    await syncTask(() => tasksService.update(currentTask.id, updates), errorTitle);
+    const tasksServiceUsed = currentTask.type === 'quick' ? quickTasksService : tasksService;
+    await syncTask(() => tasksServiceUsed.update(currentTask.id, updates), errorTitle);
   };
 
   const updateChecklistItem = (
@@ -327,8 +328,9 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose, initi
     if (!newComment.trim() || !user) return;
     const content = newComment.trim();
     setNewComment('');
+    const tasksServiceUsed = currentTask.type === 'quick' ? quickTasksService : tasksService;
     await syncTask(
-      () => tasksService.addComment(currentTask.id, { content }),
+      () => (tasksServiceUsed as any).addComment(currentTask.id, { content }),
       'Comment failed'
     );
   };
@@ -866,7 +868,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose, initi
             <div className="flex justify-end gap-1 -mt-1 -mr-1">
               {canManageTask && (
                 <button
-                  onClick={() => { void (async () => { try { await tasksService.delete(currentTask.id); deleteTask(currentTask.id); await bootstrap(); emitSuccessToast('Task deleted successfully.', 'Task Deleted'); onClose(); } catch (error: any) { emitErrorToast(error?.response?.data?.message || 'Task could not be deleted.', 'Delete failed'); } })(); }}
+                  onClick={() => { void (async () => { try { const tasksServiceUsed = currentTask.type === 'quick' ? quickTasksService : tasksService; await tasksServiceUsed.delete(currentTask.id); deleteTask(currentTask.id); await bootstrap(); emitSuccessToast('Task deleted successfully.', 'Task Deleted'); onClose(); } catch (error: any) { emitErrorToast(error?.response?.data?.message || 'Task could not be deleted.', 'Delete failed'); } })(); }}
                   className="btn-ghost h-8 w-8 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
                 >
                   <Trash2 size={15} />

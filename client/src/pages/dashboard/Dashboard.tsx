@@ -11,7 +11,9 @@ import { useAuthStore } from '../../context/authStore';
 import { useAppStore } from '../../context/appStore';
 import { companiesService, activityService } from '../../services/api';
 
-import { AvatarGroup } from '../../components/UserAvatar';
+import { UserAvatar, AvatarGroup } from '../../components/UserAvatar';
+import { ReassignRequestsPanel } from '../../components/ReassignRequestsPanel';
+import { ExtensionRequestsPanel } from '../../components/ExtensionRequestsPanel';
 import { ProgressBar } from '../../components/ui';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -127,6 +129,21 @@ export const DashboardPage: React.FC = () => {
   const [companiesLoading, setCompaniesLoading] = useState(false);
   const [activityLoading, setActivityLoading] = useState(false);
   const [selectedDailyProjectId, setSelectedDailyProjectId] = useState<string>('');
+  const [overviewLoading] = useState(false);
+
+  // Scopes tasks for the team overview panel to 'in-progress'.
+  const overviewTasks = useMemo(() => {
+    return tasks
+      .filter((t) => t.status === 'in_progress')
+      .map((t) => ({
+        id: t.id,
+        title: t.title,
+        assignedTo: users.find((u) => u.id === t.assigneeIds?.[0])?.name || 'Unassigned',
+        assigneeAvatar: users.find((u) => u.id === t.assigneeIds?.[0])?.avatar,
+        projectName: projects.find((p) => p.id === t.projectId)?.name || 'Quick Task',
+      }))
+      .slice(0, 8);
+  }, [tasks, users, projects]);
 
   const isSuperAdmin = user?.role === 'super_admin';
 
@@ -389,7 +406,8 @@ export const DashboardPage: React.FC = () => {
               <ExtensionRequestsPanel />
             </>
           )}
-          {/* Team Tasks Overview */}
+
+          {/* Team Tasks Overview Card */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -416,7 +434,7 @@ export const DashboardPage: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-surface-50 dark:divide-surface-800">
                   {overviewLoading ? (
-                    <tr><td colSpan={3} className="px-4 py-8 text-center text-surface-400">Loading tasks...</td></tr>
+                    <tr><td colSpan={3} className="px-4 py-8 text-center text-surface-400 font-medium">Loading tasks...</td></tr>
                   ) : overviewTasks.length > 0 ? (
                     overviewTasks.map((task) => (
                       <tr key={task.id} className="hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors">
@@ -431,26 +449,29 @@ export const DashboardPage: React.FC = () => {
                       </tr>
                     ))
                   ) : (
-                    <tr><td colSpan={3} className="px-4 py-8 text-center text-surface-400">No in-progress tasks found.</td></tr>
+                    <tr><td colSpan={3} className="px-4 py-8 text-center text-surface-400 font-medium italic">No in-progress tasks found.</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
+          </motion.div>
 
-            <div className="p-3 border-t border-surface-100 dark:border-surface-800 flex justify-end bg-surface-50 dark:bg-surface-950/50">
-              <button
-                type="button"
-                onClick={() => selectedDailyProject && navigate(`/projects/${selectedDailyProject.id}`)}
-                disabled={!selectedDailyProject}
-                className="btn-ghost btn-sm text-xs text-brand-600 dark:text-brand-400 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Open project <ArrowRight size={12} />
-              </button>
+          {/* Daily Project Tasks Card */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35 }}
+            className="card overflow-hidden flex flex-col"
+          >
+            <div className="px-4 py-3 border-b border-surface-100 dark:border-surface-800 bg-surface-50 dark:bg-surface-950/50 flex items-center justify-between">
+              <h3 className="text-[10px] font-bold text-surface-700 dark:text-surface-300 uppercase tracking-widest">
+                Daily Project Tasks
+              </h3>
             </div>
-
-            <div className="border-b border-surface-100 px-4 py-3 dark:border-surface-800">
+            
+            <div className="p-4 border-b border-surface-100 dark:border-surface-800 bg-white/50 dark:bg-surface-900/50">
               {dailyProjects.length > 0 ? (
-                <div className="flex gap-2 overflow-x-auto pb-1">
+                <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
                   {dailyProjects.map((project) => {
                     const isActive = selectedDailyProject?.id === project.id;
                     return (
@@ -459,61 +480,94 @@ export const DashboardPage: React.FC = () => {
                         type="button"
                         onClick={() => setSelectedDailyProjectId(project.id)}
                         className={cn(
-                          'flex min-w-max items-center gap-2 rounded-full border px-3 py-2 text-left text-xs font-semibold transition-all',
+                          'flex min-w-max items-center gap-2 rounded-full border px-3 py-1.5 text-left text-[11px] font-semibold transition-all',
                           isActive
-                            ? 'border-brand-500 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-950/40 dark:text-brand-300'
+                            ? 'border-brand-500 bg-brand-50 text-brand-700 dark:border-brand-400 dark:bg-brand-950/40 dark:text-brand-300 shadow-sm'
                             : 'border-surface-200 bg-white text-surface-600 hover:border-brand-200 hover:bg-surface-50 dark:border-surface-800 dark:bg-surface-900 dark:text-surface-300'
                         )}
                       >
-                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: project.color }} />
-                        <span className="max-w-[140px] truncate">{project.name}</span>
-                        <span className="rounded-full bg-surface-100 px-2 py-0.5 text-[10px] font-bold text-surface-500 dark:bg-surface-800 dark:text-surface-300">
-                          {project.tasksCount}
-                        </span>
+                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: project.color }} />
+                        <span className="max-w-[120px] truncate">{project.name}</span>
                       </button>
                     );
                   })}
                 </div>
               ) : (
-                <div className="text-xs text-surface-400">No active projects with daily tasks found.</div>
+                <div className="py-2 text-[11px] text-surface-400 text-center">No active projects found.</div>
               )}
             </div>
 
-            <div className="max-h-[300px] overflow-y-auto custom-scrollbar overflow-x-hidden">
-              <table className="w-full text-xs text-left table-fixed">
-                <thead className="bg-surface-50 dark:bg-surface-900 text-surface-500 dark:text-surface-400 font-semibold tracking-wide uppercase text-[10px] sticky top-0 border-b border-surface-100 dark:border-surface-800 z-10">
-                  <tr>
-                    <th className="px-4 py-2.5 font-semibold w-[40%]">Employee</th>
-                    <th className="px-4 py-2.5 font-semibold w-[40%]">Task</th>
-                    <th className="px-4 py-2.5 font-semibold w-[20%]">Project</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-surface-50 dark:divide-surface-800">
-                  {overviewLoading ? (
-                    <tr><td colSpan={3} className="px-4 py-8 text-center text-surface-400">Loading tasks...</td></tr>
-                  ) : overviewTasks.length > 0 ? (
-                    overviewTasks.map((task) => (
-                      <tr key={task.id} className="hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors">
-                        <td className="px-4 py-3 overflow-hidden">
-                          <div className="flex items-center gap-2">
-                            <UserAvatar name={task.assignedTo || 'U'} avatar={task.assigneeAvatar} size="xs" />
-                            <span className="font-medium text-surface-800 dark:text-surface-200 truncate">{task.assignedTo}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="px-4 py-6 text-sm text-surface-400">No tasks found for this project.</div>
-                  )}
+            <div className="p-4 max-h-[350px] overflow-y-auto custom-scrollbar">
+              {selectedDailyProject ? (
+                <div className="space-y-4">
+                  {(['todo', 'in_progress', 'done'] as DailyTaskSection[]).map((sectionKey) => {
+                    const sectionTasks = selectedDailyProjectSections[sectionKey];
+                    if (sectionTasks.length === 0) return null;
+                    return (
+                      <div key={sectionKey}>
+                        <h4 className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-surface-400">
+                          <span className={cn(
+                            "h-1.5 w-1.5 rounded-full",
+                            sectionKey === 'done' ? "bg-emerald-500" : sectionKey === 'in_progress' ? "bg-brand-500" : "bg-amber-500"
+                          )} />
+                          {getDailyTaskSectionLabel(sectionKey)}
+                          <span className="ml-auto text-[10px] text-surface-300 font-medium">{sectionTasks.length}</span>
+                        </h4>
+                        <div className="space-y-1.5">
+                          {sectionTasks.map((task) => (
+                            <div
+                              key={task.id}
+                              onClick={() => navigate(`/tasks?id=${task.id}`)}
+                              className="group flex cursor-pointer items-center gap-3 rounded-xl border border-surface-100 bg-surface-50/50 p-2.5 transition-all hover:border-brand-200 hover:bg-white hover:shadow-sm dark:border-surface-800 dark:bg-surface-800/20 dark:hover:bg-surface-800/40"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-xs font-semibold text-surface-800 dark:text-surface-200 group-hover:text-brand-600 transition-colors">
+                                  {task.title}
+                                </p>
+                                <div className="mt-1 flex items-center gap-2">
+                                  {task.dueDate && (
+                                    <span className={cn(
+                                      "text-[10px] font-medium",
+                                      isDueDateOverdue(task.dueDate, task.status) ? "text-rose-500" : "text-surface-400"
+                                    )}>
+                                      {formatDate(task.dueDate)}
+                                    </span>
+                                  )}
+                                  <AvatarGroup users={task.assigneeNames.map(name => ({ id: name, name }))} size="xs" max={2} />
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
-                <div className="px-4 py-6 text-sm text-surface-400">Select a project to view its tasks.</div>
+                <div className="py-12 text-center">
+                  <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-50 dark:bg-surface-800 text-surface-400 mb-3">
+                    <FolderKanban size={24} />
+                  </div>
+                  <p className="text-xs font-medium text-surface-400">Select a project to view its active tasks.</p>
+                </div>
               )}
             </div>
+
+            {selectedDailyProject && (
+              <div className="p-3 border-t border-surface-100 dark:border-surface-800 flex justify-end bg-surface-50/50 dark:bg-surface-950/20">
+                <button
+                  type="button"
+                  onClick={() => navigate(`/projects/${selectedDailyProject.id}`)}
+                  className="flex items-center gap-1.5 text-[11px] font-bold text-brand-600 hover:text-brand-700 transition-colors"
+                >
+                  Manage Project <ArrowRight size={12} />
+                </button>
+              </div>
+            )}
           </motion.div>
 
-          {/* Platform events feed for admin-level visibility */}
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }} className="card p-4 sm:p-5">
+          {/* Platform events feed card */}
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="card p-4 sm:p-5">
             <div className="mb-4 flex items-center justify-between gap-3">
               <h3 className="font-display font-semibold text-surface-900 dark:text-white">Platform Events</h3>
             </div>

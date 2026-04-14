@@ -155,6 +155,13 @@ export async function listTaskRequests(req, res, next) {
       projectId: req.query.projectId,
       requestStatus: req.query.requestStatus,
     });
+    if (requests && requests.length > 0) {
+      console.log('[DEBUG] listTaskRequests response[0]:', {
+        id: requests[0].id,
+        requestedBy: requests[0].requestedBy,
+        hasRequesterObject: !!requests[0].requesterObject
+      });
+    }
     return res.status(200).json({ success: true, data: requests });
   } catch (e) {
     return next(e);
