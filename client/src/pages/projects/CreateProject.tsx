@@ -2,8 +2,8 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useForm } from 'react-hook-form';
-import { 
-  ArrowLeft, 
+import {
+  ArrowLeft,
   Plus,
   Type,
   AlignLeft,
@@ -65,7 +65,7 @@ const CreateProjectPage: React.FC = () => {
   const [selectedColor, setSelectedColor] = useState(PROJECT_COLORS[0]);
   const [sdlcStages, setSdlcStages] = useState<SdlcStage[]>(INITIAL_SDLC);
   const [isDeptOpen, setIsDeptOpen] = useState(false);
-  
+
   // Team & Reporting State
   const [selectedMembers, setSelectedMembers] = useState<string[]>(currentUser?.id ? [currentUser.id] : []);
   const [selectedReporters, setSelectedReporters] = useState<string[]>([]);
@@ -104,8 +104,8 @@ const CreateProjectPage: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const filteredUsers = (q: string) => users.filter(u => 
-    u.name.toLowerCase().includes(q.toLowerCase()) || 
+  const filteredUsers = (q: string) => users.filter(u =>
+    u.name.toLowerCase().includes(q.toLowerCase()) ||
     u.email.toLowerCase().includes(q.toLowerCase())
   ).slice(0, 8);
 

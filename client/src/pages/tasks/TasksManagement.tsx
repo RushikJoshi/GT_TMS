@@ -159,7 +159,7 @@ export const TasksManagement: React.FC = () => {
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const notificationTaskId = searchParams.get('taskId');
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'active' | 'project' | 'quick' | 'overdue' | 'done' | null>(null);
-  
+
   // Review System State
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [reviewType, setReviewType] = useState<'submit' | 'approve'>('submit');
@@ -245,7 +245,7 @@ export const TasksManagement: React.FC = () => {
       const endpoint = selectedTask.type === 'project' ? `/tasks/${selectedTask.id}` :
         selectedTask.type === 'quick' ? `/quick-tasks/${selectedTask.id}` :
           `/personal-tasks/${selectedTask.id}`;
-      
+
       await api.put(endpoint, { [field]: value });
       fetchFullTask(selectedTask.id);
       fetchTasks();
@@ -413,7 +413,7 @@ export const TasksManagement: React.FC = () => {
     // Role-based privacy: Only 'admin' and 'manager' can see everything.
     // Everyone else only sees their own tasks.
     const isStaff = user?.role === 'admin' || user?.role === 'manager';
-    
+
     if (!isStaff && user?.id) {
       baseProjectTasks = baseProjectTasks.filter(t => t.reporterId === user.id || (t.assigneeIds || []).includes(user.id));
       baseQuickTasks = baseQuickTasks.filter(t => t.reporterId === user.id || (t.assigneeIds || []).includes(user.id));
@@ -464,7 +464,7 @@ export const TasksManagement: React.FC = () => {
         task.reporterId === user.id || (task.assigneeIds || []).includes(user.id)
       );
     }
-    
+
     if (selectedCategory === 'active') {
       filtered = filtered.filter(t => t.status !== 'done');
     } else if (selectedCategory === 'project') {
@@ -623,15 +623,7 @@ export const TasksManagement: React.FC = () => {
       {/* Bordio Style Top Header */}
       <div className="mb-4 flex flex-col gap-3 lg:mb-6 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          {canCreateTask && (
-            <button
-              onClick={() => setIsAddingTask(true)}
-              className="bg-[#00a3ff] hover:bg-[#0082cc] text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 text-sm font-semibold transition-colors shadow-sm w-full sm:w-auto"
-            >
-              <Plus size={18} />
-              Add new
-            </button>
-          )}
+
 
           <div className="flex items-center bg-white dark:bg-surface-900 border border-gray-200 dark:border-surface-800 rounded-lg p-1 shadow-sm w-full sm:w-auto overflow-x-auto">
             <button
@@ -1479,7 +1471,7 @@ const TaskDetailOverlay: React.FC<{
             <span className="text-gray-500 font-bold">{task.projectName !== '-' ? task.projectName : 'General Task'}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <button className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400"><MoreHorizontal size={18} /></button>
+
             <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400"><XIcon size={20} /></button>
           </div>
         </div>
@@ -1491,6 +1483,21 @@ const TaskDetailOverlay: React.FC<{
             ) : (
               <>
                 <h1 className="text-3xl font-bold text-gray-900 dark:text-surface-100 leading-tight">{data.title}</h1>
+                <div className="flex flex-wrap items-center gap-2 mt-2 mb-2">
+                  {data.labels?.map((label: string) => (
+                    <span key={label} className="bg-blue-100 text-blue-700 dark:bg-brand-900/40 dark:text-brand-300 px-2.5 py-1 rounded-md text-[11px] font-bold flex items-center">
+                      {label}
+                      <button onClick={() => onUpdateField('labels', data.labels.filter((l: string) => l !== label))} className="ml-1.5 hover:text-blue-900 dark:hover:text-blue-100"><XIcon size={12} /></button>
+                    </span>
+                  ))}
+                  {data.repeatSchedule && data.repeatSchedule !== "Don't Repeat" && (
+                    <span className="bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 px-2.5 py-1 rounded-md text-[11px] font-bold flex items-center gap-1.5">
+                      <Repeat size={12} />
+                      Repeats {data.repeatSchedule}
+                      <button onClick={() => onUpdateField('repeatSchedule', "Don't Repeat")} className="ml-1.5 hover:text-purple-900 dark:hover:text-purple-100"><XIcon size={12} /></button>
+                    </span>
+                  )}
+                </div>
 
                 <div className="grid max-w-lg grid-cols-1 gap-x-10 gap-y-4 md:grid-cols-2">
                   <div className="flex items-center gap-6">
@@ -1570,16 +1577,7 @@ const TaskDetailOverlay: React.FC<{
                 </div>
 
                 <div className="flex items-center gap-10 pt-4 px-1">
-                  {/* Submission/Review Buttons */}
-                  {user?.role !== 'admin' && user?.role !== 'manager' && data.status !== 'in_review' && data.status !== 'done' && (
-                    <button
-                      onClick={() => onOpenReview('submit')}
-                      className="bg-[#00a3ff] hover:bg-[#0082cc] text-white px-6 py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-500/20 flex items-center gap-2"
-                    >
-                      <CheckCircle2 size={16} />
-                      Submit for Review
-                    </button>
-                  )}
+                  {/* Review Button for Admin/Manager */}
 
                   {(user?.role === 'admin' || user?.role === 'manager') && data.status === 'in_review' && (
                     <button
@@ -1617,9 +1615,9 @@ const TaskDetailOverlay: React.FC<{
                       <span className="text-[11px] font-medium mt-1">Repeat task</span>
                     </button>
                     {showRepeatMenu && (
-                      <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 bg-white border border-gray-100 rounded-xl shadow-xl p-2 z-[60] min-w-[140px]">
+                      <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 bg-white dark:bg-surface-800 border border-gray-100 dark:border-surface-700 rounded-xl shadow-xl p-2 z-[60] min-w-[140px]">
                         {['Don\'t Repeat', 'Every Day', 'Every Week', 'Every Month', 'Every Year'].map(freq => (
-                          <div key={freq} onClick={() => { setShowRepeatMenu(false); alert(`Repeating task ${freq}`); }} className="px-3 py-2 text-[10px] font-bold text-gray-600 hover:bg-gray-50 rounded-lg cursor-pointer">{freq}</div>
+                          <div key={freq} onClick={() => { setShowRepeatMenu(false); onUpdateField('repeatSchedule', freq); }} className="px-3 py-2 text-[10px] font-bold text-gray-600 dark:text-surface-300 hover:bg-gray-50 dark:hover:bg-surface-700 rounded-lg cursor-pointer">{freq}</div>
                         ))}
                       </div>
                     )}
@@ -1770,9 +1768,21 @@ const TaskDetailOverlay: React.FC<{
                     Activity
                   </span>
                 </div>
-                <div className="flex -space-x-2">
-                  <UserAvatar name="M" size="xs" className="border-2 border-white" />
-                  <UserAvatar name="S" size="xs" className="border-2 border-white" />
+                <div className="flex -space-x-2.5">
+                  <UserAvatar
+                    name={reporter.name}
+                    avatar={(reporter as any).avatar}
+                    color={(reporter as any).color}
+                    size="xs"
+                    className="border-2 border-white dark:border-surface-900 shadow-sm"
+                  />
+                  <UserAvatar
+                    name={responsible.name}
+                    avatar={(responsible as any).avatar}
+                    color={(responsible as any).color}
+                    size="xs"
+                    className="border-2 border-white dark:border-surface-900 shadow-sm"
+                  />
                 </div>
               </div>
             </div>

@@ -55,6 +55,7 @@ const taskCreateSchema = z.object({
   labels: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
   subtasks: z.array(subtaskInputSchema).optional(),
+  repeatSchedule: z.string().optional(),
 });
 
 const taskUpdateSchema = z
@@ -80,6 +81,7 @@ const taskUpdateSchema = z
     completionRemark: z.string().trim().max(5000).optional(),
     reviewRemark: z.string().trim().max(5000).optional(),
     rating: z.number().min(1).max(5).optional(),
+    repeatSchedule: z.string().optional(),
   })
   .strict();
 

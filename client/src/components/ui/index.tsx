@@ -3,10 +3,10 @@ import * as RadixTabs from '@radix-ui/react-tabs';
 import * as RadixDropdown from '@radix-ui/react-dropdown-menu';
 import * as RadixSelect from '@radix-ui/react-select';
 import * as RadixPopover from '@radix-ui/react-popover';
-import { 
-  format, addMonths, subMonths, startOfMonth, 
-  endOfMonth, startOfWeek, endOfWeek, isSameMonth, 
-  isSameDay, addDays, eachDayOfInterval, parseISO 
+import {
+  format, addMonths, subMonths, startOfMonth,
+  endOfMonth, startOfWeek, endOfWeek, isSameMonth,
+  isSameDay, addDays, eachDayOfInterval, parseISO
 } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, ChevronRight, ChevronsUpDown, ChevronDown, Check, X, Calendar, Search } from 'lucide-react';
@@ -114,7 +114,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
     <div className={cn('flex flex-col gap-1', className)}>
       {label && <label className="text-[10px] font-bold text-surface-400 uppercase tracking-widest ml-1">{label}</label>}
       <RadixDropdown.Root>
-        <RadixDropdown.Trigger 
+        <RadixDropdown.Trigger
           disabled={disabled}
           className={cn(
             "flex items-center justify-between gap-2 px-3 py-2 rounded-xl border transition-all outline-none text-xs font-semibold",
@@ -136,7 +136,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
         </RadixDropdown.Trigger>
 
         <RadixDropdown.Portal>
-          <RadixDropdown.Content 
+          <RadixDropdown.Content
             align="start"
             sideOffset={4}
             className="z-[9999] min-w-[160px] bg-white dark:bg-surface-900 rounded-xl border border-surface-100 dark:border-surface-800 p-1 animate-in fade-in zoom-in-95 duration-100"
@@ -199,7 +199,7 @@ export const SelectContent = React.forwardRef<
       className={cn(
         "relative z-[9999] min-w-[8rem] overflow-hidden rounded-xl border border-surface-100 bg-white text-surface-900 shadow-xl animate-in fade-in zoom-in-95 dark:border-surface-800 dark:bg-surface-900 dark:text-surface-100",
         position === "popper" &&
-          "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
+        "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
         className
       )}
       position={position}
@@ -209,7 +209,7 @@ export const SelectContent = React.forwardRef<
         className={cn(
           "p-1",
           position === "popper" &&
-            "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]"
+          "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]"
         )}
       >
         {children}
@@ -533,9 +533,9 @@ export const Toast: React.FC<ToastProps> = ({ id, title, message, type, onRemove
       <p className="text-sm font-semibold text-surface-800 dark:text-surface-200">{title}</p>
       {message && <p className="text-xs text-surface-500 mt-0.5">{message}</p>}
     </div>
-      <button onClick={() => onRemove(id)} className="text-surface-400 hover:text-surface-600 flex-shrink-0">
-        <X size={14} />
-      </button>
+    <button onClick={() => onRemove(id)} className="text-surface-400 hover:text-surface-600 flex-shrink-0">
+      <X size={14} />
+    </button>
   </motion.div>
 );
 
@@ -553,7 +553,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
   value, onChange, label, placeholder = 'Select date...', minDate, className
 }) => {
   const [currentMonth, setCurrentMonth] = React.useState(value ? parseISO(value) : new Date());
-  
+
   const selectedDate = value ? parseISO(value) : null;
   const min = minDate ? parseISO(minDate) : null;
 
@@ -576,8 +576,8 @@ export const DatePicker: React.FC<DatePickerProps> = ({
           </button>
         </RadixPopover.Trigger>
         <RadixPopover.Portal>
-          <RadixPopover.Content 
-            align="start" 
+          <RadixPopover.Content
+            align="start"
             sideOffset={4}
             className="z-[9999] bg-white dark:bg-surface-900 rounded-2xl border border-surface-100 dark:border-surface-800 p-3 w-[260px] animate-in fade-in zoom-in-95 duration-100"
           >
@@ -628,7 +628,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
             </div>
 
             <div className="flex items-center justify-between mt-2 pt-2 border-t border-surface-50 dark:border-surface-800">
-              <button 
+              <button
                 onClick={() => {
                   const today = new Date();
                   setCurrentMonth(today);

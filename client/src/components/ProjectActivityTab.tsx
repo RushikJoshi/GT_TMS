@@ -240,14 +240,14 @@ export const ProjectActivityTab: React.FC<ProjectActivityTabProps> = ({ projectI
     setSummary((prev) => (
       append
         ? {
-            activities: prev.activities + (payload.summary?.activities || 0),
-            tasks: new Set([
-              ...prevSummaryTaskIds(prev, timeline),
-              ...currentSummaryTaskIds(payload.groups || []),
-            ]).size,
-            totalTracked: 0,
-            totalInProgress: 0,
-          }
+          activities: prev.activities + (payload.summary?.activities || 0),
+          tasks: new Set([
+            ...prevSummaryTaskIds(prev, timeline),
+            ...currentSummaryTaskIds(payload.groups || []),
+          ]).size,
+          totalTracked: 0,
+          totalInProgress: 0,
+        }
         : payload.summary
     ));
   };
@@ -488,8 +488,8 @@ export const ProjectActivityTab: React.FC<ProjectActivityTabProps> = ({ projectI
                         </div>
                         <span className="text-sm text-surface-500">{row.taskCount} task groups</span>
                       </div>
-                      <button 
-                        type="button" 
+                      <button
+                        type="button"
                         onClick={() => setCollapsedGroups((prev) => ({ ...prev, [row.dateGroup]: !prev[row.dateGroup] }))}
                         className="rounded-full p-1.5 transition-colors hover:bg-surface-100 dark:hover:bg-surface-800"
                       >
@@ -570,8 +570,8 @@ export const ProjectActivityTab: React.FC<ProjectActivityTabProps> = ({ projectI
                             </div>
                           ))}
                         </div>
-                        <button 
-                          type="button" 
+                        <button
+                          type="button"
                           onClick={() => setExpandedTasks((prev) => {
                             const next = new Set(prev);
                             if (next.has(row.task.taskId)) next.delete(row.task.taskId);

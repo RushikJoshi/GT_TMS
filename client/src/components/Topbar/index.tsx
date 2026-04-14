@@ -43,10 +43,23 @@ export const Topbar: React.FC = () => {
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
-  const { conversations } = useAdminChatStore();
+  const { conversations, fetchConversations } = useAdminChatStore();
   const unread = unreadNotificationsCount();
   const hasUnreadChat = conversations.some(c => (c.unreadCount || 0) > 0);
   const searchRef = useRef<HTMLDivElement>(null);
+
+  // Global unread polling for Chat Messenger
+  useEffect(() => {
+    if (user) {
+      fetchConversations(); // initial load
+      const interval = setInterval(() => {
+        if (!useAdminChatStore.getState().isOpen) {
+          fetchConversations();
+        }
+      }, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [user, fetchConversations]);
   const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -81,7 +94,7 @@ export const Topbar: React.FC = () => {
   return (
     <header
       className={cn(
-        'fixed top-0 right-0 z-20 flex h-[60px] items-center gap-1 border-b border-surface-100 bg-white/88 px-4 backdrop-blur-xl transition-all duration-250 dark:border-surface-800 dark:bg-surface-950/88',
+        'fixed top-0 right-0 z-20 flex h-[60px] items-center gap-1 bg-surface-50/80 px-4 backdrop-blur-xl transition-all duration-250 dark:bg-surface-950/80',
         sidebarCollapsed ? 'md:left-16' : 'md:left-[260px]'
       )}
     >
@@ -208,7 +221,7 @@ export const Topbar: React.FC = () => {
         >
           <MessageCircle size={17} className="group-hover:text-brand-500 transition-colors" />
           {hasUnreadChat && (
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-500 rounded-full ring-2 ring-white dark:ring-surface-900 animate-pulse" />
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-accent-rose rounded-full ring-2 ring-white dark:ring-surface-900" />
           )}
         </button>
       )}

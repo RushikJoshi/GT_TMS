@@ -474,7 +474,7 @@ function canReviewProjectTask({ role, userId, task, reviewerIds }) {
 
 function mapTaskWithActivity(task, activityHistory) {
   const json = typeof task?.toJSON === 'function' ? task.toJSON() : typeof task === 'object' ? task : {};
-  
+
   let totalTime = 0;
   const timeByUserMap = new Map();
   const timeByStageMap = new Map();
@@ -499,11 +499,11 @@ function mapTaskWithActivity(task, activityHistory) {
       const end = log.endTime ? new Date(log.endTime).getTime() : now;
       const duration = Math.max(0, Math.floor((end - start) / 1000));
       totalTime += duration;
-      
+
       if (log.status) {
         timeByStageMap.set(log.status, (timeByStageMap.get(log.status) || 0) + duration);
       }
-      
+
       if (log.userId) {
         const uId = strId(log.userId);
         timeByUserMap.set(uId, (timeByUserMap.get(uId) || 0) + duration);
@@ -576,6 +576,7 @@ export async function listTasks({
   role,
   labels,
   tags,
+  reviewStatus,
 }) {
   const tenantId = companyId;
   const { Task } = await getTenantModels(companyId);
@@ -590,6 +591,7 @@ export async function listTasks({
     assigneeId,
     status,
     priority,
+    reviewStatus,
   });
 
   const skip = (page - 1) * limit;
@@ -616,6 +618,7 @@ export async function buildTaskVisibilityFilter({
   assigneeId,
   status,
   priority,
+  reviewStatus,
 }) {
   const base = {
     tenantId,
@@ -661,11 +664,17 @@ export async function buildTaskVisibilityFilter({
       const { dueDate, status: filteredStatus } = getOverdueQueryFilter(new Date());
       base.dueDate = dueDate;
       base.status = filteredStatus;
+    } else if (typeof status === 'string' && status.includes(',')) {
+      base.status = { $in: status.split(',').filter(Boolean) };
     } else {
       base.status = status;
     }
   }
   if (priority) base.priority = priority;
+
+  if (reviewStatus) {
+    base['completionReview.status'] = reviewStatus;
+  }
 
   // GLOBAL ARCHIVE FILTER: Exclude tasks from archived projects unless a specific projectId is requested
   if (!projectId) {
@@ -767,6 +776,11 @@ export async function createTask({ companyId, workspaceId, userId, role, data })
     order: data.order ?? 0,
     tags: Array.isArray(data.tags) ? data.tags : [],
     labels: Array.isArray(data.labels) ? data.labels : [],
+    repeatSchedule: data.repeatSchedule || "Don't Repeat",
+    isRecurring: data.repeatSchedule && data.repeatSchedule !== "Don't Repeat",
+    recurrenceRule: data.repeatSchedule === "Every Day" ? { frequency: 'daily', interval: 1 } :
+                    data.repeatSchedule === "Every Week" ? { frequency: 'weekly', interval: 1 } :
+                    data.repeatSchedule === "Every Month" ? { frequency: 'monthly', interval: 1 } : null,
     subtasks: Array.isArray(data.subtasks)
       ? data.subtasks.map((s, i) => ({
         title: s.title,
@@ -911,6 +925,11 @@ export async function createTaskCreationRequest({ companyId, workspaceId, userId
     estimatedHours: data.estimatedHours ?? null,
     order: data.order ?? 0,
     labels: data.labels || [],
+    repeatSchedule: data.repeatSchedule || "Don't Repeat",
+    isRecurring: data.repeatSchedule && data.repeatSchedule !== "Don't Repeat",
+    recurrenceRule: data.repeatSchedule === "Every Day" ? { frequency: 'daily', interval: 1 } :
+                    data.repeatSchedule === "Every Week" ? { frequency: 'weekly', interval: 1 } :
+                    data.repeatSchedule === "Every Month" ? { frequency: 'monthly', interval: 1 } : null,
     subtasks: Array.isArray(data.subtasks)
       ? data.subtasks.map((subtask, index) => ({
         title: subtask.title,
@@ -1008,6 +1027,7 @@ export async function reviewTaskCreationRequest({
         order: request.order,
         tags: request.tags || [],
         labels: request.labels || [],
+        repeatSchedule: request.repeatSchedule,
         subtasks: Array.isArray(request.subtasks)
           ? request.subtasks.map((subtask) => ({
             title: subtask.title,
@@ -1178,12 +1198,12 @@ export async function updateTask({ companyId, workspaceId, userId, role, taskId,
   if (updates.status && updates.status !== existing.status) {
     const uid = strId(userId);
     const isAssignee = (existing.assigneeIds || []).some(id => strId(id) === uid);
-    
+
     // User Requirement: 
     // If an assignee (non-manager) tries to move to 'done', force it to 'in_review'
     // and they MUST provide a remark.
     const isManagerOrAdmin = isAdminRole(role) || ['manager', 'team_leader'].includes(role);
-    
+
     if (updates.status === 'done' && !isManagerOrAdmin) {
       updates.status = 'in_review';
       if (!updates.completionRemark && !existing.completionReview?.completionRemark) {
@@ -1210,6 +1230,23 @@ export async function updateTask({ companyId, workspaceId, userId, role, taskId,
   const beforeAssigneeIds = mapIdList(existing.assigneeIds);
   const nextStatus = rest.status ?? existing.status;
   const previousStatus = existing.status;
+
+  if (updates.repeatSchedule !== undefined) {
+    if (updates.repeatSchedule === "Don't Repeat") {
+      rest.isRecurring = false;
+      rest.recurrenceRule = null;
+    } else if (updates.repeatSchedule === "Every Day") {
+      rest.isRecurring = true;
+      rest.recurrenceRule = { frequency: 'daily', interval: 1 };
+    } else if (updates.repeatSchedule === "Every Week") {
+      rest.isRecurring = true;
+      rest.recurrenceRule = { frequency: 'weekly', interval: 1 };
+    } else if (updates.repeatSchedule === "Every Month") {
+      rest.isRecurring = true;
+      rest.recurrenceRule = { frequency: 'monthly', interval: 1 };
+    }
+  }
+
   const $set = { ...rest };
   delete $set.type;
   if (dueDate !== undefined) $set.dueDate = dueDate ? new Date(dueDate) : null;
@@ -1325,6 +1362,25 @@ export async function updateTask({ companyId, workspaceId, userId, role, taskId,
   }
 
   const newlyAssignedIds = afterAssigneeIds.filter((assigneeId) => !beforeAssigneeIds.includes(assigneeId));
+  
+  if (updates.repeatSchedule && updates.repeatSchedule !== existing.repeatSchedule && updates.repeatSchedule !== "Don't Repeat") {
+    const notifyIds = afterAssigneeIds.filter(id => id !== strId(userId));
+    if (notifyIds.length > 0) {
+      await Notification.insertMany(
+        notifyIds.map((assigneeId) => ({
+          tenantId,
+          workspaceId,
+          userId: assigneeId,
+          type: 'task_updated',
+          title: 'Task repetition updated',
+          message: `"${task.title}" repetition set to ${updates.repeatSchedule}`,
+          isRead: false,
+          relatedId: String(task._id),
+        }))
+      );
+    }
+  }
+
   if (newlyAssignedIds.length) {
     await Notification.insertMany(
       newlyAssignedIds.map((assignee) => ({
@@ -1701,17 +1757,26 @@ export async function addTaskAttachments({ companyId, workspaceId, userId, role,
     throw err;
   }
 
-  const attachments = (files || []).map((f) => ({
-    name: f.originalname,
-    url: `${requestBaseUrl}/uploads/${f.filename}`,
-    size: f.size,
-    type: f.mimetype,
+  const uploadedFiles = await uploadIncomingFiles({
+    files,
+    requestBaseUrl,
+    category: 'task-attachments',
+    entityId: taskId,
+  });
+
+  const attachments = uploadedFiles.map((u, i) => ({
+    name: u.name || files[i].originalname,
+    url: u.url,
+    size: files[i].size,
+    type: u.type,
     uploadedBy: userId,
+    storageProvider: u.storageProvider,
+    objectKey: u.objectKey,
   }));
 
   if (!attachments.length) return task;
 
-  await Task.updateOne({ _id: taskId, tenantId, workspaceId }, { $push: { attachments } });
+  await Task.updateOne({ _id: taskId, tenantId, workspaceId }, { $push: { attachments: { $each: attachments } } });
 
   for (const attachment of attachments) {
     await logTaskActivity({
