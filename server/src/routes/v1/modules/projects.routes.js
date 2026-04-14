@@ -2,6 +2,8 @@ import express from 'express';
 import { z } from 'zod';
 
 import { requireAuth } from '../../../middleware/auth.middleware.js';
+import { enforceIdempotency } from '../../../middleware/idempotency.middleware.js';
+import { mutationRateLimiter } from '../../../middleware/rate-limit.middleware.js';
 import { validateBody } from '../../../middleware/validate.middleware.js';
 import * as ProjectsController from '../../../controllers/projects.controller.js';
 
@@ -68,7 +70,7 @@ const importSchema = z.object({
       sdlcPlan: optionalTrimmedString(2000),
       taskTitle: optionalTrimmedString(300),
       taskDescription: optionalTrimmedString(10000),
-      taskStatus: z.enum(['backlog', 'todo', 'scheduled', 'in_progress', 'in_review', 'blocked', 'done']).optional(),
+      taskStatus: z.enum(['todo', 'scheduled', 'in_progress', 'in_review', 'blocked', 'done']).optional(),
       taskPriority: z.enum(['low', 'medium', 'high', 'urgent']).optional(),
       taskAssigneeEmails: optionalTrimmedString(1000),
       taskAssigneeNames: optionalTrimmedString(1000),
@@ -82,9 +84,14 @@ const importSchema = z.object({
 });
 
 router.get('/', ProjectsController.list);
+<<<<<<< HEAD
 router.get('/all-with-tasks', ProjectsController.listWithTasks);
 router.post('/', validateBody(projectCreateSchema), ProjectsController.create);
 router.post('/import', validateBody(importSchema), ProjectsController.importBulk);
+=======
+router.post('/', mutationRateLimiter, enforceIdempotency(), validateBody(projectCreateSchema), ProjectsController.create);
+router.post('/import', mutationRateLimiter, enforceIdempotency(), validateBody(importSchema), ProjectsController.importBulk);
+>>>>>>> main
 router.get('/:id', ProjectsController.get);
 router.put('/:id', validateBody(projectUpdateSchema), ProjectsController.update);
 router.put('/:id/subcategories', ProjectsController.upsertSubcategories);

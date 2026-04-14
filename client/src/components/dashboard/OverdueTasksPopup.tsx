@@ -25,17 +25,23 @@ export const OverdueTasksPopup: React.FC = () => {
     );
     if (!user || !isAuthenticated || isPublicPath) return;
 
-    // Only show once per session
-    const isShown = sessionStorage.getItem('overdue_popup_shown');
+    // Only show once per session for this user
+    const sessionKey = `overdue_popup_shown_${user.id}`;
+    const isShown = sessionStorage.getItem(sessionKey);
     if (isShown) return;
 
     const fetchOverdue = async () => {
       try {
+<<<<<<< HEAD
         const res = await tasksService.getOverdue({ suppressErrorToast: true });
+=======
+        const res = await tasksService.getOverdue();
+        console.log('[OverduePopup] Fetched tasks:', res.data?.count);
+>>>>>>> main
         if (res.data?.success && res.data.count > 0) {
           setTasks(res.data.tasks || []);
           setShow(true);
-          sessionStorage.setItem('overdue_popup_shown', 'true');
+          sessionStorage.setItem(sessionKey, 'true');
         }
       } catch {
         setTasks([]);
