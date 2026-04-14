@@ -684,7 +684,9 @@ const TaskRequestsPage: React.FC = () => {
         const creationResponse = await tasksService.getRequests({
           ...(projectId ? { projectId } : {}),
         });
-        setAllRequests(creationResponse.data?.data ?? creationResponse.data ?? []);
+        const creationData = creationResponse.data?.data ?? creationResponse.data ?? [];
+        console.log('[DEBUG] Creation Requests received:', creationData);
+        setAllRequests(creationData);
 
         const extensionResponse = await api.get('/extension-requests');
         const extRows = extensionResponse.data?.data ?? extensionResponse.data ?? [];
@@ -960,7 +962,14 @@ const TaskRequestsPage: React.FC = () => {
                     <tbody className="divide-y divide-surface-100 dark:divide-surface-800/70">
                       {paginatedRequests.map((request) => {
                         const linkedProject = projects.find((item) => item.id === request.projectId);
-                        const requester = users.find((u) => u.id === request.requestedBy) || (typeof request.requestedBy === 'object' ? request.requestedBy : null);
+                        const reqByAny = request.requestedBy as any;
+                        const requesterFromState = users.find((u) => u.id === (typeof reqByAny === 'object' ? reqByAny?._id : reqByAny));
+                        const requester = {
+                          name: (request as any).requesterName || requesterFromState?.name || (typeof reqByAny === 'object' ? reqByAny?.name : null) || (typeof reqByAny === 'string' ? `User ${reqByAny.slice(-4)}` : 'Unknown'),
+                          email: (request as any).requesterEmail || requesterFromState?.email || (typeof reqByAny === 'object' ? reqByAny?.email : null) || '',
+                          avatar: (request as any).requesterAvatar || requesterFromState?.avatar || (typeof reqByAny === 'object' ? reqByAny?.avatar : null) || '',
+                          color: (request as any).requesterColor || requesterFromState?.color || (typeof reqByAny === 'object' ? reqByAny?.color : null) || '',
+                        };
                         const meta = REQUEST_STATUS_META[request.requestStatus];
                         const StatusIcon = meta.icon;
                         const canReview = canReviewRequest(request);
@@ -1095,7 +1104,14 @@ const RequestDetailOverlay: React.FC<{
 }> = ({ request, onClose, onReview, isProcessing, canReview }) => {
   const { users, projects } = useAppStore();
   const linkedProject = projects.find((p) => p.id === request.projectId);
-  const requester = (request as any).requesterObject || users.find((m) => m.id === request.requestedBy) || (typeof request.requestedBy === 'object' ? request.requestedBy : null);
+  const reqByAny = request.requestedBy as any;
+  const requesterFromState = users.find((m) => m.id === (typeof reqByAny === 'object' ? reqByAny?._id : reqByAny));
+  const requester = {
+    name: (request as any).requesterName || requesterFromState?.name || (typeof reqByAny === 'object' ? reqByAny?.name : null) || 'Unknown',
+    email: (request as any).requesterEmail || requesterFromState?.email || (typeof reqByAny === 'object' ? reqByAny?.email : null) || '',
+    avatar: (request as any).requesterAvatar || requesterFromState?.avatar || (typeof reqByAny === 'object' ? reqByAny?.avatar : null) || '',
+    color: (request as any).requesterColor || requesterFromState?.color || (typeof reqByAny === 'object' ? reqByAny?.color : null) || '',
+  };
   const reviewers = users.filter((m) => (request as any).requestedToIds?.includes(m.id));
   const assignees = users.filter((m) => (request as any).assigneeIds?.includes(m.id));
   const meta = REQUEST_STATUS_META[request.requestStatus as keyof typeof REQUEST_STATUS_META];

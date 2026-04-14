@@ -1,6 +1,6 @@
 import React from "react";
 import { Navigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from '../context/AuthContext';
 import { resolveCurrentAppDashboardUrl, resolveGtOneBase } from "../utils/apiBase";
 
 interface PrivateRouteProps {
@@ -9,10 +9,17 @@ interface PrivateRouteProps {
 }
 
 const PrivateRoute: React.FC<PrivateRouteProps> = ({ children, roles }) => {
-  const { isAuthenticated, loading, user } = useAuth();
+  const context = useAuth();
+  const { isAuthenticated, loading, user } = context;
   const ssoLoginUrl = `${resolveGtOneBase()}/login`;
   const redirectTarget = resolveCurrentAppDashboardUrl();
   const redirectParam = encodeURIComponent(redirectTarget);
+
+  if (context === undefined) {
+    const msg = "useAuth must be used within an AuthProvider. Ensure that your component is a child of <AuthProvider> and that there are no circular dependencies or duplicate Context imports.";
+    console.error(msg);
+    throw new Error(msg);
+  }
 
   if (loading) {
     return (
