@@ -1,4 +1,4 @@
-  import axios from "axios";
+import axios from 'axios';
 
 function resolveApiOrigin() {
   const configured = String(import.meta.env.VITE_PMS_API_ROOT || '').trim().replace(/\/+$/, '');
@@ -45,6 +45,8 @@ export const tasksService = {
   delete: (id: string) => api.delete(`/tasks/${id}`),
   getOverview: () => api.get('/tasks/overview'),
   getOverdue: (config?: unknown) => api.get('/tasks/overdue', config as any),
+  getRequests: (params?: unknown) => api.get('/tasks/requests', { params }),
+  reviewRequest: (id: string, data: unknown) => api.post(`/tasks/requests/${id}/review`, data),
 };
 
 export const teamsService = {
@@ -136,6 +138,12 @@ export const reassignService = {
   getAll: () => api.get('/reassign-requests'),
   approve: (id: string) => api.post(`/reassign-requests/${id}/approve`),
   reject: (id: string, note?: string) => api.post(`/reassign-requests/${id}/reject`, { note }),
+};
+
+export const extensionRequestsService = {
+  getAll: () => api.get('/tasks/extension-requests'),
+  create: (data: unknown) => api.post('/tasks/extension-requests', data),
+  review: (id: string, data: unknown) => api.post(`/tasks/extension-requests/${id}/review`, data),
 };
 
 export const authService = {
