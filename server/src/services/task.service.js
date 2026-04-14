@@ -879,9 +879,45 @@ export async function listTaskCreationRequests({ companyId, workspaceId, userId,
   }
   if (requestStatus) filter.requestStatus = requestStatus;
 
-  const requests = await TaskCreationRequest.find(filter).sort({ createdAt: -1 });
-  return requests.map(mapRequestWithActivity);
+  const { conn, User: TenantUser } = await getTenantModels(companyId);
+  const requests = await TaskCreationRequest.find(filter).sort({ createdAt: -1 }).lean();
+  
+  const requesterIds = [...new Set(requests.map(r => String(r.requestedBy)))].filter(Boolean);
+  
+  // Find in Tenant DB
+  const tenantUsers = await TenantUser.find({ _id: { $in: requesterIds } }).select('name email avatar color').lean();
+  
+  // Find in Base DB (hrms) for any missing users
+  const foundIds = new Set(tenantUsers.map(u => String(u._id)));
+  const missingIds = requesterIds.filter(id => !foundIds.has(id));
+  
+  let allUsers = [...tenantUsers];
+  if (missingIds.length > 0) {
+    const { getUserModel } = await import('../models/User.js');
+    const BaseUser = getUserModel(mongoose.connection);
+    const baseUsers = await BaseUser.find({ _id: { $in: missingIds } }).select('name email avatar color').lean();
+    allUsers = [...allUsers, ...baseUsers];
+  }
+
+  const userMap = allUsers.reduce((acc, u) => {
+    acc[String(u._id)] = u;
+    return acc;
+  }, {});
+
+  return requests.map(r => {
+    const data = mapRequestWithActivity(r);
+    const u = userMap[String(r.requestedBy)];
+    if (u) {
+      data.requesterName = u.name;
+      data.requesterEmail = u.email;
+      data.requesterAvatar = u.avatar;
+      data.requesterColor = u.color;
+    }
+    data.requestedBy = String(r.requestedBy);
+    return data;
+  });
 }
+
 
 export async function createTaskCreationRequest({ companyId, workspaceId, userId, role, data }) {
   const tenantId = companyId;
@@ -893,7 +929,7 @@ export async function createTaskCreationRequest({ companyId, workspaceId, userId
     throw err;
   }
 
-  const { TaskCreationRequest, Project, ActivityLog } = await getTenantModels(companyId);
+  const { TaskCreationRequest, Project, ActivityLog, User } = await getTenantModels(companyId);
   const project = await Project.findOne({ _id: data.projectId, tenantId, workspaceId }).lean();
   if (!project) {
     const err = new Error('Project not found');
@@ -902,9 +938,23 @@ export async function createTaskCreationRequest({ companyId, workspaceId, userId
     throw err;
   }
 
-  const reviewerIds = mapIdList(project.reportingPersonIds);
+  let reviewerIds = mapIdList(project.reportingPersonIds);
   if (!reviewerIds.length) {
-    const err = new Error('This project has no reporting person configured for task requests');
+    if (project.ownerId) {
+      reviewerIds.push(strId(project.ownerId));
+    } else {
+      // Fallback to all admins in the workspace
+      const admins = await User.find({
+        tenantId,
+        workspaceId,
+        role: { $in: ['admin', 'super_admin'] }
+      }).select('_id').lean();
+      reviewerIds = admins.map(a => strId(a._id));
+    }
+  }
+
+  if (!reviewerIds.length) {
+    const err = new Error('This project has no reporting person or administrator configured for task requests');
     err.statusCode = 400;
     err.code = 'REPORTING_PERSON_REQUIRED';
     throw err;
@@ -966,7 +1016,22 @@ export async function createTaskCreationRequest({ companyId, workspaceId, userId
     relatedId: request._id,
   });
 
-  return mapRequestWithActivity(request);
+  let user = await User.findById(request.requestedBy).select('name email avatar color').lean();
+  if (!user) {
+    const { getUserModel } = await import('../models/User.js');
+    const BaseUser = getUserModel(mongoose.connection);
+    user = await BaseUser.findById(request.requestedBy).select('name email avatar color').lean();
+  }
+  
+  const mappedData = mapRequestWithActivity(request);
+  if (user) {
+     mappedData.requesterName = user.name;
+     mappedData.requesterEmail = user.email;
+     mappedData.requesterAvatar = user.avatar;
+     mappedData.requesterColor = user.color;
+  }
+  mappedData.requestedBy = String(request.requestedBy);
+  return mappedData;
 }
 
 export async function reviewTaskCreationRequest({
@@ -979,7 +1044,7 @@ export async function reviewTaskCreationRequest({
   reviewNote,
 }) {
   const tenantId = companyId;
-  const { TaskCreationRequest, Project, ActivityLog } = await getTenantModels(companyId);
+  const { TaskCreationRequest, Project, ActivityLog, User } = await getTenantModels(companyId);
   const request = await TaskCreationRequest.findOne({ _id: requestId, tenantId, workspaceId });
   if (!request) return null;
 
@@ -1074,8 +1139,23 @@ export async function reviewTaskCreationRequest({
     relatedId: request._id,
   });
 
+  let user = await User.findById(request.requestedBy).select('name email avatar color').lean();
+  if (!user) {
+    const { getUserModel } = await import('../models/User.js');
+    const BaseUser = getUserModel(mongoose.connection);
+    user = await BaseUser.findById(request.requestedBy).select('name email avatar color').lean();
+  }
+  
+  const requestData = mapRequestWithActivity(request);
+  if (user) {
+     requestData.requesterName = user.name;
+     requestData.requesterEmail = user.email;
+     requestData.requesterAvatar = user.avatar;
+     requestData.requesterColor = user.color;
+  }
+  requestData.requestedBy = String(request.requestedBy);
   return {
-    request: mapRequestWithActivity(request),
+    request: requestData,
     createdTask,
   };
 }

@@ -22,6 +22,7 @@ import { ProjectTimelineModule } from '../../components/ProjectTimelineModule';
 import { Modal } from '../../components/Modal';
 import { ProjectTaskCreateModal, type ProjectTaskCreateValues } from '../../components/ProjectTaskCreateModal';
 import { HighDensityTaskList } from '../../components/HighDensityTaskList';
+import { mapGtOneRole } from '../../utils/roleMapping';
 
 export const ProjectDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -48,23 +49,27 @@ export const ProjectDetailPage: React.FC = () => {
   const notificationTaskId = searchParams.get('taskId');
 
   const project = projects.find(p => p.id === id);
+  const userRole = mapGtOneRole(user?.role);
   const workspacePermissions = workspaces[0]?.settings?.permissions || {};
-  const canEditOtherProjects = Boolean(workspacePermissions?.editOtherProjects?.[user?.role || 'team_member']);
+  const canEditOtherProjects = Boolean(workspacePermissions?.editOtherProjects?.[userRole || 'team_member']);
   const projectTasks = tasks.filter(t => {
     const pid = typeof t.projectId === 'string' ? t.projectId : (t.projectId as any)?._id || (t.projectId as any)?.id;
     return String(pid) === String(id);
   });
   const selectedTask = tasks.find(t => t.id === selectedTaskId) || null;
   const members = users.filter(u => project?.members.includes(u.id) && !['super_admin', 'admin'].includes(u.role));
-  const canCreateTask = user?.role !== 'team_member' || (project?.reportingPersonIds || []).includes(user?.id);
-  const canEditProject = user?.role !== 'team_member' || canEditOtherProjects;
+  const canCreateTask = userRole !== 'team_member' || (project?.reportingPersonIds || []).includes(user?.id || '');
+  const canEditProject = userRole !== 'team_member' || canEditOtherProjects;
   const canRequestTask = Boolean(user?.id && project?.members.includes(user.id) && !canCreateTask);
   const canReviewTaskRequests = Boolean(
     user?.id &&
-    ((project?.reportingPersonIds || []).includes(user.id) || ['super_admin', 'admin', 'manager', 'team_leader'].includes(user?.role || ''))
+    ((project?.reportingPersonIds || []).includes(user.id) || ['super_admin', 'admin', 'manager', 'team_leader'].includes(userRole || ''))
   );
-  const isAdmin = ['super_admin', 'admin', 'manager', 'team_leader'].includes(user?.role || '');
-  const reportingPersons = users.filter(u => project?.reportingPersonIds?.includes(u.id));
+  const isAdmin = ['super_admin', 'admin', 'manager', 'team_leader'].includes(userRole || '');
+  const reportingPersons = users.filter(u =>
+    (project?.reportingPersonIds || []).includes(u.id) ||
+    ((project?.reportingPersonIds || []).length === 0 && u.id === project?.ownerId)
+  );
   const categories = project?.subcategories || [];
   const filteredProjectTasks = selectedCategoryId === 'all'
     ? projectTasks

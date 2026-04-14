@@ -50,7 +50,13 @@ taskCreationRequestSchema.set('toJSON', {
     ret.id = String(ret._id);
     ret.projectId = String(ret.projectId);
     ret.assigneeIds = Array.isArray(ret.assigneeIds) ? ret.assigneeIds.map((value) => String(value)) : [];
-    ret.requestedBy = String(ret.requestedBy);
+    const reqBy = ret.requestedBy;
+    if (reqBy && typeof reqBy === 'object') {
+      ret.requestedBy = String(reqBy._id || reqBy.id || reqBy);
+      ret.requesterObject = reqBy.toJSON ? reqBy.toJSON() : reqBy;
+    } else {
+      ret.requestedBy = String(reqBy);
+    }
     ret.requestedToIds = Array.isArray(ret.requestedToIds) ? ret.requestedToIds.map((value) => String(value)) : [];
     ret.phaseId = ret.phaseId ? String(ret.phaseId) : undefined;
     ret.subcategoryId = ret.subcategoryId || undefined;

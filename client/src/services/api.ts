@@ -29,6 +29,8 @@ const authApi = axios.create({
   },
 });
 
+const createIdempotencyKey = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
 export const projectsService = {
   getAll: () => api.get('/projects'),
   getById: (id: string) => api.get(`/projects/${id}`),
@@ -38,12 +40,17 @@ export const projectsService = {
 };
 
 export const tasksService = {
-  getAll: (projectId?: string) => api.get('/tasks', { params: { projectId } }),
+  getAll: (projectId?: string, status?: string, priority?: string, page?: number, limit?: number, q?: string) => 
+    api.get('/tasks', { params: { projectId, status, priority, page, limit, q } }),
   getById: (id: string) => api.get(`/tasks/${id}`),
   create: (data: unknown) => api.post('/tasks', data),
   update: (id: string, data: unknown) => api.put(`/tasks/${id}`, data),
   delete: (id: string) => api.delete(`/tasks/${id}`),
   getOverview: () => api.get('/tasks/overview'),
+  getRequests: (params?: any) => api.get('/tasks/requests', { params }),
+  createRequest: (data: unknown) => api.post('/tasks/requests', data),
+  getCompletionReviews: (projectId?: string, page: number = 1, limit: number = 500) => 
+    api.get('/tasks', { params: { projectId, page, limit, status: 'in_review' } }),
   getOverdue: (config?: unknown) => api.get('/tasks/overdue', config as any),
   getRequests: (params?: unknown) => api.get('/tasks/requests', { params }),
   reviewRequest: (id: string, data: unknown) => api.post(`/tasks/requests/${id}/review`, data),
@@ -52,7 +59,7 @@ export const tasksService = {
 export const teamsService = {
   getAll: () => api.get('/teams'),
   getById: (id: string) => api.get(`/teams/${id}`),
-  create: (data: unknown) => api.post('/teams', data, { idempotencyKey: createIdempotencyKey('team-create') }),
+  create: (data: unknown) => api.post('/teams', data, { headers: { 'Idempotency-Key': createIdempotencyKey('team-create') } }),
   update: (id: string, data: unknown) => api.put(`/teams/${id}`, data),
   delete: (id: string) => api.delete(`/teams/${id}`),
 };
@@ -62,6 +69,15 @@ export const quickTasksService = {
   create: (data: unknown) => api.post('/quick-tasks', data),
   update: (id: string, data: unknown) => api.put(`/quick-tasks/${id}`, data),
   delete: (id: string) => api.delete(`/quick-tasks/${id}`),
+  review: (id: string, data: unknown) => api.post(`/quick-tasks/${id}/review`, data),
+  uploadAttachments: (id: string, files: File[]) => {
+    const formData = new FormData();
+    files.forEach((file) => formData.append('files', file));
+    return api.post(`/quick-tasks/${id}/attachments`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  addComment: (id: string, data: unknown) => api.post(`/quick-tasks/${id}/comments`, data),
 };
 
 export const notificationsService = {
@@ -75,6 +91,9 @@ export const usersService = {
   getById: (id: string) => api.get(`/users/${id}`),
   me: () => api.get('/users/me'),
   updateMe: (data: unknown) => api.put('/users/me', data),
+  create: (data: unknown) => api.post('/users', data),
+  update: (id: string, data: unknown) => api.put(`/users/${id}`, data),
+  delete: (id: string) => api.delete(`/users/${id}`),
 };
 
 export const workspacesService = {
@@ -112,16 +131,18 @@ export const systemSettingsService = {
 };
 
 export const timelineService = {
-  getByProject: (projectId: string) => api.get(`/projects/${projectId}/timeline`),
-  create: (projectId: string, data: unknown) => api.post(`/projects/${projectId}/timeline`, data),
-  update: (projectId: string, eventId: string, data: unknown) => api.put(`/projects/${projectId}/timeline/${eventId}`, data),
-  remove: (projectId: string, eventId: string) => api.delete(`/projects/${projectId}/timeline/${eventId}`),
+  get: (projectId: string) => api.get(`/timeline/${projectId}`),
+  upsert: (projectId: string, data: unknown) => api.post(`/timeline/${projectId}`, data),
+  lock: (projectId: string) => api.patch(`/timeline/${projectId}/lock`),
+  unlock: (projectId: string) => api.patch(`/timeline/${projectId}/unlock`),
+  patchTask: (taskId: string, data: unknown) => api.patch(`/task/${taskId}`, data),
+  createDependency: (data: unknown) => api.post('/dependency', data),
 };
 
 export const personalTasksService = {
   getAll: () => api.get('/personal-tasks'),
   getStats: () => api.get('/personal-tasks/stats'),
-  create: (data: unknown) => api.post('/personal-tasks', data, { idempotencyKey: createIdempotencyKey('personal-task-create') }),
+  create: (data: unknown) => api.post('/personal-tasks', data, { headers: { 'Idempotency-Key': createIdempotencyKey('personal-task-create') } }),
   update: (id: string, data: unknown) => api.put(`/personal-tasks/${id}`, data),
   delete: (id: string) => api.delete(`/personal-tasks/${id}`),
 };
@@ -135,9 +156,18 @@ export const labelsService = {
 };
 
 export const reassignService = {
-  getAll: () => api.get('/reassign-requests'),
-  approve: (id: string) => api.post(`/reassign-requests/${id}/approve`),
-  reject: (id: string, note?: string) => api.post(`/reassign-requests/${id}/reject`, { note }),
+  create: (data: unknown) => api.post('/tasks/reassign-request', data),
+  getAll: () => api.get('/tasks/reassign-requests'),
+  approve: (id: string) => api.put(`/tasks/reassign-request/${id}/approve`),
+  reject: (id: string, note?: string) => api.put(`/tasks/reassign-request/${id}/reject`, { note }),
+  getStatus: (taskId: string) => api.get(`/tasks/reassign-request/status/${taskId}`),
+};
+
+export const extensionRequestsService = {
+  getAll: () => api.get('/extension-requests'),
+  create: (data: unknown) => api.post('/extension-requests', data),
+  approve: (id: string, note?: string) => api.put(`/extension-requests/${id}/approve`, { note }),
+  reject: (id: string, note?: string) => api.put(`/extension-requests/${id}/reject`, { note }),
 };
 
 export const extensionRequestsService = {
