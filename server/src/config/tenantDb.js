@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import mongoose from 'mongoose';
 import Company from '../models/Company.js';
 import { getUserModel } from '../models/User.js';
@@ -25,6 +26,7 @@ import { getExtensionRequestModel } from '../models/ExtensionRequest.js';
 
 const TENANT_DB_PREFIX = process.env.TENANT_DB_PREFIX || 'GT_PMS';
 const tenantDbCache = new Map();
+const MAX_MONGO_DB_NAME_BYTES = 38;
 
 function normalizeSegment(value, fallback = 'tenant') {
   const normalized = String(value || '')
@@ -35,6 +37,10 @@ function normalizeSegment(value, fallback = 'tenant') {
   return (normalized || fallback).slice(0, 24);
 }
 
+function byteLength(value) {
+  return Buffer.byteLength(String(value || ''), 'utf8');
+}
+
 function ensureLegacyOrganizationId(company) {
   const current = String(company?.organizationId || '').trim();
   if (current) return current;
@@ -42,10 +48,53 @@ function ensureLegacyOrganizationId(company) {
   return legacyFallback.slice(0, 80);
 }
 
-export function buildTenantDatabaseName({ companyName, organizationId }) {
+function buildLegacyTenantDatabaseName({ companyName, organizationId }) {
   const namePart = normalizeSegment(companyName, 'company');
   const orgPart = normalizeSegment(organizationId, 'org');
   return `${TENANT_DB_PREFIX}_${namePart}_${orgPart}`.slice(0, 63);
+}
+
+function normalizeShortSegment(value, fallback = 'tenant') {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return (normalized || fallback);
+}
+
+export function buildTenantDatabaseName({ companyName, organizationId, companyId }) {
+  // Kept for backward compatibility in callers/tests: now returns a Mongo-safe name.
+  // The "legacy" builder still exists internally for detecting/keeping older names.
+  return buildSafeTenantDatabaseName({ companyName, organizationId, companyId });
+}
+
+export function buildSafeTenantDatabaseName({ companyName, organizationId, companyId }) {
+  const baseRaw = normalizeShortSegment(companyName, 'company');
+  const baseFallback = normalizeShortSegment(organizationId, 'org');
+  const baseCandidate = (baseRaw || baseFallback || 'tenant');
+
+  const suffixSource = String(companyId || organizationId || '').trim();
+  const suffixHexFromId = suffixSource.replace(/[^a-f0-9]/gi, '').toLowerCase();
+  const suffix =
+    suffixHexFromId.slice(-8) ||
+    crypto.createHash('sha1').update(suffixSource || baseCandidate).digest('hex').slice(-8);
+
+  const fixed = `${TENANT_DB_PREFIX}__${suffix}`;
+  const fixedBytes = byteLength(fixed);
+  let availableForBase = MAX_MONGO_DB_NAME_BYTES - fixedBytes;
+  if (!Number.isFinite(availableForBase)) availableForBase = 8;
+  if (availableForBase < 1) availableForBase = 1;
+
+  const base = baseCandidate.slice(0, Math.min(12, availableForBase)) || 't';
+  let name = `${TENANT_DB_PREFIX}_${base}_${suffix}`;
+
+  // Hard cap (should rarely be needed since we computed availableForBase)
+  if (byteLength(name) > MAX_MONGO_DB_NAME_BYTES) {
+    name = name.slice(0, MAX_MONGO_DB_NAME_BYTES);
+  }
+
+  return name;
 }
 
 async function resolveTenantDatabaseName(companyId) {
@@ -63,10 +112,28 @@ async function resolveTenantDatabaseName(companyId) {
   }
 
   const ensuredOrganizationId = ensureLegacyOrganizationId(company);
-  const databaseName = company.databaseName || buildTenantDatabaseName({
+  const existingDbName = String(company.databaseName || '').trim();
+
+  // Prefer the persisted dbName if it's already Mongo-safe.
+  if (existingDbName && byteLength(existingDbName) <= MAX_MONGO_DB_NAME_BYTES) {
+    tenantDbCache.set(cacheKey, existingDbName);
+    return existingDbName;
+  }
+
+  // Backward compatibility: try the old naming convention if it happens to fit Mongo's limit.
+  const legacyCandidate = buildLegacyTenantDatabaseName({
     companyName: company.name,
     organizationId: ensuredOrganizationId,
   });
+
+  const safeCandidate = buildSafeTenantDatabaseName({
+    companyName: company.name,
+    organizationId: ensuredOrganizationId,
+    companyId,
+  });
+
+  const databaseName =
+    byteLength(legacyCandidate) <= MAX_MONGO_DB_NAME_BYTES ? legacyCandidate : safeCandidate;
 
   if (company.organizationId !== ensuredOrganizationId || company.databaseName !== databaseName) {
     company.organizationId = ensuredOrganizationId;
