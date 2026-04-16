@@ -221,10 +221,25 @@ export const ProjectsPage: React.FC = () => {
     return () => document.removeEventListener('mousedown', clickOut);
   }, []);
 
-  const filteredUsers = (q: string) => users.filter(u =>
+  const usersWithCurrent = useMemo(() => {
+    if (!user?.id) return users;
+    if (users.some(u => u.id === user.id)) return users;
+    return [user, ...users];
+  }, [users, user]);
+
+  const filteredUsers = (q: string) => usersWithCurrent.filter(u =>
     u.name.toLowerCase().includes(q.toLowerCase()) ||
     u.email.toLowerCase().includes(q.toLowerCase())
   ).slice(0, 10);
+
+  const defaultReportingHeads = useMemo(() => {
+    const adminIds = usersWithCurrent
+      .filter(u => u.role === 'company_admin' || u.role === 'admin')
+      .map(u => u.id);
+    const fallback = user?.id ? [user.id] : [];
+    const base = adminIds.length ? adminIds : fallback;
+    return Array.from(new Set(base.filter(Boolean)));
+  }, [usersWithCurrent, user?.id]);
 
   const canCreateProjects = user?.role !== 'team_member';
   const filtered = projects.filter(p => p.name.toLowerCase().includes(search.toLowerCase()) && (statusFilter === 'all' || p.status === statusFilter));
@@ -259,7 +274,7 @@ export const ProjectsPage: React.FC = () => {
       });
       setSelectedColor(PROJECT_COLORS[0]);
       setSelectedMembers([]);
-      setSelectedReporters(user?.id ? [user.id] : []);
+      setSelectedReporters(defaultReportingHeads);
     }
     setShowModal(true);
   };
@@ -297,7 +312,8 @@ export const ProjectsPage: React.FC = () => {
       closeModal();
       await bootstrap();
     } catch (error: any) {
-      emitErrorToast(error.response?.data?.message || 'Failed to save project');
+      const apiMessage = error?.response?.data?.error?.message || error?.response?.data?.message;
+      emitErrorToast(apiMessage || 'Failed to save project');
     } finally {
       setIsSavingProject(false);
     }
@@ -430,7 +446,7 @@ export const ProjectsPage: React.FC = () => {
               <div ref={memberRef} className="relative">
                 <div onClick={() => setShowMemberDrop(true)} className="min-h-[44px] bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl p-1.5 flex flex-wrap gap-1.5 cursor-pointer hover:border-brand-300 transition-all">
                   {selectedMembers.map(id => {
-                    const u = users.find(x => x.id === id);
+                    const u = usersWithCurrent.find(x => x.id === id);
                     return (
                       <div key={id} className="flex items-center gap-1.5 bg-white dark:bg-surface-800 border border-surface-100 dark:border-surface-700 rounded-lg pl-1 pr-1.5 py-0.5 shadow-sm">
                         <UserAvatar name={u?.name || ''} avatar={u?.avatar} size="xs" />
@@ -470,7 +486,7 @@ export const ProjectsPage: React.FC = () => {
               <div ref={reporterRef} className="relative">
                 <div onClick={() => setShowReporterDrop(true)} className="min-h-[44px] bg-surface-50 dark:bg-surface-900 border border-surface-200 dark:border-surface-800 rounded-xl p-1.5 flex flex-wrap gap-1.5 cursor-pointer hover:border-brand-300 transition-all">
                   {selectedReporters.map(id => {
-                    const u = users.find(x => x.id === id);
+                    const u = usersWithCurrent.find(x => x.id === id);
                     return (
                       <div key={id} className="flex items-center gap-1.5 bg-brand-50 dark:bg-brand-950/20 border border-brand-100 dark:border-brand-900/40 rounded-lg pl-1 pr-1.5 py-0.5 shadow-sm">
                         <UserAvatar name={u?.name || ''} avatar={u?.avatar} size="xs" />

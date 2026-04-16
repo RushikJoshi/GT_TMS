@@ -59,7 +59,9 @@ import Error500Page from '../pages/errors/Error500Page';
 const SettingsRoute: React.FC = () => {
   const { user } = useAuth();
   const role = mapGtOneRole(user?.role);
-  if (role === 'super_admin' || role === 'admin' || role === 'company_admin') {
+  // Only true platform admins should see system settings here.
+  // Company admins still need the employee profile/settings screen.
+  if (role === 'super_admin' || role === 'admin') {
     return <SASettings />;
   }
   return <UserSettingsPage />;

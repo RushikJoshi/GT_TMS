@@ -169,7 +169,7 @@ export async function getTaskTimeTracking({ tenantId, taskId, type }) {
 }
 
 function isAdminRole(role) {
-  return role === 'super_admin' || role === 'admin';
+  return role === 'super_admin' || role === 'admin' || role === 'company_admin';
 }
 
 function hasFullProjectAccess(role) {
@@ -880,9 +880,22 @@ export async function listTaskCreationRequests({ companyId, workspaceId, userId,
   if (requestStatus) filter.requestStatus = requestStatus;
 
   const { conn, User: TenantUser } = await getTenantModels(companyId);
-  const requests = await TaskCreationRequest.find(filter).sort({ createdAt: -1 }).lean();
+  const requests = await TaskCreationRequest.find(filter)
+    .sort({ createdAt: -1 })
+    .populate('requestedBy', 'name email avatar color')
+    .lean();
   
-  const requesterIds = [...new Set(requests.map(r => String(r.requestedBy)))].filter(Boolean);
+  const requesterIds = [
+    ...new Set(
+      requests
+        .map((r) => {
+          const raw = r?.requestedBy;
+          if (raw && typeof raw === 'object') return String(raw?._id || raw?.id || '');
+          return String(raw || '');
+        })
+        .filter(Boolean)
+    ),
+  ];
   
   // Find in Tenant DB
   const tenantUsers = await TenantUser.find({ _id: { $in: requesterIds } }).select('name email avatar color').lean();
@@ -899,6 +912,68 @@ export async function listTaskCreationRequests({ companyId, workspaceId, userId,
     allUsers = [...allUsers, ...baseUsers];
   }
 
+  // Find in HRMS employees DB for any remaining missing ids
+  const foundAfterBase = new Set(allUsers.map(u => String(u._id)));
+  const stillMissingIds = missingIds.filter(id => !foundAfterBase.has(id));
+  if (stillMissingIds.length > 0) {
+    try {
+      const hrmsObjectIds = stillMissingIds
+        .filter((id) => mongoose.Types.ObjectId.isValid(id))
+        .map((id) => new mongoose.Types.ObjectId(id));
+      if (hrmsObjectIds.length) {
+        const projectFields = { firstName: 1, lastName: 1, name: 1, email: 1, avatar: 1, color: 1 };
+
+        // Different deployments store HRMS employees in different DBs.
+        // Try the common ones in a best-effort order.
+        const candidates = [];
+
+        try {
+          const hrmsConn = mongoose.connection.useDb(`company_${companyId}`);
+          candidates.push(hrmsConn.db.collection('employees'));
+        } catch {
+          // ignore
+        }
+
+        try {
+          candidates.push(conn.db.collection('employees'));
+        } catch {
+          // ignore
+        }
+
+        try {
+          candidates.push(mongoose.connection.db.collection('employees'));
+        } catch {
+          // ignore
+        }
+
+        const employees = [];
+        for (const coll of candidates) {
+          if (!coll) continue;
+          // eslint-disable-next-line no-await-in-loop
+          const batch = await coll
+            .find({ _id: { $in: hrmsObjectIds } })
+            .project(projectFields)
+            .toArray()
+            .catch(() => []);
+          employees.push(...batch);
+        }
+
+        if (employees.length) {
+          const hrmsUsers = employees.map((e) => ({
+            _id: e._id,
+            name: e.name || `${e.firstName || ''} ${e.lastName || ''}`.trim() || (e.email || 'Employee'),
+            email: String(e.email || '').toLowerCase(),
+            avatar: e.avatar || null,
+            color: e.color || null,
+          }));
+          allUsers = [...allUsers, ...hrmsUsers];
+        }
+      }
+    } catch {
+      // best-effort only
+    }
+  }
+
   const userMap = allUsers.reduce((acc, u) => {
     acc[String(u._id)] = u;
     return acc;
@@ -906,20 +981,33 @@ export async function listTaskCreationRequests({ companyId, workspaceId, userId,
 
   return requests.map(r => {
     const data = mapRequestWithActivity(r);
-    const u = userMap[String(r.requestedBy)];
+    // When using `.lean()`, Mongoose does not add the virtual `id` field.
+    // The client relies on `id` for approve/reject actions.
+    data.id = data.id || String(r._id);
+    const requestedById =
+      r?.requestedBy && typeof r.requestedBy === 'object'
+        ? String(r.requestedBy?._id || r.requestedBy?.id || '')
+        : String(r.requestedBy || '');
+    const u = userMap[requestedById];
     if (u) {
       data.requesterName = u.name;
       data.requesterEmail = u.email;
       data.requesterAvatar = u.avatar;
       data.requesterColor = u.color;
+    } else {
+      // Fallback to snapshot fields stored on the request itself
+      data.requesterName = data.requesterName || r.requesterName;
+      data.requesterEmail = data.requesterEmail || r.requesterEmail;
+      data.requesterAvatar = data.requesterAvatar || r.requesterAvatar;
+      data.requesterColor = data.requesterColor || r.requesterColor;
     }
-    data.requestedBy = String(r.requestedBy);
+    data.requestedBy = requestedById || String(r.requestedBy || '');
     return data;
   });
 }
 
 
-export async function createTaskCreationRequest({ companyId, workspaceId, userId, role, data }) {
+export async function createTaskCreationRequest({ companyId, workspaceId, userId, role, actor, data }) {
   const tenantId = companyId;
   const ok = await assertProjectAccess({ tenantId, workspaceId, userId, role, projectId: data.projectId });
   if (!ok) {
@@ -973,6 +1061,10 @@ export async function createTaskCreationRequest({ companyId, workspaceId, userId
     assigneeIds: Array.isArray(data.assigneeIds) ? data.assigneeIds : [],
     requestedBy: userId,
     requestedToIds: reviewerIds,
+    requesterName: actor?.name || null,
+    requesterEmail: actor?.email || null,
+    requesterAvatar: actor?.avatar || null,
+    requesterColor: actor?.color || null,
     startDate,
     dueDate,
     durationDays,
@@ -1025,10 +1117,15 @@ export async function createTaskCreationRequest({ companyId, workspaceId, userId
   
   const mappedData = mapRequestWithActivity(request);
   if (user) {
-     mappedData.requesterName = user.name;
-     mappedData.requesterEmail = user.email;
-     mappedData.requesterAvatar = user.avatar;
-     mappedData.requesterColor = user.color;
+    mappedData.requesterName = user.name;
+    mappedData.requesterEmail = user.email;
+    mappedData.requesterAvatar = user.avatar;
+    mappedData.requesterColor = user.color;
+  } else {
+    mappedData.requesterName = request.requesterName || actor?.name || null;
+    mappedData.requesterEmail = request.requesterEmail || actor?.email || null;
+    mappedData.requesterAvatar = request.requesterAvatar || actor?.avatar || null;
+    mappedData.requesterColor = request.requesterColor || actor?.color || null;
   }
   mappedData.requestedBy = String(request.requestedBy);
   return mappedData;
@@ -1265,6 +1362,9 @@ export async function updateTask({ companyId, workspaceId, userId, role, taskId,
 
   if (!existing) return null;
 
+  const updateKeys = Object.keys(updates || {});
+  const isStatusOnlyUpdate = updateKeys.length > 0 && updateKeys.every((key) => key === 'status' || key === 'completionRemark');
+
   // Prevent non-managers from editing tasks with pending reassignment
   if (existing.isReassignPending && !['super_admin', 'admin', 'manager', 'team_leader'].includes(role)) {
     const err = new Error('Task is locked (reassignment pending)');
@@ -1273,7 +1373,11 @@ export async function updateTask({ companyId, workspaceId, userId, role, taskId,
     throw err;
   }
 
-  if (!taskModifyRoles(role, existing, userId)) {
+  // NOTE:
+  // Reporting persons are allowed to change status (see logic below),
+  // but they may not have general edit permissions. So we only bypass the
+  // general modify check for status-only updates and rely on status enforcement.
+  if (!taskModifyRoles(role, existing, userId) && !isStatusOnlyUpdate) {
     const err = new Error('Forbidden');
     err.statusCode = 403;
     err.code = 'FORBIDDEN';
@@ -1283,12 +1387,71 @@ export async function updateTask({ companyId, workspaceId, userId, role, taskId,
   // Status change restriction & Workflow enforcement
   if (updates.status && updates.status !== existing.status) {
     const uid = strId(userId);
-    const isAssignee = (existing.assigneeIds || []).some(id => strId(id) === uid);
+    let isAssignee = (existing.assigneeIds || []).some(id => strId(id) === uid);
 
     // User Requirement: 
     // If an assignee (non-manager) tries to move to 'done', force it to 'in_review'
     // and they MUST provide a remark.
     const isManagerOrAdmin = isAdminRole(role) || ['manager', 'team_leader'].includes(role);
+
+    // Compatibility: some legacy/HRMS flows stored assigneeIds that point to HRMS employee _id,
+    // while auth.sub points to the tenant User _id. If IDs don't match but emails do, treat as assignee.
+    if (!isAssignee && !isManagerOrAdmin) {
+      try {
+        const { User } = await getTenantModels(companyId);
+        const actor = await User.findById(userId).select('email').lean();
+        let actorEmail = String(actor?.email || '').trim().toLowerCase();
+
+        // If actor isn't provisioned in tenant DB (common for HRMS session users), read from HRMS employee record.
+        if (!actorEmail && mongoose.Types.ObjectId.isValid(String(userId))) {
+          const hrmsConn = mongoose.connection.useDb(`company_${companyId}`);
+          const hrmsEmployeeColl = hrmsConn.db.collection('employees');
+          const hrmsActor = await hrmsEmployeeColl.findOne({ _id: new mongoose.Types.ObjectId(String(userId)) });
+          actorEmail = String(hrmsActor?.email || '').trim().toLowerCase();
+        }
+
+        if (actorEmail && Array.isArray(existing.assigneeIds) && existing.assigneeIds.length) {
+          // 1) If assigneeIds are tenant User ids, match by email.
+          const tenantAssigneeIds = existing.assigneeIds
+            .map((id) => strId(id))
+            .filter((id) => mongoose.Types.ObjectId.isValid(id))
+            .map((id) => new mongoose.Types.ObjectId(id));
+          if (tenantAssigneeIds.length) {
+            const tenantMatch = await User.findOne({
+              _id: { $in: tenantAssigneeIds },
+              tenantId: companyId,
+              email: { $regex: new RegExp(`^${actorEmail}$`, 'i') },
+            }).select('_id').lean();
+            if (tenantMatch) {
+              isAssignee = true;
+            }
+          }
+
+          if (isAssignee) {
+            // already matched by tenant users
+          } else {
+            // 2) If assigneeIds are HRMS employee ids, match by email.
+          const hrmsConn = mongoose.connection.useDb(`company_${companyId}`);
+          const hrmsEmployeeColl = hrmsConn.db.collection('employees');
+          const candidateIds = existing.assigneeIds
+            .map((id) => strId(id))
+            .filter((id) => mongoose.Types.ObjectId.isValid(id))
+            .map((id) => new mongoose.Types.ObjectId(id));
+          if (candidateIds.length) {
+            const match = await hrmsEmployeeColl.findOne({
+              _id: { $in: candidateIds },
+              email: { $regex: new RegExp(`^${actorEmail}$`, 'i') },
+            });
+            if (match) {
+              isAssignee = true;
+            }
+          }
+          }
+        }
+      } catch {
+        // best-effort only
+      }
+    }
 
     if (updates.status === 'done' && !isManagerOrAdmin) {
       updates.status = 'in_review';

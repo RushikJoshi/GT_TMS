@@ -14,6 +14,11 @@ const taskCreationRequestSchema = new mongoose.Schema(
     assigneeIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true }],
     requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     requestedToIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true }],
+    // Snapshot of requester details (for SSO users not present in local DB)
+    requesterName: { type: String, trim: true, maxlength: 200, default: null },
+    requesterEmail: { type: String, trim: true, maxlength: 250, default: null },
+    requesterAvatar: { type: String, trim: true, maxlength: 2000, default: null },
+    requesterColor: { type: String, trim: true, maxlength: 50, default: null },
     startDate: { type: Date, default: null },
     dueDate: { type: Date, default: null },
     durationDays: { type: Number, required: true, min: 1, max: 3650 },

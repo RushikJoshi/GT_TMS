@@ -48,6 +48,38 @@ export async function requireAuth(req, res, next) {
       ...decoded,
       role: normalizeRole(decoded.role),
     };
+
+    // If the SSO token subject is not the same as our tenant User._id,
+    // resolve the local user by stable identifiers (id/email/employeeId).
+    // This ensures downstream writes (e.g., task requests) store a real local user id.
+    if (req.auth.companyId) {
+      try {
+        const { User } = await getTenantModels(req.auth.companyId);
+        const identityFilters = [
+          { _id: decoded.sub },
+          ...(decoded.email ? [{ email: String(decoded.email).toLowerCase() }] : []),
+          ...(decoded.employeeId ? [{ employeeId: decoded.employeeId }] : []),
+        ];
+        const localUser = await User.findOne({
+          tenantId: req.auth.companyId,
+          isActive: true,
+          $or: identityFilters,
+        })
+          .select('_id name email avatar color employeeId')
+          .lean();
+        if (localUser?._id) {
+          req.auth.sub = String(localUser._id);
+          req.auth.userId = String(localUser._id);
+          req.auth.name = localUser.name || req.auth.name;
+          req.auth.email = localUser.email || req.auth.email;
+          req.auth.avatar = localUser.avatar || req.auth.avatar;
+          req.auth.color = localUser.color || req.auth.color;
+          req.auth.employeeId = localUser.employeeId || req.auth.employeeId;
+        }
+      } catch {
+        // Non-fatal; continue with decoded claims.
+      }
+    }
     // If SSO token does not include workspaceId, resolve it from membership.
     if (!req.auth.workspaceId && req.auth.companyId) {
       try {

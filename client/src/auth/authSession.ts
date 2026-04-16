@@ -8,8 +8,8 @@ export async function getSSOUser() {
   try {
     const response = await authService.ssoMe();
     return response.data;
-  } catch (error) {
-    if (error.response?.status !== 401) {
+  } catch (error: any) {
+    if (error?.response?.status !== 401) {
       console.error('Failed to fetch SSO session:', error);
     }
     return { user: null };
@@ -38,7 +38,7 @@ export function publishLogoutSyncEvent() {
 }
 
 // Deprecated: No longer using Authorization headers for cookie-based SSO.
-export function applyAuthHeader() {
+export function applyAuthHeader(_token: string | null = null) {
   // Logic removed intentionally to enforce cookie-only auth.
 }
 

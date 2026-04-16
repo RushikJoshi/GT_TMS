@@ -197,17 +197,42 @@ export async function getHrmsDashboardByEmail({ email, includeCompleted = false,
 
   console.log('[TMS_INTEGRATION] Dashboard query starting for user:', user.email, 'userId:', user._id);
 
-  const memberships = await Membership.find({
+  let memberships = await Membership.find({
     tenantId: companyId,
     userId: user._id,
     status: 'active',
   }).sort({ createdAt: 1 });
 
+  // If user exists but has no membership yet, attach them to the first workspace.
+  // This matches the UI bootstrap behavior and prevents returning 0 workspaces.
+  if (!memberships.length) {
+    const firstWorkspace = await Workspace.findOne({ tenantId: companyId }).sort({ createdAt: 1 }).select('_id name').lean();
+    if (firstWorkspace?._id) {
+      const role = user?.role || 'team_member';
+      await Membership.updateOne(
+        { tenantId: companyId, workspaceId: firstWorkspace._id, userId: user._id },
+        { $set: { tenantId: companyId, workspaceId: firstWorkspace._id, userId: user._id, role, status: 'active' } },
+        { upsert: true }
+      );
+      memberships = await Membership.find({ tenantId: companyId, userId: user._id, status: 'active' }).sort({ createdAt: 1 });
+      console.log('[TMS_INTEGRATION] Auto-provisioned membership in workspace:', firstWorkspace.name || String(firstWorkspace._id));
+    }
+  }
+
   const workspaceIds = memberships.map((membership) => membership.workspaceId);
+  console.log('[TMS_INTEGRATION] Memberships:', {
+    db: mongoose.connection?.name,
+    companyId: String(companyId),
+    userId: String(user._id),
+    count: memberships.length,
+    workspaceIds: workspaceIds.map((id) => String(id)),
+  });
+
   const workspaces = await Workspace.find({
     tenantId: companyId,
     _id: { $in: workspaceIds },
   });
+  console.log('[TMS_INTEGRATION] Workspaces loaded:', workspaces.length);
 
   const workspaceMap = new Map(workspaces.map((workspace) => [String(workspace._id), toPlain(workspace)]));
   const membershipRoleByWorkspaceId = new Map(
@@ -267,6 +292,14 @@ export async function getHrmsDashboardByEmail({ email, includeCompleted = false,
     Task.countDocuments(pendingTaskFilter),
     QuickTask.countDocuments(pendingQuickTaskFilter),
   ]);
+
+  console.log('[TMS_INTEGRATION] Query counts:', {
+    projects: baseProjects.length,
+    tasks: tasks.length,
+    quickTasks: quickTasks.length,
+    totalTasksCount,
+    totalQuickTasksCount,
+  });
 
   const taskProjectIds = Array.from(
     new Set(tasks.map((task) => String(task.projectId || '')).filter(Boolean))

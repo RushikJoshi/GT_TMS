@@ -176,6 +176,12 @@ export async function createTaskRequest(req, res, next) {
       workspaceId,
       userId,
       role,
+      actor: {
+        name: req.auth?.name,
+        email: req.auth?.email,
+        avatar: req.auth?.avatar,
+        color: req.auth?.color,
+      },
       data: req.body,
     });
     return res.status(201).json({ success: true, data: request });
@@ -186,6 +192,12 @@ export async function createTaskRequest(req, res, next) {
 
 export async function reviewTaskRequest(req, res, next) {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_REQUEST_ID', message: 'Invalid task request id' },
+      });
+    }
     const { companyId, workspaceId, sub: userId, role } = req.auth;
     const result = await TaskService.reviewTaskCreationRequest({
       companyId,

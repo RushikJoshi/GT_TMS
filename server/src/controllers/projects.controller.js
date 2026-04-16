@@ -85,6 +85,36 @@ export async function create(req, res, next) {
     }
 
     if (!resolvedWorkspaceId) {
+      // Permanent fix: Some tenants (e.g. HRMS-provisioned) may not have a workspace seeded yet.
+      // Auto-provision a default workspace + membership for non-team_member roles.
+      if (role !== 'team_member') {
+        const { Workspace, Membership } = await getTenantModels(companyId);
+        const existing = await Workspace.findOne({ tenantId: companyId }).sort({ createdAt: 1 }).select('_id').lean();
+        if (existing?._id) {
+          resolvedWorkspaceId = String(existing._id);
+        } else {
+          const suffix = String(companyId || '').slice(-6) || String(Date.now()).slice(-6);
+          const slug = `default-${suffix}`.toLowerCase();
+          const created = await Workspace.create({
+            tenantId: companyId,
+            name: 'Default Workspace',
+            slug,
+            plan: 'pro',
+            ownerId: userId,
+            settings: {},
+          });
+          resolvedWorkspaceId = String(created._id);
+        }
+
+        await Membership.updateOne(
+          { tenantId: companyId, workspaceId: resolvedWorkspaceId, userId },
+          { $set: { tenantId: companyId, workspaceId: resolvedWorkspaceId, userId, role, status: 'active' } },
+          { upsert: true }
+        );
+      }
+    }
+
+    if (!resolvedWorkspaceId) {
       return res.status(403).json({
         success: false,
         error: {

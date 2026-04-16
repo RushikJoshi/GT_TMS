@@ -169,7 +169,7 @@ export const DashboardPage: React.FC = () => {
       setActivityLoading(true);
       activityService
         .getRecent(20)
-        .then((res) => {
+        .then((res: any) => {
           const data = res.data?.data ?? res.data ?? [];
           setPlatformActivity(Array.isArray(data) ? data : []);
         })

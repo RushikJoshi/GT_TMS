@@ -2,8 +2,25 @@ import { getTenantModels } from '../config/tenantDb.js';
 
 export async function listWorkspacesForUser({ userId, companyId }) {
   const tenantId = companyId;
-  const { Workspace, Membership } = await getTenantModels(companyId);
-  const memberships = await Membership.find({ userId, tenantId, status: 'active' }).select('workspaceId');
+  const { Workspace, Membership, User } = await getTenantModels(companyId);
+  let memberships = await Membership.find({ userId, tenantId, status: 'active' }).select('workspaceId').lean();
+
+  // If a tenant user exists but has no membership yet (common with SSO-provisioned users),
+  // attach them to the earliest workspace so the app can bootstrap safely.
+  if (!memberships.length) {
+    const workspace = await Workspace.findOne({ tenantId }).sort({ createdAt: 1 }).select('_id').lean();
+    if (workspace?._id) {
+      const user = await User.findOne({ _id: userId, tenantId }).select('role').lean();
+      const role = user?.role || 'team_member';
+      await Membership.updateOne(
+        { tenantId, workspaceId: workspace._id, userId },
+        { $set: { tenantId, workspaceId: workspace._id, userId, role, status: 'active' } },
+        { upsert: true }
+      );
+      memberships = [{ workspaceId: workspace._id }];
+    }
+  }
+
   const ids = memberships.map((m) => m.workspaceId);
   const items = await Workspace.find({ _id: { $in: ids }, tenantId }).sort({ createdAt: -1 });
   const counts = await Promise.all(items.map((item) => Membership.countDocuments({ workspaceId: item._id, tenantId, status: 'active' })));

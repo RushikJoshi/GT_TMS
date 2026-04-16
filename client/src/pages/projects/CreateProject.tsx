@@ -74,6 +74,21 @@ const CreateProjectPage: React.FC = () => {
   const [memberQuery, setMemberQuery] = useState('');
   const [reporterQuery, setReporterQuery] = useState('');
 
+  const usersWithCurrent = useMemo(() => {
+    if (!currentUser?.id) return users;
+    if (users.some(u => u.id === currentUser.id)) return users;
+    return [currentUser, ...users];
+  }, [users, currentUser]);
+
+  const defaultReportingHeads = useMemo(() => {
+    const adminIds = usersWithCurrent
+      .filter(u => u.role === 'company_admin' || u.role === 'admin')
+      .map(u => u.id);
+    const fallback = currentUser?.id ? [currentUser.id] : [];
+    const base = adminIds.length ? adminIds : fallback;
+    return Array.from(new Set(base.filter(Boolean)));
+  }, [usersWithCurrent, currentUser?.id]);
+
   const departmentRef = useRef<HTMLDivElement>(null);
   const memberRef = useRef<HTMLDivElement>(null);
   const reporterRef = useRef<HTMLDivElement>(null);
@@ -104,7 +119,15 @@ const CreateProjectPage: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const filteredUsers = (q: string) => users.filter(u =>
+  useEffect(() => {
+    // Auto-populate Reporting Heads with Company Admin(s) once users are available.
+    // Do not override user selection if they've already picked something.
+    if (selectedReporters.length > 0) return;
+    if (defaultReportingHeads.length === 0) return;
+    setSelectedReporters(defaultReportingHeads);
+  }, [defaultReportingHeads, selectedReporters.length]);
+
+  const filteredUsers = (q: string) => usersWithCurrent.filter(u =>
     u.name.toLowerCase().includes(q.toLowerCase()) ||
     u.email.toLowerCase().includes(q.toLowerCase())
   ).slice(0, 8);
@@ -148,7 +171,8 @@ const CreateProjectPage: React.FC = () => {
         navigate(`/projects/${res.data?.data?.id || res.data?.id}`);
       }
     } catch (err: any) {
-      emitErrorToast(err.response?.data?.message || 'Failed to create project');
+      const apiMessage = err?.response?.data?.error?.message || err?.response?.data?.message;
+      emitErrorToast(apiMessage || 'Failed to create project');
     } finally {
       setIsSubmitting(false);
     }
@@ -193,7 +217,7 @@ const CreateProjectPage: React.FC = () => {
             <div ref={memberRef} className="relative">
               <div onClick={() => setShowMemberDrop(true)} className="min-h-[38px] bg-surface-50/50 dark:bg-surface-900/30 border border-surface-100 dark:border-surface-800 rounded-xl p-1 flex flex-wrap gap-1 cursor-pointer">
                 {selectedMembers.map(id => {
-                  const u = users.find(x => x.id === id);
+                  const u = usersWithCurrent.find(x => x.id === id);
                   return (
                     <div key={id} className="flex items-center gap-1.5 bg-white dark:bg-surface-800 border border-surface-100 dark:border-surface-700 rounded-lg pl-1 pr-1.5 py-0.5 shadow-sm">
                       <UserAvatar name={u?.name || ''} avatar={u?.avatar} size="xs" />
@@ -227,7 +251,7 @@ const CreateProjectPage: React.FC = () => {
             <div ref={reporterRef} className="relative">
               <div onClick={() => setShowReporterDrop(true)} className="min-h-[38px] bg-surface-50/50 dark:bg-surface-900/30 border border-surface-100 dark:border-surface-800 rounded-xl p-1 flex flex-wrap gap-1 cursor-pointer">
                 {selectedReporters.map(id => {
-                  const u = users.find(x => x.id === id);
+                  const u = usersWithCurrent.find(x => x.id === id);
                   return (
                     <div key={id} className="flex items-center gap-1.5 bg-brand-50 dark:bg-brand-950/20 border border-brand-100 dark:border-brand-900/30 rounded-lg pl-1 pr-1.5 py-0.5 shadow-sm">
                       <UserAvatar name={u?.name || ''} avatar={u?.avatar} size="xs" />

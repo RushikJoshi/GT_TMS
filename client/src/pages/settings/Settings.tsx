@@ -228,7 +228,39 @@ export const SettingsPage: React.FC = () => {
   const { register: registerSecurity, handleSubmit: handleSecurity, reset: resetSecurity, formState: { errors: secErrors }, watch } = useForm<SecurityForm>();
   const newPass = watch('newPassword', '');
 
-  if (!user || !workspace) return null;
+  useEffect(() => {
+    // Settings/Profile page is reachable from the top-right menu.
+    // When the appStore hasn't bootstrapped yet (workspaces empty), the page used to render null (blank).
+    // This makes the route feel broken even though it's just loading.
+    if (user && !workspace) {
+      bootstrap().catch(() => {});
+    }
+  }, [bootstrap, user, workspace]);
+
+  if (!user) {
+    return (
+      <div className="card p-8 text-center">
+        <p className="text-sm font-semibold text-surface-700 dark:text-surface-200">Session required</p>
+        <p className="mt-1 text-xs text-surface-400">Please login again to view your profile.</p>
+      </div>
+    );
+  }
+
+  if (!workspace) {
+    return (
+      <div className="card p-8 text-center">
+        <p className="text-sm font-semibold text-surface-700 dark:text-surface-200">Loading your profile…</p>
+        <p className="mt-1 text-xs text-surface-400">Fetching workspace and account settings.</p>
+        <button
+          type="button"
+          onClick={() => bootstrap().catch(() => {})}
+          className="btn-secondary btn-sm mt-4"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   const onSaveProfile = async (data: ProfileForm) => {
     setSavingProfile(true);

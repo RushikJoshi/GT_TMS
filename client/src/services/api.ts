@@ -53,6 +53,11 @@ export const tasksService = {
     api.get('/tasks', { params: { projectId, page, limit, status: 'in_review' } }),
   getOverdue: (params?: unknown) => api.get('/tasks/overdue', { params }),
   reviewRequest: (id: string, data: unknown) => api.post(`/tasks/requests/${id}/review`, data),
+  move: (id: string, status: string) => api.patch(`/tasks/${id}/status`, { status }),
+  review: (id: string, data: unknown) => api.post(`/tasks/${id}/review`, data),
+  addSubtask: (id: string, data: unknown) => api.post(`/tasks/${id}/subtasks`, data),
+  patchSubtask: (id: string, subtaskId: string, data: unknown) => api.patch(`/tasks/${id}/subtasks/${subtaskId}`, data),
+  deleteSubtask: (id: string, subtaskId: string) => api.delete(`/tasks/${id}/subtasks/${subtaskId}`),
   uploadAttachments: (id: string, files: File[]) => {
     const formData = new FormData();
     files.forEach((file) => formData.append('files', file));
@@ -74,6 +79,7 @@ export const teamsService = {
 export const quickTasksService = {
   getAll: () => api.get('/quick-tasks'),
   create: (data: unknown) => api.post('/quick-tasks', data),
+  importBulk: (rows: unknown[]) => api.post('/quick-tasks/import', { rows }),
   update: (id: string, data: unknown) => api.put(`/quick-tasks/${id}`, data),
   delete: (id: string) => api.delete(`/quick-tasks/${id}`),
   review: (id: string, data: unknown) => api.post(`/quick-tasks/${id}/review`, data),
@@ -89,6 +95,8 @@ export const quickTasksService = {
 
 export const notificationsService = {
   getAll: () => api.get('/notifications'),
+  getBroadcastHistory: () => api.get('/notifications/broadcast-history'),
+  broadcast: (data: unknown) => api.post('/notifications/broadcast', data),
   markRead: (id: string) => api.patch(`/notifications/${id}/read`),
   markAllRead: () => api.patch('/notifications/read-all'),
 };
@@ -97,19 +105,30 @@ export const usersService = {
   getAll: () => api.get('/users'),
   getById: (id: string) => api.get(`/users/${id}`),
   me: () => api.get('/users/me'),
+  myPerformance: () => api.get('/users/me/performance'),
   updateMe: (data: unknown) => api.put('/users/me', data),
+  updatePreferences: (data: unknown) => api.put('/users/me/preferences', data),
+  updatePassword: (data: unknown) => api.put('/users/me/password', data),
+  updateProfilePhoto: (file: File) => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    return api.put('/users/profile-photo', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
   create: (data: unknown) => api.post('/users', data),
   update: (id: string, data: unknown) => api.put(`/users/${id}`, data),
   delete: (id: string) => api.delete(`/users/${id}`),
+  getPendingTasks: (id: string) => api.get(`/users/${id}/pending-tasks`),
+  reassignAndDeactivate: (id: string, data: unknown) => api.post(`/users/${id}/reassign-and-deactivate`, data),
   getPerformance: (id: string) => api.get(`/users/${id}/performance`),
-  setPassword: (id: string, data: unknown) => api.put(`/users/${id}/set-password`, data),
-  importBulk: (users: unknown[]) => api.post('/users/import-bulk', { users }),
+  setPassword: (id: string, data: unknown) => api.put(`/users/${id}/password`, data),
+  importBulk: (rows: unknown[]) => api.post('/users/import', { rows }),
 };
 
 export const workspacesService = {
   getAll: () => api.get('/workspaces'),
   getById: (id: string) => api.get(`/workspaces/${id}`),
   update: (id: string, data: unknown) => api.put(`/workspaces/${id}`, data),
+  exportData: (id: string) => api.get(`/workspaces/${id}/export`),
 };
 
 export const companiesService = {
@@ -121,8 +140,13 @@ export const companiesService = {
 };
 
 export const activityService = {
-  getAll: () => api.get('/activities'),
-  getRecent: (limit: number = 10) => api.get('/activity', { params: { limit } }),
+  list: (params?: unknown, signal?: AbortSignal) => api.get('/activity', { params, signal }),
+  getAll: () => api.get('/activity'),
+  getRecent: (limit: number = 20) => api.get('/activity', { params: { limit } }),
+  getByProject: (projectId: string, params?: unknown, signal?: AbortSignal) =>
+    api.get(`/activity/project/${projectId}`, { params, signal }),
+  getProjectTimeline: (projectId: string, params?: unknown, signal?: AbortSignal) =>
+    api.get(`/activity/project/${projectId}/timeline`, { params, signal }),
 };
 
 export const reportsService = {
@@ -132,6 +156,7 @@ export const reportsService = {
   getDaily: (limit: number = 10) => api.get('/reports/daily', { params: { limit } }),
   getDailyLatest: () => api.get('/reports/daily/latest'),
   runDaily: () => api.post('/reports/daily/run'),
+  runDailyNow: () => api.post('/reports/daily/run'),
 };
 
 export const systemSettingsService = {
@@ -156,6 +181,7 @@ export const personalTasksService = {
   getStats: () => api.get('/personal-tasks/stats'),
   create: (data: unknown) => api.post('/personal-tasks', data, { headers: { 'Idempotency-Key': createIdempotencyKey('personal-task-create') } }),
   update: (id: string, data: unknown) => api.put(`/personal-tasks/${id}`, data),
+  togglePinned: (id: string) => api.patch(`/personal-tasks/${id}/toggle-pinned`),
   delete: (id: string) => api.delete(`/personal-tasks/${id}`),
 };
 
@@ -165,6 +191,7 @@ export const labelsService = {
   create: (data: unknown) => api.post('/labels', data),
   update: (id: string, data: unknown) => api.put(`/labels/${id}`, data),
   remove: (id: string) => api.delete(`/labels/${id}`),
+  delete: (id: string) => api.delete(`/labels/${id}`),
 };
 
 export const reassignService = {
@@ -184,7 +211,10 @@ export const extensionRequestsService = {
 
 export const authService = {
   login: (payload: any) => authApi.post('/login', payload),
-  logout: () => authApi.post('/sso-logout'),
+  refresh: (refreshToken: string) => authApi.post('/refresh', { refreshToken }),
+  logout: (refreshToken?: string | null) => authApi.post('/logout', refreshToken ? { refreshToken } : {}),
+  ssoCallback: (payload: unknown) => authApi.post('/sso/callback', payload),
+  ssoLogout: () => authApi.post('/sso-logout'),
   ssoMe: () => authApi.get('/sso/me'),
 };
 
