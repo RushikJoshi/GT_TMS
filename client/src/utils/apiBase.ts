@@ -20,12 +20,7 @@ function normalizeConfiguredBase(value: string) {
 }
 
 export function resolveApiV1Base() {
-  const configured = normalizeConfiguredBase(String(import.meta.env.VITE_API_URL || ''));
-  if (configured) return configured;
-  if (typeof window !== 'undefined' && /localhost|127\.0\.0\.1/.test(window.location.hostname)) {
-    return `http://${window.location.hostname}:5002/api/v1`;
-  }
-  return '/api/v1';
+  return "https://devprojects.gitakshmi.com/api/v1";
 }
 
 export function normalizeApiPath(path: string) {
@@ -53,9 +48,7 @@ export function resolveBrowserHostname() {
 }
 
 export function resolveGtOneBase() {
-  const configured = String(import.meta.env.VITE_GT_ONE_URL || '').trim().replace(/\/+$/, '');
-  if (configured) return configured;
-  return `http://${resolveBrowserHostname()}:5174`;
+  return "https://gaccess.gitakshmi.com";
 }
 
 export function resolveCurrentAppDashboardUrl() {
