@@ -1,3 +1,5 @@
+import { APP_CONFIG } from './appConfig';
+
 function stripApiSuffix(value: string) {
   return value.replace(/\/api(?:\/v1)?\/?$/i, '');
 }
@@ -10,17 +12,8 @@ function isAbsoluteUrl(value: string) {
   return /^https?:\/\//i.test(value);
 }
 
-function normalizeConfiguredBase(value: string) {
-  const trimmed = value.trim().replace(/\/+$/, '');
-  if (!trimmed) return '';
-
-  if (/\/api\/v1$/i.test(trimmed)) return trimmed;
-  if (/\/api$/i.test(trimmed)) return `${trimmed}/v1`;
-  return `${trimmed}/api/v1`;
-}
-
 export function resolveApiV1Base() {
-  return "https://devprojects.gitakshmi.com/api/v1";
+  return APP_CONFIG.API_URL;
 }
 
 export function normalizeApiPath(path: string) {
@@ -48,7 +41,7 @@ export function resolveBrowserHostname() {
 }
 
 export function resolveGtOneBase() {
-  return "https://gaccess.gitakshmi.com";
+  return APP_CONFIG.SSO_LOGIN_URL.replace(/\/login$/, '');
 }
 
 export function resolveCurrentAppDashboardUrl() {
