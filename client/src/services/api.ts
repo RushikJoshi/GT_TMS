@@ -2,13 +2,8 @@ import axios from 'axios';
 
 function resolveApiOrigin() {
   const configured = String(import.meta.env.VITE_PMS_API_ROOT || '').trim().replace(/\/+$/, '');
-  if (configured && typeof window !== 'undefined') {
-    return configured.replace('http://localhost:', `http://${window.location.hostname}:`);
-  }
   if (configured) return configured;
-  if (typeof window !== 'undefined' && /localhost|127\.0\.0\.1/.test(window.location.hostname)) {
-    return `http://${window.location.hostname}:5002`;
-  }
+  if (typeof window !== 'undefined') return window.location.origin;
   return 'http://localhost:5002';
 }
 
