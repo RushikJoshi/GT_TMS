@@ -1,7 +1,10 @@
 import axios from 'axios';
 
 function resolveApiOrigin() {
-  return "https://devprojects.gitakshmi.com";
+  const configured = String(import.meta.env.VITE_PMS_API_ROOT || '').trim().replace(/\/+$/, '');
+  if (configured) return configured;
+  if (typeof window !== 'undefined') return window.location.origin;
+  return 'http://localhost:5002';
 }
 
 // Primary Axios instance for PMS

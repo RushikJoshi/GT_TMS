@@ -62,7 +62,7 @@ if (isProd) {
           scriptSrcAttr: ["'unsafe-inline'"],
           styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
           fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
-          imgSrc: ["'self'", "data:", "blob:", "http:", "https:", "http://localhost:5000"],
+          imgSrc: ["'self'", "data:", "blob:", "http:", "https:"],
         },
       },
     })
@@ -217,12 +217,5 @@ function parseCorsOrigins() {
     .map((o) => o.trim())
     .filter(Boolean);
   const expanded = new Set(parsed);
-  if (process.env.NODE_ENV !== 'production') {
-    expanded.add('*');
-  }
-  for (const origin of parsed) {
-    expanded.add(origin.replace('http://localhost:', 'http://127.0.0.1:'));
-    expanded.add(origin.replace('http://127.0.0.1:', 'http://localhost:'));
-  }
   return Array.from(expanded);
 }
