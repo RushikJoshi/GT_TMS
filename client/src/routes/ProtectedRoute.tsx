@@ -5,19 +5,10 @@ import { useAuthStore } from '../context/authStore';
 import { useAuthContext } from '../context/AuthContext';
 import { mapGtOneRole } from '../utils/roleMapping';
 import { authDebug } from '../utils/authDebug';
-const CURRENT_APP = String(import.meta.env.VITE_SSO_APP || 'pms').trim().toLowerCase();
-const SSO_LOGIN_URL = (() => {
-  const configured = String(import.meta.env.VITE_SSO_LOGIN_URL || '').trim();
-  if (configured) return configured;
-  const sessionMeUrl = String(import.meta.env.VITE_SSO_SESSION_ME_URL || '').trim();
-  if (!sessionMeUrl) return '';
-  try {
-    const parsed = new URL(sessionMeUrl);
-    return `${parsed.origin}/login`;
-  } catch {
-    return '';
-  }
-})();
+import { APP_CONFIG } from '../utils/appConfig';
+
+const CURRENT_APP = APP_CONFIG.SSO_APP;
+const SSO_LOGIN_URL = APP_CONFIG.SSO_LOGIN_URL;
 
 type ProtectedRouteProps = {
   children: React.ReactNode;

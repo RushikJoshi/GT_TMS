@@ -2,6 +2,7 @@ import type { Role } from '../app/types';
 import { mapGtOneRole } from '../utils/roleMapping';
 import { resolveSsoMeUrl } from '../utils/apiBase';
 import { authDebug } from '../utils/authDebug';
+import { APP_CONFIG } from '../utils/appConfig';
 
 type SSOUser = {
   id: string;
@@ -43,8 +44,8 @@ let cooldownUntil = 0;
 let lastSessionErrorCode: string | null = null;
 
 const SSO_ME_URL = resolveSsoMeUrl();
-const SSO_CONTEXT_URL = String(import.meta.env.VITE_SSO_SESSION_ME_URL || '').trim();
-const CURRENT_APP = String(import.meta.env.VITE_SSO_APP || 'pms').trim().toLowerCase();
+const SSO_CONTEXT_URL = APP_CONFIG.API_URL; // Using API_URL as base for context
+const CURRENT_APP = APP_CONFIG.SSO_APP;
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));

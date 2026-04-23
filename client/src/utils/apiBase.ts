@@ -1,3 +1,5 @@
+import { APP_CONFIG } from './appConfig';
+
 function stripApiSuffix(value: string) {
   return value.replace(/\/api(?:\/v1)?\/?$/i, '');
 }
@@ -10,22 +12,8 @@ function isAbsoluteUrl(value: string) {
   return /^https?:\/\//i.test(value);
 }
 
-function normalizeConfiguredBase(value: string) {
-  const trimmed = value.trim().replace(/\/+$/, '');
-  if (!trimmed) return '';
-
-  if (/\/api\/v1$/i.test(trimmed)) return trimmed;
-  if (/\/api$/i.test(trimmed)) return `${trimmed}/v1`;
-  return `${trimmed}/api/v1`;
-}
-
 export function resolveApiV1Base() {
-  const configured = normalizeConfiguredBase(String(import.meta.env.VITE_API_URL || ''));
-  if (configured) return configured;
-  if (typeof window !== 'undefined' && /localhost|127\.0\.0\.1/.test(window.location.hostname)) {
-    return `http://${window.location.hostname}:5002/api/v1`;
-  }
-  return '/api/v1';
+  return APP_CONFIG.API_URL;
 }
 
 export function normalizeApiPath(path: string) {
@@ -53,9 +41,7 @@ export function resolveBrowserHostname() {
 }
 
 export function resolveGtOneBase() {
-  const configured = String(import.meta.env.VITE_GT_ONE_URL || '').trim().replace(/\/+$/, '');
-  if (configured) return configured;
-  return `http://${resolveBrowserHostname()}:5174`;
+  return APP_CONFIG.SSO_LOGIN_URL.replace(/\/login$/, '');
 }
 
 export function resolveCurrentAppDashboardUrl() {
