@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 function resolveApiOrigin() {
-  return "https://devprojects.gitakshmi.com";
+  return "https://projects.gitakshmi.com";
 }
 
 // Primary Axios instance for PMS
