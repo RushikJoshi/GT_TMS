@@ -85,8 +85,7 @@ export const useAuthStore = create<AuthStore>()(
         clearPersistedAuthSession();
         publishLogoutSyncEvent();
         set({ user: null, token: null, refreshToken: null, isAuthenticated: false });
-        const gtOneBase = resolveGtOneBase();
-        window.location.href = `${gtOneBase}/logout?redirect=${encodeURIComponent(`${gtOneBase}/login`)}`;
+        window.location.href = '/login';
       },
 
       updateUser: (updates) => {
@@ -108,6 +107,11 @@ export const useAuthStore = create<AuthStore>()(
         refreshToken: state.refreshToken,
         isAuthenticated: state.isAuthenticated,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (state?.token) {
+          applyAuthHeader(state.token);
+        }
+      },
     }
   )
 );

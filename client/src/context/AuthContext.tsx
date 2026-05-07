@@ -33,50 +33,30 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const storeUser = useAuthStore((state) => state.user);
+  const storeIsAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const setStoreUser = useAuthStore((state) => state.setUser);
   const setStoreIsAuthenticated = useAuthStore((state) => state.setIsAuthenticated);
 
-  useEffect(() => {
-    const checkSSO = async () => {
-      try {
-        clearSSOSessionError();
-        const session = await getSSOSession({ force: true, requireContext: false });
-        const data = session?.user ? { user: session.user } : await getSSOUser();
-        if (data && data.user) {
-          setUser(data.user);
-          setIsAuthenticated(true);
-          setStoreUser(data.user);
-          setStoreIsAuthenticated(true);
-        } else {
-          setUser(null);
-          setIsAuthenticated(false);
-          setStoreUser(null);
-          setStoreIsAuthenticated(false);
-        }
-      } catch (error) {
-        setUser(null);
-        setIsAuthenticated(false);
-        setStoreUser(null);
-        setStoreIsAuthenticated(false);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const [user, setUser] = useState<User | null>(storeUser);
+  const [isAuthenticated, setIsAuthenticated] = useState(storeIsAuthenticated);
+  const [loading, setLoading] = useState(true);
 
-    checkSSO();
-  }, [setStoreIsAuthenticated, setStoreUser]);
+  // Sync React Context state with Zustand store state whenever it changes
+  useEffect(() => {
+    setUser(storeUser);
+    setIsAuthenticated(storeIsAuthenticated);
+    setLoading(false);
+  }, [storeUser, storeIsAuthenticated]);
 
   const logout = async () => {
     try {
-      await api.post("/auth/sso-logout");
+      await api.post("/auth/logout");
       setUser(null);
       setIsAuthenticated(false);
       setStoreUser(null);
       setStoreIsAuthenticated(false);
-      window.location.href = `${resolveGtOneBase()}/login?redirect=${encodeURIComponent(resolveCurrentAppDashboardUrl())}`;
+      window.location.href = "/login";
     } catch (error) {
       console.error("Logout failed", error);
     }

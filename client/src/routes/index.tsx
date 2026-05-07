@@ -10,6 +10,7 @@ import AccessDeniedPage from '../pages/errors/AccessDeniedPage';
 import { mapGtOneRole } from '../utils/roleMapping';
 
 // Auth pages
+import LoginPage from '../pages/auth/Login';
 import { ForgotPasswordPage, ResetPasswordPage } from '../pages/auth/ForgotPassword';
 import SSOCallbackPage from '../pages/auth/SSOCallback';
 import SSOErrorPage from '../pages/auth/SSOError';
@@ -76,7 +77,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to="/dashboard" replace /> },
       {
         path: 'login',
-        element: <Navigate to="/dashboard" replace />,
+        element: <LoginPage />,
       },
       {
         path: 'register',

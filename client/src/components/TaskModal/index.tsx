@@ -42,7 +42,10 @@ function parseChecklist(value?: string) {
 }
 
 function serializeChecklist(items: ChecklistItem[]) {
-  return items.filter((item) => item.text.trim()).map((item) => `[${item.done ? 'x' : ' '}] ${item.text.trim()}`).join('\n');
+  return items
+    .filter((item) => item.text.trim())
+    .map((item) => (item.done ? `[x] ${item.text.trim()}` : item.text.trim()))
+    .join('\n');
 }
 
 function summarizeChecklist(value?: string) {
@@ -419,7 +422,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose, initi
                     </div>
 
                     <div className="text-sm text-surface-600 dark:text-surface-300 bg-white dark:bg-surface-900 border border-surface-100 dark:border-surface-800 rounded-xl p-3 shadow-sm italic">
-                      "{currentTask.completionReview?.completionRemark || 'No completion notes provided.'}"
+                      "{summarizeChecklist(currentTask.completionReview?.completionRemark) || 'No completion notes provided.'}"
                     </div>
 
                     {(currentTask.attachments || []).length > 0 && (
@@ -519,7 +522,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ task, open, onClose, initi
                       <div className="space-y-3">
                         {completionReview?.reviewRemark && (
                           <div className="text-sm text-surface-600 dark:text-surface-300 bg-white/50 dark:bg-surface-900/50 border border-surface-100 dark:border-surface-800 rounded-xl p-3">
-                            {completionReview.reviewRemark}
+                            {summarizeChecklist(completionReview.reviewRemark)}
                           </div>
                         )}
                         {completionReview?.rating ? (

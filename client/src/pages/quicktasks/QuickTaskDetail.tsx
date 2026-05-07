@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Calendar, Flag, Trash2, Zap, MessageSquare, Send, Plus, Lock } from 'lucide-react';
+import { ArrowLeft, Calendar, Flag, Trash2, Zap, MessageSquare, Send, Plus, Lock, Edit2, CheckCircle } from 'lucide-react';
 import { cn, formatDate, generateId, isDueDateOverdue } from '../../utils/helpers';
 import { useAppStore } from '../../context/appStore';
 import { useAuthStore } from '../../context/authStore';
@@ -30,7 +30,7 @@ function parseChecklist(value?: string) {
 function serializeChecklist(items: ChecklistItem[]) {
   return items
     .filter((item) => item.text.trim())
-    .map((item) => `[${item.done ? 'x' : ' '}] ${item.text.trim()}`)
+    .map((item) => (item.done ? `[x] ${item.text.trim()}` : item.text.trim()))
     .join('\n');
 }
 
@@ -191,38 +191,28 @@ export const QuickTaskDetailPage: React.FC = () => {
   const [rating, setRating] = useState<number>(task?.completionReview?.rating || 0);
   const notificationSection = searchParams.get('section');
 
-  if (!task) {
-    return (
-      <div className="max-w-3xl mx-auto">
-        <EmptyState
-          icon={<Zap size={28} />}
-          title="Quick task not found"
-          description="It may have been deleted."
-          action={<Link to="/quick-tasks" className="btn-primary">Back to Quick Tasks</Link>}
-        />
-      </div>
-    );
-  }
 
-  const assignees = (task.assigneeIds || [])
+
+  const assignees = (task?.assigneeIds || [])
     .map((assigneeId) => users.find((u) => u.id === assigneeId))
     .filter(Boolean) as typeof users;
-  const reporter = users.find(u => u.id === task.reporterId);
-  const priority = PRIORITY_CONFIG[task.priority];
+  const reporter = users.find(u => u.id === task?.reporterId);
+  const priority = task ? PRIORITY_CONFIG[task.priority] : PRIORITY_CONFIG.low;
   const statusCfg =
-    task.status === 'todo' ? STATUS_CONFIG.todo :
-      task.status === 'in_progress' ? STATUS_CONFIG.in_progress :
+    task?.status === 'todo' ? STATUS_CONFIG.todo :
+      task?.status === 'in_progress' ? STATUS_CONFIG.in_progress :
         STATUS_CONFIG.done;
-  const isOverdue = isDueDateOverdue(task.dueDate, task.status);
+  const isOverdue = task ? isDueDateOverdue(task.dueDate, task.status) : false;
   const canEdit = Boolean(user);
-  const isAssignee = Boolean(user && task.assigneeIds.includes(user.id));
-  const isReporter = Boolean(user && task.reporterId === user.id);
+  const isAssignee = Boolean(user && task?.assigneeIds.includes(user.id));
+  const isReporter = Boolean(user && task?.reporterId === user.id);
   const roleOk = Boolean(user && ['admin', 'super_admin', 'manager', 'team_leader'].includes(user.role || ''));
   const canComment = Boolean(user && (isAssignee || isReporter || roleOk));
   const canReview = Boolean(user && roleOk);
-  const activityItems = buildQuickTaskTimeline(task);
+  const activityItems = task ? buildQuickTaskTimeline(task) : [];
 
   const syncQuickTask = async (updates: Record<string, unknown>) => {
+    if (!task) return;
     try {
       const response = await quickTasksService.update(task.id, updates);
       updateQuickTask(task.id, response.data.data ?? response.data);
@@ -237,6 +227,7 @@ export const QuickTaskDetailPage: React.FC = () => {
   const onChangeDueDate = (dueDate: string) => { void syncQuickTask({ dueDate: dueDate || undefined }); };
 
   const onDelete = async () => {
+    if (!task) return;
     try {
       await quickTasksService.delete(task.id);
       deleteQuickTask(task.id);
@@ -247,7 +238,7 @@ export const QuickTaskDetailPage: React.FC = () => {
   };
 
   const handleAddComment = async () => {
-    if (!canComment) return;
+    if (!canComment || !task) return;
     const content = commentText.trim();
     if (!content) return;
     try {
@@ -264,6 +255,7 @@ export const QuickTaskDetailPage: React.FC = () => {
   };
 
   const handleReview = async (action: 'approve' | 'changes_requested') => {
+    if (!task) return;
     try {
       await quickTasksService.review(task.id, {
         action,
@@ -317,6 +309,19 @@ export const QuickTaskDetailPage: React.FC = () => {
     setSearchParams(nextParams, { replace: true });
   }, [notificationSection, searchParams, setSearchParams]);
 
+  if (!task) {
+    return (
+      <div className="max-w-3xl mx-auto">
+        <EmptyState
+          icon={<Zap size={28} />}
+          title="Quick task not found"
+          description="It may have been deleted."
+          action={<Link to="/quick-tasks" className="btn-primary">Back to Quick Tasks</Link>}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-full mx-auto">
       <div className="page-header">
@@ -362,8 +367,29 @@ export const QuickTaskDetailPage: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2 flex-shrink-0">
-            <button className="btn-secondary" onClick={() => setEditOpen(true)} disabled={!canEdit}>Edit</button>
-            <button className="btn-ghost text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30" onClick={onDelete} disabled={!canEdit}>
+            {task?.status !== 'done' && (
+              <button
+                className="btn-primary btn-sm flex items-center gap-2 h-9"
+                onClick={() => onChangeStatus('done')}
+              >
+                <CheckCircle size={14} />
+                Complete Task
+              </button>
+            )}
+            <button
+              className="btn-secondary btn-sm flex items-center gap-2 h-9"
+              onClick={() => setEditOpen(true)}
+              disabled={!canEdit}
+            >
+              <Edit2 size={14} />
+              Edit
+            </button>
+            <button
+              className="btn-ghost btn-sm text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 flex items-center justify-center w-9 h-9 p-0"
+              onClick={onDelete}
+              disabled={!canEdit}
+              title="Delete Task"
+            >
               <Trash2 size={16} />
             </button>
           </div>
@@ -577,9 +603,9 @@ export const QuickTaskDetailPage: React.FC = () => {
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-surface-900 dark:text-white">{sentence}</p>
                         {item.detail ? (
-                          <p className="mt-1 text-xs text-surface-500 dark:text-surface-400 whitespace-pre-wrap break-words">
-                            {item.detail}
-                          </p>
+                          <div className="text-sm text-surface-600 dark:text-surface-300 bg-white/50 dark:bg-surface-900/50 border border-surface-100 dark:border-surface-800 rounded-xl p-3 mt-2">
+                            {summarizeChecklist(item.detail)}
+                          </div>
                         ) : null}
                       </div>
                       <span className="shrink-0 text-[11px] text-surface-400">

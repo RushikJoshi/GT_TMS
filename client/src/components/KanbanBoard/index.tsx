@@ -452,14 +452,20 @@ export const KanbanBoard = forwardRef<KanbanBoardHandle, KanbanBoardProps>(({
     const draggedTask = projectTasks.find((task) => task.id === activeId);
     if (!draggedTask) return;
 
-    if (overId.startsWith('column:')) return;
-
-    const targetColumnId = orderedColumns.some((column) => column.id === overId)
-      ? overId
-      : (() => {
-          const targetTask = projectTasks.find((task) => task.id === overId);
-          return targetTask ? getTaskColumnId(targetTask) : '';
-        })();
+    // Resolve target column ID
+    let targetColumnId = '';
+    
+    if (overId.startsWith('column:')) {
+      // Dropped on a column header/sortable
+      targetColumnId = overId.replace('column:', '');
+    } else if (orderedColumns.some(c => c.id === overId)) {
+      // Dropped on a column droppable area
+      targetColumnId = overId;
+    } else {
+      // Dropped on another task
+      const targetTask = projectTasks.find(t => t.id === overId);
+      if (targetTask) targetColumnId = getTaskColumnId(targetTask);
+    }
 
     if (!targetColumnId) return;
     if (getTaskColumnId(draggedTask) === targetColumnId) return;

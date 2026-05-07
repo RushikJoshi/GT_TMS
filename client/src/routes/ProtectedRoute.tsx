@@ -44,12 +44,8 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, roles, requir
     if (isAuthenticated && user) {
       return;
     }
-    if (!SSO_LOGIN_URL) return;
-    const currentUrl = `${window.location.origin}${location.pathname}${location.search}${location.hash}`;
-    const separator = SSO_LOGIN_URL.includes('?') ? '&' : '?';
-    const target = `${SSO_LOGIN_URL}${separator}redirect=${encodeURIComponent(currentUrl)}&app=${encodeURIComponent(CURRENT_APP)}`;
-    authDebug('info', 'sso_redirect_target', { app: CURRENT_APP, source: 'protected_route_manual', target });
-  }, [isBootstrapped, isAuthenticated, user, location.pathname, location.search, location.hash]);
+    // No longer redirecting to SSO here, handled by Navigate in render
+  }, [isBootstrapped, isAuthenticated, user]);
 
   useEffect(() => {
     if (!isBootstrapped || !isAuthenticated || !user || !requireTenant) return;
@@ -86,21 +82,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, roles, requir
   if (!isBootstrapped) return null;
 
   if (!isAuthenticated || !user) {
-    const currentUrl = `${window.location.origin}${location.pathname}${location.search}${location.hash}`;
-    const separator = SSO_LOGIN_URL.includes('?') ? '&' : '?';
-    const target = `${SSO_LOGIN_URL}${separator}redirect=${encodeURIComponent(currentUrl)}&app=${encodeURIComponent(CURRENT_APP)}`;
-    return (
-      <div className="p-6 text-sm text-surface-600">
-        <p className="mb-3">Auto-refresh stop kari didhu chhe. TMS authenticated session mali nathi.</p>
-        {SSO_LOGIN_URL ? (
-          <a href={target} className="text-brand-600 underline">
-            Open GT ONE Login
-          </a>
-        ) : (
-          <p className="text-rose-600">SSO login URL configured nathi.</p>
-        )}
-      </div>
-    );
+    return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
   if (isMissingTenantContext) {

@@ -1,4 +1,4 @@
-import { authService } from '../services/api';
+import { authService, setApiAuthToken } from '../services/api';
 
 /**
  * Retrieves the currently authenticated user from the central SSO session.
@@ -37,8 +37,7 @@ export function publishLogoutSyncEvent() {
   localStorage.setItem(LOGOUT_SYNC_KEY, String(Date.now()));
 }
 
-// Deprecated: No longer using Authorization headers for cookie-based SSO.
-export function applyAuthHeader(_token: string | null = null) {
-  // Logic removed intentionally to enforce cookie-only auth.
+export function applyAuthHeader(token: string | null = null) {
+  setApiAuthToken(token);
 }
 

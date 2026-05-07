@@ -81,7 +81,14 @@ export const Topbar: React.FC = () => {
     const path = '/' + segments.slice(0, i + 1).join('/');
     // Check if it's a project ID
     const project = projects.find(p => p.id === seg);
-    const label = project ? project.name : (BREADCRUMB_MAP[seg] || seg);
+    // Check if it's a quick task ID
+    const isQuickTaskDetail = segments[i - 1] === 'quick-tasks';
+    
+    let label = project ? project.name : (BREADCRUMB_MAP[seg] || seg);
+    if (isQuickTaskDetail) {
+      label = 'Quick Task';
+    }
+    
     return { label, path };
   });
 

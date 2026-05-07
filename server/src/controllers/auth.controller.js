@@ -25,6 +25,7 @@ export async function register(req, res, next) {
 export async function login(req, res, next) {
   try {
     const { email, companyCode, employeeCode, password } = req.body;
+    console.log(`[AUTH DEBUG] Login attempt for: email=${email}, companyCode=${companyCode}, employeeCode=${employeeCode}`);
     const result = await AuthService.login({ email, companyCode, employeeCode, password });
 
     // ─── SSO: set the cross-domain HTTP-only cookie ───────────────────────────
@@ -41,6 +42,7 @@ export async function login(req, res, next) {
       },
     });
   } catch (e) {
+    console.error(`[AUTH DEBUG] Login failed for ${req.body?.email}:`, e.message, e.statusCode);
     return next(e);
   }
 }

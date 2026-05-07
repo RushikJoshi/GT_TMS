@@ -228,7 +228,7 @@ export default function MISEntry() {
                       onClick={() => loadMISIntoForm(item)}
                       className="text-brand-600 dark:text-brand-400 hover:underline font-medium text-xs transition-colors"
                     >
-                      View / Edit
+                      {item.status === 'draft' || item.status === 'rejected' ? 'View / Edit' : 'View'}
                     </button>
                   </td>
                 </tr>

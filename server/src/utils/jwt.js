@@ -98,6 +98,17 @@ export function signSsoToken(payload) {
   const secret = resolveSsoSecret();
   const ttl = process.env.TOKEN_EXPIRY || process.env.JWT_ACCESS_TTL || '8h';
   const options = buildSignOptions(ttl);
+  
+  // Ensure the 'sso' audience is present so verifySsoToken can validate it
+  const defaultAudiences = ['sso'];
+  if (!options.audience) {
+    options.audience = defaultAudiences;
+  } else if (Array.isArray(options.audience) && !options.audience.includes('sso')) {
+    options.audience.push('sso');
+  } else if (typeof options.audience === 'string' && options.audience !== 'sso') {
+    options.audience = [options.audience, 'sso'];
+  }
+
   if (!secret) return jwt.sign(payload, 'dev_sso_secret', options);
   return jwt.sign(payload, secret, options);
 }
@@ -142,7 +153,11 @@ export function verifySsoToken(token) {
     'dev_sso_secret',
     'dev_access_secret',
   ];
+  
+  console.log(`[TMS SSO] Verifying token: ${token?.slice(0, 20)}...`);
   const decoded = normalizeDecodedClaims(verifyWithSecrets(token, secrets, options));
+  console.log(`[TMS SSO] Decoded claims:`, JSON.stringify(decoded, null, 2));
+  
   assertPmsAccessClaims(decoded);
   return decoded;
 }

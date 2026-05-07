@@ -11,7 +11,7 @@ import api from '../../services/api';
 import { useAuthStore } from '../../context/authStore';
 import { useAppStore } from '../../context/appStore';
 import { STATUS_CONFIG } from '../../app/constants';
-import { addDaysToDateKey, cn, formatDate, isTaskOverdue } from '../../utils/helpers';
+import { addDaysToDateKey, cn, formatDate, isTaskOverdue, isTaskDone } from '../../utils/helpers';
 import { UserAvatar } from '../../components/UserAvatar';
 import { KanbanBoard } from '../../components/KanbanBoard';
 
@@ -130,28 +130,99 @@ const SearchableSelect: React.FC<{
   );
 };
 
+const QuickTaskMiniCard = ({ task, onClick }: { task: TaskRow, onClick: () => void }) => {
+  const isOverdue = useMemo(() => isTaskOverdue(task), [task]);
+  
+  return (
+    <motion.div
+      whileHover={{ y: -2, shadow: '0 4px 12px -2px rgba(0, 0, 0, 0.05)' }}
+      transition={{ duration: 0.15 }}
+      onClick={onClick}
+      className="bg-white dark:bg-surface-900 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-surface-800 cursor-pointer group"
+    >
+      <div className="flex flex-col gap-2">
+        <div className="flex items-start justify-between gap-2">
+          <span className="text-sm font-bold text-gray-900 dark:text-surface-100 leading-tight group-hover:text-blue-600 dark:group-hover:text-brand-400 transition-colors">
+            {task.title}
+          </span>
+          <div className={cn(
+            "px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider whitespace-nowrap",
+            task.priority === 'urgent' ? 'bg-rose-50 text-rose-600' :
+            task.priority === 'high' ? 'bg-orange-50 text-orange-600' :
+            'bg-blue-50 text-blue-600'
+          )}>
+            {task.priority}
+          </div>
+        </div>
+        
+        <div className="flex items-center justify-between mt-1">
+          <div className="flex items-center gap-2">
+            <Calendar size={12} className="text-gray-400" />
+            <span className={cn(
+              "text-[10px] font-bold",
+              isOverdue ? "text-rose-500" : "text-gray-400 dark:text-surface-500"
+            )}>
+              {task.dueDate ? formatDate(task.dueDate) : 'No date'}
+            </span>
+          </div>
+          <UserAvatar name={task.assignedTo || 'U'} avatar={task.assigneeAvatar} size="xs" />
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
+const QuickTaskColumn = ({ title, icon: Icon, tasks, onClickTask, emptyMessage }: any) => {
+  return (
+    <div className="flex-1 flex flex-col min-w-[280px] bg-gray-50/50 dark:bg-surface-950/20 rounded-2xl p-4 border border-gray-100 dark:border-surface-800/50">
+      <div className="flex items-center justify-between mb-4 px-1">
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 bg-white dark:bg-surface-800 rounded-lg shadow-sm text-gray-600 dark:text-surface-300">
+            <Icon size={14} />
+          </div>
+          <h3 className="text-sm font-bold text-gray-700 dark:text-surface-200">{title}</h3>
+        </div>
+        <span className="bg-gray-100 dark:bg-surface-800 text-gray-500 dark:text-surface-400 text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+          {tasks.length}
+        </span>
+      </div>
+      
+      <div className="flex-1 flex flex-col gap-2.5 min-h-[400px]">
+        {tasks.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-6 bg-white/40 dark:bg-surface-900/40 rounded-xl border border-dashed border-gray-200 dark:border-surface-800">
+            <div className="w-12 h-12 rounded-full bg-gray-50 dark:bg-surface-800 flex items-center justify-center mb-3 shadow-inner">
+              <Icon size={24} className="text-gray-200 dark:text-surface-700" />
+            </div>
+            <p className="text-xs font-bold text-gray-400 dark:text-surface-500 leading-relaxed">{emptyMessage || "No tasks found"}</p>
+          </div>
+        ) : (
+          tasks.map((task: any) => (
+            <QuickTaskMiniCard key={task.id} task={task} onClick={() => onClickTask(task)} />
+          ))
+        )}
+      </div>
+    </div>
+  );
+};
+
 export const TasksManagement: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuthStore();
-  const { users, projects } = useAppStore();
+  const { users, projects, tasks, getTaskStats, getProjectTasks, refreshTasks } = useAppStore();
   const [view, setView] = useState<'table' | 'kanban'>('table');
-  const [projectTasks, setProjectTasks] = useState<TaskRow[]>([]);
-  const [quickTasks, setQuickTasks] = useState<TaskRow[]>([]);
-  const [personalTasks, setPersonalTasks] = useState<TaskRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // Reduced local loading as store handles data
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTask, setSelectedTask] = useState<TaskRow | null>(null);
   const [fullTaskData, setFullTaskData] = useState<any>(null);
   const [fullTaskLoading, setFullTaskLoading] = useState(false);
   const [isAddingTask, setIsAddingTask] = useState(false);
-  const canCreateTask = user?.role !== 'team_member';
+  const isStaff = ['super_admin', 'super-admin', 'company_admin', 'admin', 'manager', 'team_leader'].includes(user?.role || '');
+  const canCreateTask = isStaff && user?.role !== 'team_member';
   const [filterStatus, setFilterStatus] = useState('all');
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [personFilter, setPersonFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [projectsPage, setProjectsPage] = useState(1);
-  const [quickPage, setQuickPage] = useState(1);
-  const [personalPage, setPersonalPage] = useState(1);
   const [overduePage, setOverduePage] = useState(1);
   const [completedPage, setCompletedPage] = useState(1);
   const [tasksPerPage] = useState(10);
@@ -159,6 +230,25 @@ export const TasksManagement: React.FC = () => {
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const notificationTaskId = searchParams.get('taskId');
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'active' | 'project' | 'quick' | 'overdue' | 'done' | null>(null);
+  const activeTab = 'project'; // Strictly project tasks on this page
+
+  const mappedProjectTasks = useMemo((): TaskRow[] => {
+    const projectTasksList = getProjectTasks(user);
+    const projectMap = new Map(projects.map(p => [p.id, p]));
+    return projectTasksList.map(t => ({
+      ...t,
+      id: t.id || (t as any)._id || '',
+      assignedTo: users.find(u => (t.assigneeIds || []).includes(u.id))?.name || 'Unassigned',
+      assigneeAvatar: users.find(u => (t.assigneeIds || []).includes(u.id))?.avatar,
+      projectName: projectMap.get(t.projectId)?.name || 'Project',
+      type: 'project' as const,
+      dueDate: t.dueDate || null,
+      priority: t.priority || 'medium',
+      status: t.status || 'todo'
+    }));
+  }, [getProjectTasks, user, projects, users, tasks]);
+
+
 
   // Review System State
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
@@ -200,7 +290,6 @@ export const TasksManagement: React.FC = () => {
   useEffect(() => {
     setCurrentPage(1);
     setProjectsPage(1);
-    setQuickPage(1);
     setOverduePage(1);
     setCompletedPage(1);
   }, [searchTerm, filterStatus, departmentFilter, personFilter]);
@@ -357,7 +446,7 @@ export const TasksManagement: React.FC = () => {
   };
 
   // Kanban columns data
-  const kanbanTasks = [...projectTasks, ...quickTasks];
+  const kanbanTasks = mappedProjectTasks;
   const userMap = useMemo(() => new Map(users.map((item) => [item.id, item])), [users]);
   const departmentOptions = useMemo(
     () => Array.from(new Set(users.map((item) => item.department?.trim()).filter(Boolean) as string[])).sort((a, b) => a.localeCompare(b)),
@@ -374,24 +463,15 @@ export const TasksManagement: React.FC = () => {
 
   useEffect(() => {
     if (!notificationTaskId) return;
-    const targetTask =
-      projectTasks.find((task) => task.id === notificationTaskId) ||
-      quickTasks.find((task) => task.id === notificationTaskId) ||
-      personalTasks.find((task) => task.id === notificationTaskId) ||
-      null;
+    const targetTask = mappedProjectTasks.find((task) => task.id === notificationTaskId) || null;
     if (!targetTask) return;
-    setSelectedTask(targetTask);
-  }, [notificationTaskId, personalTasks, projectTasks, quickTasks]);
+    setSelectedTask(targetTask as any);
+  }, [notificationTaskId, mappedProjectTasks]);
 
   const fetchTasks = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/tasks/all');
-      if (res.data?.success) {
-        setProjectTasks(res.data.data.projectTasks || []);
-        setQuickTasks(res.data.data.quickTasks || []);
-        setPersonalTasks(res.data.data.personalTasks || []);
-      }
+      await refreshTasks();
     } catch (err) {
       console.error('Failed to fetch tasks:', err);
     } finally {
@@ -399,42 +479,12 @@ export const TasksManagement: React.FC = () => {
     }
   };
 
-  const activeProjectTasks = useMemo(() => {
-    return projectTasks.filter(t => {
-      const p = projects.find(proj => proj.id === t.projectId);
-      return p ? p.status !== 'archived' : true;
-    });
-  }, [projectTasks, projects]);
 
-  const summaryStats = useMemo(() => {
-    let baseProjectTasks = activeProjectTasks;
-    let baseQuickTasks = quickTasks;
 
-    // Role-based privacy: Only 'admin' and 'manager' can see everything.
-    // Everyone else only sees their own tasks.
-    const isStaff = user?.role === 'admin' || user?.role === 'manager';
-
-    if (!isStaff && user?.id) {
-      baseProjectTasks = baseProjectTasks.filter(t => t.reporterId === user.id || (t.assigneeIds || []).includes(user.id));
-      baseQuickTasks = baseQuickTasks.filter(t => t.reporterId === user.id || (t.assigneeIds || []).includes(user.id));
-    } else if (personFilter !== 'all') {
-      // Admin/Managers can use the manual person filter
-      baseProjectTasks = baseProjectTasks.filter(t => t.reporterId === personFilter || (t.assigneeIds || []).includes(personFilter));
-      baseQuickTasks = baseQuickTasks.filter(t => t.reporterId === personFilter || (t.assigneeIds || []).includes(personFilter));
-    }
-
-    const all = [...baseProjectTasks, ...baseQuickTasks];
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-
-    return {
-      active: all.filter(t => t.status !== 'done').length,
-      projects: baseProjectTasks.length,
-      quick: baseQuickTasks.length,
-      overdue: all.filter(t => isTaskOverdue(t)).length,
-      done: all.filter(t => t.status === 'done').length
-    };
-  }, [activeProjectTasks, quickTasks, personFilter, user]);
+  const summaryStats = useMemo(() => 
+    getTaskStats(user, 'project'),
+    [getTaskStats, user, tasks, projects]
+  );
 
   const filteredTasks = (list: TaskRow[]) => {
     const query = searchTerm.trim().toLowerCase();
@@ -458,15 +508,11 @@ export const TasksManagement: React.FC = () => {
         .includes(query);
     });
 
-    // Role-based privacy: Only 'admin' and 'manager' can see everything.
-    if (user?.role !== 'admin' && user?.role !== 'manager' && user?.id) {
-      filtered = filtered.filter(task =>
-        task.reporterId === user.id || (task.assigneeIds || []).includes(user.id)
-      );
-    }
+    // Visibility is already handled by getProjectTasks in the store.
+    // Component only handles search and category filters.
 
     if (selectedCategory === 'active') {
-      filtered = filtered.filter(t => t.status !== 'done');
+      filtered = filtered.filter(t => !isTaskDone(t.status));
     } else if (selectedCategory === 'project') {
       filtered = filtered.filter(t => t.type === 'project');
     } else if (selectedCategory === 'quick') {
@@ -476,7 +522,7 @@ export const TasksManagement: React.FC = () => {
       now.setHours(0, 0, 0, 0);
       filtered = filtered.filter(t => isTaskOverdue(t));
     } else if (selectedCategory === 'done') {
-      filtered = filtered.filter(t => t.status === 'done');
+      filtered = filtered.filter(t => isTaskDone(t.status));
     }
 
     // Restore existing dropdown filters
@@ -496,7 +542,7 @@ export const TasksManagement: React.FC = () => {
       });
     }
 
-    if (personFilter !== 'all' && (user?.role === 'admin' || user?.role === 'manager')) {
+    if (personFilter !== 'all' && (user?.role === 'admin' || user?.role === 'manager' || user?.role === 'team_leader')) {
       filtered = filtered.filter((task) => task.reporterId === personFilter || (task.assigneeIds || []).includes(personFilter));
     }
 
@@ -509,24 +555,19 @@ export const TasksManagement: React.FC = () => {
     );
   };
 
-  const filteredProjectTasks = useMemo(() => filteredTasks(activeProjectTasks), [activeProjectTasks, searchTerm, filterStatus, departmentFilter, personFilter, userMap, selectedCategory, user]);
-  const filteredQuickTasks = useMemo(() => filteredTasks(quickTasks), [quickTasks, searchTerm, filterStatus, departmentFilter, personFilter, userMap, selectedCategory, user]);
-  const filteredPersonalTasks = useMemo(() => filteredTasks(personalTasks), [personalTasks, searchTerm, filterStatus, departmentFilter, personFilter, userMap, selectedCategory, user]);
-  const allFilteredTasks = useMemo(() => [...filteredProjectTasks, ...filteredQuickTasks], [filteredProjectTasks, filteredQuickTasks]);
+  const filteredProjectTasks = useMemo(() => filteredTasks(mappedProjectTasks), [mappedProjectTasks, searchTerm, filterStatus, departmentFilter, personFilter, userMap, selectedCategory, user]);
+
+  const allFilteredTasks = filteredProjectTasks;
   const overdueTasks = useMemo(() => allFilteredTasks.filter(t => isTaskOverdue(t)), [allFilteredTasks]);
-  const completedTasks = useMemo(() => allFilteredTasks.filter(t => t.status === 'done' || t.status === 'completed'), [allFilteredTasks]);
+  const completedTasks = useMemo(() => allFilteredTasks.filter(t => isTaskDone(t.status)), [allFilteredTasks]);
 
   const activeTasksPageCount = Math.max(1, Math.ceil(allFilteredTasks.length / tasksPerPage));
   const projectTasksPageCount = Math.max(1, Math.ceil(filteredProjectTasks.length / tasksPerPage));
-  const quickTasksPageCount = Math.max(1, Math.ceil(filteredQuickTasks.length / tasksPerPage));
-  const personalTasksPageCount = Math.max(1, Math.ceil(filteredPersonalTasks.length / tasksPerPage));
   const overdueTasksPageCount = Math.max(1, Math.ceil(overdueTasks.length / tasksPerPage));
   const completedTasksPageCount = Math.max(1, Math.ceil(completedTasks.length / tasksPerPage));
 
   const paginatedActiveTasks = allFilteredTasks.slice((currentPage - 1) * tasksPerPage, currentPage * tasksPerPage);
   const paginatedProjectTasks = filteredProjectTasks.slice((projectsPage - 1) * tasksPerPage, projectsPage * tasksPerPage);
-  const paginatedQuickTasks = filteredQuickTasks.slice((quickPage - 1) * tasksPerPage, quickPage * tasksPerPage);
-  const paginatedPersonalTasks = filteredPersonalTasks.slice((personalPage - 1) * tasksPerPage, personalPage * tasksPerPage);
   const paginatedOverdueTasks = overdueTasks.slice((overduePage - 1) * tasksPerPage, overduePage * tasksPerPage);
   const paginatedCompletedTasks = completedTasks.slice((completedPage - 1) * tasksPerPage, completedPage * tasksPerPage);
   const activeFilterCount = [filterStatus !== 'all', departmentFilter !== 'all', personFilter !== 'all'].filter(Boolean).length;
@@ -538,14 +579,6 @@ export const TasksManagement: React.FC = () => {
   useEffect(() => {
     if (projectsPage > projectTasksPageCount) setProjectsPage(projectTasksPageCount);
   }, [projectTasksPageCount, projectsPage]);
-
-  useEffect(() => {
-    if (quickPage > quickTasksPageCount) setQuickPage(quickTasksPageCount);
-  }, [quickTasksPageCount, quickPage]);
-
-  useEffect(() => {
-    if (personalPage > personalTasksPageCount) setPersonalPage(personalTasksPageCount);
-  }, [personalTasksPageCount, personalPage]);
 
   useEffect(() => {
     if (overduePage > overdueTasksPageCount) setOverduePage(overdueTasksPageCount);
@@ -576,86 +609,66 @@ export const TasksManagement: React.FC = () => {
 
   return (
     <div className="min-h-full flex flex-col bg-[#fcfdfe] dark:bg-surface-950 p-4 sm:p-5 lg:p-6 overflow-x-hidden">
+      {/* Removed Tab Navigation - This page is for Project Tasks only */}
       {/* 1. Minimal Summary Cards Section */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-4 lg:mb-6">
+      <div className={cn(
+        "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 mb-6"
+      )}>
         <SummaryCard
-          title="Active Tasks"
+          title="Active Project Tasks"
           count={summaryStats.active}
+          subtext="Current project progress"
           icon={Activity}
           color="blue"
           isActive={selectedCategory === 'active'}
           onClick={() => setSelectedCategory(selectedCategory === 'active' ? null : 'active')}
+          trend={summaryStats.projects > 0 ? Math.round((summaryStats.active / summaryStats.projects) * 100) : 0}
+          trendDirection="up"
         />
         <SummaryCard
-          title="Project Tasks"
+          title="Total Project Tasks"
           count={summaryStats.projects}
+          subtext="Overall project deliverables"
           icon={Briefcase}
           color="purple"
           isActive={selectedCategory === 'project'}
           onClick={() => setSelectedCategory(selectedCategory === 'project' ? null : 'project')}
-        />
-        <SummaryCard
-          title="Quick Tasks"
-          count={summaryStats.quick}
-          icon={Zap}
-          color="emerald"
-          isActive={selectedCategory === 'quick'}
-          onClick={() => setSelectedCategory(selectedCategory === 'quick' ? null : 'quick')}
+          trend={100}
+          trendDirection="up"
         />
         <SummaryCard
           title="Overdue Tasks"
           count={summaryStats.overdue}
-          icon={Clock3}
+          subtext="Pending past deadline"
+          icon={AlertCircle}
           color="rose"
           isActive={selectedCategory === 'overdue'}
           onClick={() => setSelectedCategory(selectedCategory === 'overdue' ? null : 'overdue')}
+          trend={summaryStats.projects > 0 ? Math.round((summaryStats.overdue / summaryStats.projects) * 100) : 0}
+          trendDirection={summaryStats.overdue > 0 ? 'up' : 'down'}
         />
         <SummaryCard
           title="Completed Tasks"
           count={summaryStats.done}
+          subtext="Successfully finished"
           icon={CheckCircle2}
           color="emerald"
           isActive={selectedCategory === 'done'}
           onClick={() => setSelectedCategory(selectedCategory === 'done' ? null : 'done')}
+          trend={summaryStats.projects > 0 ? Math.round((summaryStats.done / summaryStats.projects) * 100) : 0}
+          trendDirection="up"
         />
       </div>
 
       {/* Bordio Style Top Header */}
-      <div className="mb-4 flex flex-col gap-3 lg:mb-6 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-
-
-          <div className="flex items-center bg-white dark:bg-surface-900 border border-gray-200 dark:border-surface-800 rounded-lg p-1 shadow-sm w-full sm:w-auto overflow-x-auto">
-            <button
-              onClick={() => setView('table')}
-              className={cn(
-                "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all whitespace-nowrap",
-                view === 'table' ? "bg-gray-100 dark:bg-surface-800 text-gray-900 dark:text-surface-100 shadow-sm" : "text-gray-500 dark:text-surface-400 hover:text-gray-700 dark:hover:text-surface-200"
-              )}
-            >
-              <List size={14} />
-              Table view
-            </button>
-            <button
-              onClick={() => setView('kanban')}
-              className={cn(
-                "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all whitespace-nowrap",
-                view === 'kanban' ? "bg-gray-100 dark:bg-surface-800 text-gray-900 dark:text-surface-100 shadow-sm" : "text-gray-500 dark:text-surface-400 hover:text-gray-700 dark:hover:text-surface-200"
-              )}
-            >
-              <LayoutGrid size={14} />
-              Kanban board
-            </button>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center w-full lg:w-auto">
           <div className="relative w-full sm:w-auto">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-surface-500" size={16} />
             <input
               type="text"
               placeholder="Search projects, tasks, people..."
-              className="bg-white dark:bg-surface-900 border border-gray-200 dark:border-surface-800 rounded-full pl-9 pr-4 py-2 text-sm w-full sm:w-64 lg:w-72 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-brand-500/20 transition-all shadow-sm text-gray-900 dark:text-surface-100"
+              className="bg-white dark:bg-surface-900 border border-gray-200 dark:border-surface-800 rounded-full pl-9 pr-4 py-2 text-sm w-full md:w-64 lg:w-72 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-brand-500/20 transition-all shadow-sm text-gray-900 dark:text-surface-100"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -673,7 +686,7 @@ export const TasksManagement: React.FC = () => {
               )}
             </div>
             {openDropdown === 'filter' && (
-              <div className="absolute top-full mt-2 left-0 sm:left-auto sm:right-0 bg-white dark:bg-surface-900 border border-gray-100 dark:border-surface-800 rounded-[1.25rem] shadow-xl p-4 z-50 w-full sm:w-[340px] max-w-[calc(100vw-1.5rem)] animate-in fade-in zoom-in-95 duration-100">
+              <div className="absolute top-full mt-2 left-0 bg-white dark:bg-surface-900 border border-gray-100 dark:border-surface-800 rounded-[1.25rem] shadow-xl p-4 z-50 w-full sm:w-[340px] max-w-[calc(100vw-1.5rem)] animate-in fade-in zoom-in-95 duration-100">
                 <div className="mb-4 flex items-center justify-between">
                   <div>
                     <p className="text-sm font-bold text-gray-800 dark:text-surface-200">Task Filters</p>
@@ -688,7 +701,7 @@ export const TasksManagement: React.FC = () => {
                   </button>
                 </div>
                 <div className="space-y-4">
-                  {(user?.role === 'admin' || user?.role === 'manager') && (
+                  {(user?.role === 'admin' || user?.role === 'manager' || user?.role === 'team_leader') && (
                     <SearchableSelect
                       label="Person"
                       value={personFilter}
@@ -743,8 +756,9 @@ export const TasksManagement: React.FC = () => {
                       setFilterStatus('all');
                       setDepartmentFilter('all');
                       setPersonFilter('all');
+                      setOpenDropdown(null);
                     }}
-                    className="w-full rounded-2xl bg-[#f1f4fb] dark:bg-surface-800 px-4 py-3 text-sm font-bold text-[#2c4e87] dark:text-surface-200 hover:bg-[#e7edf8] dark:hover:bg-surface-700 transition-colors"
+                    className="w-full mt-2 py-3 rounded-xl border border-gray-100 dark:border-surface-800 text-[11px] font-bold text-gray-400 hover:text-gray-600 dark:hover:text-surface-200 transition-colors uppercase tracking-widest"
                   >
                     Reset Filters
                   </button>
@@ -752,19 +766,46 @@ export const TasksManagement: React.FC = () => {
               </div>
             )}
           </div>
+        </div>
 
-          <div className="flex items-center justify-end overflow-visible pl-2 sm:pl-0">
-            <div className="flex -space-x-1.5 sm:-space-x-2">
-              {users.slice(0, 5).map((u) => (
-                <UserAvatar key={u.id} name={u.name} size="xs" color={u.color} className="border-2 border-white dark:border-surface-950 ring-1 ring-[#f8f9fc] dark:ring-surface-950" />
-              ))}
-              {users.length > 5 && (
-                <div className="w-6 h-6 rounded-full bg-gray-100 dark:bg-surface-800 border-2 border-white dark:border-surface-950 ring-1 ring-[#f8f9fc] dark:ring-surface-950 flex items-center justify-center text-[10px] font-bold text-gray-500 dark:text-surface-300">
-                  +{users.length - 5}
-                </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center bg-white dark:bg-surface-900 border border-gray-200 dark:border-surface-800 rounded-lg p-1 shadow-sm overflow-x-auto">
+            <button
+              onClick={() => setView('table')}
+              className={cn(
+                "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all whitespace-nowrap",
+                view === 'table' ? "bg-gray-100 dark:bg-surface-800 text-gray-900 dark:text-surface-100 shadow-sm" : "text-gray-500 dark:text-surface-400 hover:text-gray-700 dark:hover:text-surface-200"
               )}
-            </div>
+            >
+              <List size={14} />
+              Table view
+            </button>
+            <button
+              onClick={() => setView('kanban')}
+              className={cn(
+                "flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all whitespace-nowrap",
+                view === 'kanban' ? "bg-gray-100 dark:bg-surface-800 text-gray-900 dark:text-surface-100 shadow-sm" : "text-gray-500 dark:text-surface-400 hover:text-gray-700 dark:hover:text-surface-200"
+              )}
+            >
+              <LayoutGrid size={14} />
+              Kanban board
+            </button>
           </div>
+
+          {isStaff && (
+            <div className="hidden md:flex items-center justify-end overflow-visible pl-2">
+              <div className="flex -space-x-2">
+                {users.slice(0, 5).map((u) => (
+                  <UserAvatar key={u.id} name={u.name} size="xs" color={u.color} className="border-2 border-white dark:border-surface-950 ring-1 ring-black/5" />
+                ))}
+                {users.length > 5 && (
+                  <div className="w-6 h-6 rounded-full bg-gray-100 dark:bg-surface-800 border-2 border-white dark:border-surface-950 ring-1 ring-black/5 flex items-center justify-center text-[10px] font-bold text-gray-500 dark:text-surface-300">
+                    +{users.length - 5}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -790,14 +831,15 @@ export const TasksManagement: React.FC = () => {
         <AnimatePresence mode="wait">
           {view === 'table' ? (
             <motion.div
-              key="table"
+              key={`table-${activeTab}`}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="flex flex-col"
+              transition={{ duration: 0.2 }}
+              className="flex flex-col h-full"
             >
               <div className="flex flex-col gap-6 overflow-visible lg:overflow-auto custom-scrollbar">
-                {/* 1. Active Tasks Section */}
+                {/* Project Tasks Sections */}
                 {(selectedCategory === 'active' || !selectedCategory) && (
                   <div className="bg-white dark:bg-surface-900 rounded-xl border border-gray-200 dark:border-surface-800 shadow-sm overflow-hidden flex flex-col shrink-0 ring-1 ring-black/5">
                     <div
@@ -940,119 +982,8 @@ export const TasksManagement: React.FC = () => {
                   </div>
                 )}
 
-                {/* 3. Quick Tasks Section */}
-                {(selectedCategory === 'quick' || !selectedCategory) && (
-                  <div className="bg-white dark:bg-surface-900 rounded-xl border border-gray-200 dark:border-surface-800 shadow-sm overflow-hidden flex flex-col shrink-0 ring-1 ring-black/5">
-                    <div
-                      onClick={() => toggleSection('quick')}
-                      className="px-5 py-3 border-b border-gray-100 dark:border-surface-800 flex items-center justify-between bg-white dark:bg-surface-950/20 sticky top-0 z-10 backdrop-blur-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-surface-800/40 transition-colors"
-                    >
-                      <div className="flex items-center gap-2">
-                        <ChevronDown size={14} className={cn("text-gray-400 transition-transform", !activeSections.includes('quick') && "-rotate-90")} />
-                        <span className="text-sm font-bold text-gray-700 dark:text-surface-200 uppercase tracking-tight">Quick Tasks</span>
-                        <span className="bg-gray-100 dark:bg-surface-800 text-gray-500 dark:text-surface-400 text-[10px] font-bold px-2 py-0.5 rounded-full">{filteredQuickTasks.length}</span>
-                      </div>
-                    </div>
 
-                    {activeSections.includes('quick') && (
-                      <div className="overflow-x-auto border-t border-gray-100 dark:border-surface-800">
-                        <table className="min-w-[760px] w-full text-xs text-left border-collapse">
-                          <colgroup>
-                            <col style={{ width: '32%' }} />
-                            <col style={{ width: '12%' }} />
-                            <col style={{ width: '10%' }} />
-                            <col style={{ width: '12%' }} />
-                            <col style={{ width: '10%' }} />
-                            <col style={{ width: '18%' }} />
-                            <col style={{ width: '6%' }} />
-                          </colgroup>
-                          <tbody className="divide-y divide-gray-50 dark:divide-surface-800">
-                            {filteredQuickTasks.length === 0 ? (
-                              <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">No quick tasks found.</td></tr>
-                            ) : (
-                              <>
-                                {paginatedQuickTasks.map((task, idx) => (
-                                  <TaskRowComponent key={task.id || idx} task={task} onClick={() => setSelectedTask(task)} />
-                                ))}
-                                {filteredQuickTasks.length > tasksPerPage && (
-                                  <tr>
-                                    <td colSpan={7} className="px-5 py-4 border-t border-gray-100 dark:border-surface-800 bg-gray-50/30 dark:bg-surface-950/20">
-                                      <PaginationControls
-                                        currentPage={quickPage}
-                                        totalPages={quickTasksPageCount}
-                                        totalItems={filteredQuickTasks.length}
-                                        itemsPerPage={tasksPerPage}
-                                        onPageChange={setQuickPage}
-                                      />
-                                    </td>
-                                  </tr>
-                                )}
-                              </>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* 4. Personal Tasks Section */}
-                {(activeSections.includes('personal') && !selectedCategory) && (
-                  <div className="bg-white dark:bg-surface-900 rounded-xl border border-gray-200 dark:border-surface-800 shadow-sm overflow-hidden flex flex-col shrink-0 ring-1 ring-black/5">
-                    <div
-                      onClick={() => toggleSection('personal')}
-                      className="px-5 py-3 border-b border-gray-100 dark:border-surface-800 flex items-center justify-between bg-white dark:bg-surface-950/20 sticky top-0 z-10 backdrop-blur-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-surface-800/40 transition-colors"
-                    >
-                      <div className="flex items-center gap-2">
-                        <ChevronDown size={14} className={cn("text-gray-400 transition-transform", !activeSections.includes('personal') && "-rotate-90")} />
-                        <span className="text-sm font-bold text-gray-700 dark:text-surface-200 uppercase tracking-tight">Personal Tasks</span>
-                        <span className="bg-gray-100 dark:bg-surface-800 text-gray-500 dark:text-surface-400 text-[10px] font-bold px-2 py-0.5 rounded-full">{filteredPersonalTasks.length}</span>
-                      </div>
-                    </div>
-
-                    {activeSections.includes('personal') && (
-                      <div className="overflow-x-auto border-t border-gray-100 dark:border-surface-800">
-                        <table className="min-w-[760px] w-full text-xs text-left border-collapse">
-                          <colgroup>
-                            <col style={{ width: '32%' }} />
-                            <col style={{ width: '12%' }} />
-                            <col style={{ width: '10%' }} />
-                            <col style={{ width: '12%' }} />
-                            <col style={{ width: '10%' }} />
-                            <col style={{ width: '18%' }} />
-                            <col style={{ width: '6%' }} />
-                          </colgroup>
-                          <tbody className="divide-y divide-gray-50 dark:divide-surface-800">
-                            {filteredPersonalTasks.length === 0 ? (
-                              <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">No personal tasks found.</td></tr>
-                            ) : (
-                              <>
-                                {paginatedPersonalTasks.map((task, idx) => (
-                                  <TaskRowComponent key={task.id || idx} task={task} onClick={() => setSelectedTask(task)} />
-                                ))}
-                                {filteredPersonalTasks.length > tasksPerPage && (
-                                  <tr>
-                                    <td colSpan={7} className="px-5 py-4 border-t border-gray-100 dark:border-surface-800 bg-gray-50/30 dark:bg-surface-950/20">
-                                      <PaginationControls
-                                        currentPage={personalPage}
-                                        totalPages={personalTasksPageCount}
-                                        totalItems={filteredPersonalTasks.length}
-                                        itemsPerPage={tasksPerPage}
-                                        onPageChange={setPersonalPage}
-                                      />
-                                    </td>
-                                  </tr>
-                                )}
-                              </>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* 5. Overdue Tasks Section */}
+                {/* Common Overdue & Completed */}
                 {(selectedCategory === 'overdue' || !selectedCategory) && (
                   <div className="bg-white dark:bg-surface-900 rounded-xl border border-gray-200 dark:border-surface-800 shadow-sm overflow-hidden flex flex-col shrink-0 ring-1 ring-black/5">
                     <div
@@ -1061,57 +992,23 @@ export const TasksManagement: React.FC = () => {
                     >
                       <div className="flex items-center gap-2">
                         <ChevronDown size={14} className={cn("text-gray-400 transition-transform", !activeSections.includes('overdue') && "-rotate-90")} />
-                        <span className="text-sm font-bold text-gray-700 dark:text-surface-200 uppercase tracking-tight">Overdue Tasks</span>
-                        <span className="bg-rose-100 dark:bg-rose-950/30 text-rose-500 dark:text-rose-400 text-[10px] font-bold px-2 py-0.5 rounded-full">{overdueTasks.length}</span>
+                        <span className="text-sm font-bold text-gray-700 dark:text-surface-200">Overdue Tasks</span>
+                        <span className="bg-rose-100 dark:bg-rose-950/30 text-rose-500 dark:text-rose-400 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                          {overdueTasks.length}
+                        </span>
                       </div>
                     </div>
-
                     {activeSections.includes('overdue') && (
                       <div className="overflow-x-auto border-t border-gray-100 dark:border-surface-800">
                         <table className="min-w-[760px] w-full text-xs text-left border-collapse">
-                          <colgroup>
-                            <col style={{ width: '32%' }} />
-                            <col style={{ width: '12%' }} />
-                            <col style={{ width: '10%' }} />
-                            <col style={{ width: '12%' }} />
-                            <col style={{ width: '10%' }} />
-                            <col style={{ width: '18%' }} />
-                            <col style={{ width: '6%' }} />
-                          </colgroup>
-                          <thead className="bg-white dark:bg-surface-900 text-gray-400 dark:text-surface-500 font-semibold border-b border-gray-50 dark:border-surface-800">
-                            <tr>
-                              <th className="px-5 py-3 font-semibold min-w-[300px]">Task Name</th>
-                              <th className="px-3 py-3 font-semibold">Status</th>
-                              <th className="px-3 py-3 font-semibold">Type</th>
-                              <th className="px-3 py-3 font-semibold">Due date</th>
-                              <th className="px-3 py-3 font-semibold">Est. time</th>
-                              <th className="px-3 py-3 font-semibold">Responsible</th>
-                              <th className="px-5 py-3 w-10 text-right"><MoreHorizontal size={14} className="text-gray-300 dark:text-surface-700" /></th>
-                            </tr>
-                          </thead>
                           <tbody className="divide-y divide-gray-50 dark:divide-surface-800">
                             {overdueTasks.length === 0 ? (
-                              <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">No overdue tasks found. Great job!</td></tr>
-                            ) : (
-                              <>
-                                {paginatedOverdueTasks.map((task, idx) => (
+                                <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">No overdue tasks in this category.</td></tr>
+                              ) : (
+                                overdueTasks.map((task, idx) => (
                                   <TaskRowComponent key={task.id || idx} task={task} onClick={() => setSelectedTask(task)} />
-                                ))}
-                                {overdueTasks.length > tasksPerPage && (
-                                  <tr>
-                                    <td colSpan={7} className="px-5 py-4 border-t border-gray-100 dark:border-surface-800 bg-gray-50/30 dark:bg-surface-950/20">
-                                      <PaginationControls
-                                        currentPage={overduePage}
-                                        totalPages={overdueTasksPageCount}
-                                        totalItems={overdueTasks.length}
-                                        itemsPerPage={tasksPerPage}
-                                        onPageChange={setOverduePage}
-                                      />
-                                    </td>
-                                  </tr>
-                                )}
-                              </>
-                            )}
+                                ))
+                              )}
                           </tbody>
                         </table>
                       </div>
@@ -1119,7 +1016,6 @@ export const TasksManagement: React.FC = () => {
                   </div>
                 )}
 
-                {/* 6. Completed Tasks Section */}
                 {(selectedCategory === 'done' || !selectedCategory) && (
                   <div className="bg-white dark:bg-surface-900 rounded-xl border border-gray-200 dark:border-surface-800 shadow-sm overflow-hidden flex flex-col shrink-0 ring-1 ring-black/5">
                     <div
@@ -1128,46 +1024,23 @@ export const TasksManagement: React.FC = () => {
                     >
                       <div className="flex items-center gap-2">
                         <ChevronDown size={14} className={cn("text-gray-400 transition-transform", !activeSections.includes('completed') && "-rotate-90")} />
-                        <span className="text-sm font-bold text-gray-700 dark:text-surface-200 uppercase tracking-tight">Completed Tasks</span>
-                        <span className="bg-emerald-100 dark:bg-emerald-950/30 text-emerald-500 dark:text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full">{completedTasks.length}</span>
+                        <span className="text-sm font-bold text-gray-700 dark:text-surface-200">Completed Tasks</span>
+                        <span className="bg-emerald-100 dark:bg-emerald-950/30 text-emerald-500 dark:text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                          {completedTasks.length}
+                        </span>
                       </div>
                     </div>
-
                     {activeSections.includes('completed') && (
                       <div className="overflow-x-auto border-t border-gray-100 dark:border-surface-800">
                         <table className="min-w-[760px] w-full text-xs text-left border-collapse">
-                          <colgroup>
-                            <col style={{ width: '32%' }} />
-                            <col style={{ width: '12%' }} />
-                            <col style={{ width: '10%' }} />
-                            <col style={{ width: '12%' }} />
-                            <col style={{ width: '10%' }} />
-                            <col style={{ width: '18%' }} />
-                            <col style={{ width: '6%' }} />
-                          </colgroup>
                           <tbody className="divide-y divide-gray-50 dark:divide-surface-800">
                             {completedTasks.length === 0 ? (
-                              <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">No completed tasks yet. Keep up the good work!</td></tr>
-                            ) : (
-                              <>
-                                {paginatedCompletedTasks.map((task, idx) => (
+                                <tr><td colSpan={7} className="px-5 py-8 text-center text-gray-400">No completed tasks in this category yet.</td></tr>
+                              ) : (
+                                completedTasks.map((task, idx) => (
                                   <TaskRowComponent key={task.id || idx} task={task} onClick={() => setSelectedTask(task)} />
-                                ))}
-                                {completedTasks.length > tasksPerPage && (
-                                  <tr>
-                                    <td colSpan={7} className="px-5 py-4 border-t border-gray-100 dark:border-surface-800 bg-gray-50/30 dark:bg-surface-950/20">
-                                      <PaginationControls
-                                        currentPage={completedPage}
-                                        totalPages={completedTasksPageCount}
-                                        totalItems={completedTasks.length}
-                                        itemsPerPage={tasksPerPage}
-                                        onPageChange={setCompletedPage}
-                                      />
-                                    </td>
-                                  </tr>
-                                )}
-                              </>
-                            )}
+                                ))
+                              )}
                           </tbody>
                         </table>
                       </div>
@@ -1178,14 +1051,14 @@ export const TasksManagement: React.FC = () => {
             </motion.div>
           ) : (
             <motion.div
-              key="kanban"
+              key={`kanban-${activeTab}`}
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
               className="h-full"
             >
               <KanbanBoard
-                tasksOverride={allFilteredTasks as any}
+                tasksOverride={filteredProjectTasks as any}
                 projectId=""
                 onOpenTask={(t) => setSelectedTask(t as any)}
               />
@@ -2018,57 +1891,63 @@ const TaskRowComponent = React.memo(({ task, onClick }: { task: TaskRow, onClick
 const SummaryCard = React.memo(({
   title,
   count,
+  subtext,
   icon: Icon,
   color,
   isActive,
   onClick,
+  trend,
+  trendDirection = 'up'
 }: {
   title: string;
   count: number;
+  subtext: string;
   icon: React.ComponentType<{ size?: number | string; className?: string }>;
-  color: 'blue' | 'purple' | 'emerald' | 'rose';
+  color: 'blue' | 'purple' | 'emerald' | 'rose' | 'amber';
   isActive: boolean;
   onClick: () => void;
+  trend: string | number;
+  trendDirection?: 'up' | 'down';
 }) => {
   const colors = {
-    blue: { bg: 'bg-blue-500', light: 'bg-blue-50 dark:bg-blue-950/30', text: 'text-blue-500', group: 'group-hover:bg-blue-100 dark:group-hover:bg-blue-900/40' },
-    purple: { bg: 'bg-purple-500', light: 'bg-purple-50 dark:bg-purple-950/30', text: 'text-purple-500', group: 'group-hover:bg-purple-100 dark:group-hover:bg-purple-900/40' },
-    emerald: { bg: 'bg-emerald-500', light: 'bg-emerald-50 dark:bg-emerald-950/30', text: 'text-emerald-500', group: 'group-hover:bg-emerald-100 dark:group-hover:bg-emerald-900/40' },
-    rose: { bg: 'bg-rose-500', light: 'bg-rose-50 dark:bg-rose-950/30', text: 'text-rose-500', group: 'group-hover:bg-rose-100 dark:group-hover:bg-rose-900/40' },
+    blue: { bg: 'bg-blue-50', text: 'text-blue-600', trend: 'text-emerald-500', trendBg: 'bg-emerald-50' },
+    purple: { bg: 'bg-purple-50', text: 'text-purple-600', trend: 'text-emerald-500', trendBg: 'bg-emerald-50' },
+    emerald: { bg: 'bg-emerald-50', text: 'text-emerald-600', trend: 'text-emerald-500', trendBg: 'bg-emerald-50' },
+    rose: { bg: 'bg-rose-50', text: 'text-rose-600', trend: 'text-rose-500', trendBg: 'bg-rose-50' },
+    amber: { bg: 'bg-amber-50', text: 'text-amber-600', trend: 'text-emerald-500', trendBg: 'bg-emerald-50' },
   };
 
   const c = colors[color];
 
   return (
     <motion.button
-      whileHover={{ y: -1 }}
-      whileTap={{ scale: 0.99 }}
+      whileHover={{ y: -4, shadow: '0 12px 30px -5px rgba(0, 0, 0, 0.08)' }}
+      whileTap={{ scale: 0.98 }}
       onClick={onClick}
       className={cn(
-        "flex-1 min-w-[120px] p-3.5 sm:p-4 rounded-2xl border transition-all duration-300 text-left relative overflow-hidden group",
-        isActive
-          ? "bg-white dark:bg-surface-900 border-blue-500 shadow-md ring-1 ring-blue-500/10"
-          : "bg-white dark:bg-surface-900 border-gray-100 dark:border-surface-800 hover:border-gray-200 dark:hover:border-surface-700 shadow-sm"
+        "flex-1 min-w-[240px] h-[130px] p-5 rounded-[20px] bg-white dark:bg-surface-900 border transition-all duration-300 text-left relative group",
+        isActive 
+          ? "border-blue-200 dark:border-brand-500/30 shadow-md ring-1 ring-blue-100 dark:ring-brand-500/10" 
+          : "border-gray-100 dark:border-surface-800 shadow-sm hover:border-gray-200 dark:hover:border-surface-700"
       )}
     >
-      <div className={cn(
-        "w-8 h-8 rounded-xl flex items-center justify-center mb-2 transition-colors",
-        isActive ? `${c.bg} text-white` : `${c.light} ${c.text} ${c.group}`
-      )}>
-        <Icon size={16} />
+      <div className="flex items-start justify-between mb-3">
+        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", c.bg, c.text)}>
+          <Icon size={20} />
+        </div>
+        <div className={cn("flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-md", trendDirection === 'up' ? "bg-emerald-50 text-emerald-500" : "bg-rose-50 text-rose-500")}>
+          <span>{trendDirection === 'up' ? '↑' : '↓'}</span>
+          <span>{trend}%</span>
+        </div>
       </div>
+
       <div>
-        <p className="text-[10px] font-bold text-gray-400 dark:text-surface-500 uppercase tracking-wider mb-0.5">{title}</p>
-        <p className="text-2xl font-black text-gray-900 dark:text-surface-50 leading-tight">{count}</p>
+        <p className="text-[10px] font-bold text-gray-400 dark:text-surface-500 uppercase tracking-widest mb-0.5">{title}</p>
+        <div className="flex items-center gap-2">
+          <p className="text-2xl font-black text-gray-900 dark:text-surface-50 leading-none">{count}</p>
+          <p className="text-[10px] font-medium text-gray-400 dark:text-surface-500 truncate">{subtext}</p>
+        </div>
       </div>
-      {isActive && (
-        <motion.div
-          layoutId="active-indicator"
-          className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-        />
-      )}
     </motion.button>
   );
 });
@@ -2195,5 +2074,32 @@ const ReviewModal: React.FC<{
     </motion.div>
   );
 };
+
+const TabButton: React.FC<{
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+}> = ({ active, onClick, icon, label }) => (
+  <button
+    onClick={onClick}
+    className={cn(
+      "relative flex items-center gap-2.5 px-6 py-2.5 rounded-[16px] text-sm font-bold transition-all duration-300",
+      active
+        ? "text-blue-600 dark:text-brand-400"
+        : "text-gray-500 hover:text-gray-900 dark:hover:text-surface-200"
+    )}
+  >
+    {active && (
+      <motion.div
+        layoutId="active-tab-tasks"
+        className="absolute inset-0 bg-blue-50 dark:bg-brand-950/40 rounded-[16px] -z-0"
+        transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
+      />
+    )}
+    <span className="relative z-10">{icon}</span>
+    <span className="relative z-10 uppercase tracking-widest text-[11px]">{label}</span>
+  </button>
+);
 
 export default TasksManagement;

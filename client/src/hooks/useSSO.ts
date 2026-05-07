@@ -24,55 +24,81 @@ export function useSSO() {
   const checked = useRef(false);
 
   useEffect(() => {
-    if (checked.current) return;
-    checked.current = true;
-
-    // If already authenticated with a user object, skip.
-    // (token might be null in SSO sessions, so we don't check for it here)
-    if (isAuthenticated && user) return;
-
-    // Check SSO session silently
-    fetch(SSO_ME_URL, {
-      method: 'GET',
-      credentials: 'include',   // ← sends the sso_token cookie cross-origin
-      headers: { 'Content-Type': 'application/json' },
-    })
-      .then((res) => {
-        if (!res.ok) return null;
-        return res.json();
+    const checkSession = () => {
+      fetch(SSO_ME_URL, {
+        method: 'GET',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
       })
-      .then((data) => {
-        if (data?.user) {
-          // SSO session is valid — update the store so the UI reflects the user
-          // We don't have a fresh JWT string here (it's httpOnly), but we can
-          // mark the user as authenticated for UI purposes. API calls will work
-          // via the cookie automatically (withCredentials on axios).
-          useAuthStore.setState({
-            user: {
-              id: data.user.id,
-              name: data.user.name || '',
-              email: data.user.email || '',
-              role: data.user.role,
-              avatar: data.user.avatar || undefined,
-              jobTitle: data.user.jobTitle || undefined,
-              department: data.user.department || undefined,
-              workspaceId: data.user.workspaceId || '',
-              isActive: true,
-              canUsePrivateQuickTasks: false,
-              color: '',
-              createdAt: new Date().toISOString(),
-              preferences: undefined,
-              bio: undefined,
-            },
-            isAuthenticated: true,
-            token: null, // Clear stale localStorage token so axios uses the SSO cookie
-          });
-        }
-      })
-      .catch(() => {
-        // Network error or server unreachable — silently ignore
-      });
-  }, [isAuthenticated, user, token]);
+        .then((res) => {
+          if (!res.ok) throw new Error('Not auth');
+          return res.json();
+        })
+        .then((data) => {
+          if (data?.user) {
+            const currentStore = useAuthStore.getState();
+            const currentUser = currentStore.user;
+            
+            const isDifferentUser = currentUser?.id !== data.user.id;
+            // The GT_ONE user payload includes companyId or tenantId
+            const currentCompanyId = currentUser?.companyId || (currentUser as any)?.tenantId;
+            const newCompanyId = data.user.companyId || data.user.tenantId;
+            const isDifferentCompany = currentCompanyId && newCompanyId && currentCompanyId !== newCompanyId;
+
+            if (!currentUser || isDifferentUser || isDifferentCompany) {
+              useAuthStore.setState({
+                user: {
+                  ...data.user,
+                  id: data.user.id,
+                  name: data.user.name || '',
+                  email: data.user.email || '',
+                  role: data.user.role,
+                  avatar: data.user.avatar || undefined,
+                  jobTitle: data.user.jobTitle || undefined,
+                  department: data.user.department || undefined,
+                  workspaceId: data.user.workspaceId || '',
+                  companyId: data.user.companyId || data.user.tenantId,
+                  isActive: true,
+                  canUsePrivateQuickTasks: false,
+                  color: '',
+                  createdAt: new Date().toISOString(),
+                  preferences: undefined,
+                  bio: undefined,
+                },
+                isAuthenticated: true,
+                token: null, // Clear stale localStorage token
+              });
+              
+              if (currentUser && (isDifferentUser || isDifferentCompany)) {
+                // If it changed while the app was already open, reload to clear all React Query / Zustand states
+                window.location.reload();
+              }
+            }
+          }
+        })
+        .catch(() => {
+          const currentStore = useAuthStore.getState();
+          if (currentStore.isAuthenticated && !currentStore.token) {
+            // We were relying on SSO but the session is invalid now
+            useAuthStore.setState({ user: null, isAuthenticated: false });
+          }
+        });
+    };
+
+    if (!checked.current) {
+      checked.current = true;
+      if (!isAuthenticated || !user) {
+        checkSession();
+      }
+    }
+
+    const onFocus = () => {
+      checkSession();
+    };
+
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [isAuthenticated, user]);
 }
 
 /**

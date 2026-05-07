@@ -58,6 +58,12 @@ export function isTaskOverdue(task: { dueDate?: string | Date | null; status?: s
   }
 }
 
+export function isTaskDone(status?: string): boolean {
+  if (!status) return false;
+  const s = status.toUpperCase();
+  return ['DONE', 'COMPLETED', 'CANCELLED', 'APPROVED', 'FINISHED'].includes(s);
+}
+
 export function isDueDateOverdue(dueDate?: string | Date | null, status?: string): boolean {
   return isTaskOverdue({ dueDate, status });
 }

@@ -20,6 +20,7 @@ import { enforceMaintenanceMode } from './src/middleware/system-settings.middlew
 
 import v1Routes from './src/routes/v1/index.js';
 import ssoRoutes from './src/routes/sso.routes.js';
+import authRoutes from './src/routes/AuthRoutes.js';
 import adminCalendarRoutes from './src/routes/admin/calendar.routes.js';
 import adminChatRoutes from './src/routes/admin/adminChat.routes.js';
 import adminDashboardRoutes from './src/routes/admin/adminDashboard.routes.js';
@@ -171,6 +172,7 @@ app.use(enforceMaintenanceMode);
 // Exposes: GET  /api/auth/me
 //          POST /api/auth/sso-logout
 app.use('/api/auth', ssoRoutes);
+app.use('/api/auth', authRoutes);
 
 // Existing versioned routes — untouched
 app.use('/api/v1', v1Routes);

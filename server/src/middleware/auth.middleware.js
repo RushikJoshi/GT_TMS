@@ -24,10 +24,11 @@ export async function requireAuth(req, res, next) {
   const [scheme, bearerToken] = authHeader.split(' ');
   const headerToken = scheme === 'Bearer' ? bearerToken : null;
 
-  // 2. Fallback to SSO cookie
-  const cookieToken = req.cookies?.[SHARED_SSO_COOKIE_NAME] || req.cookies?.[LOCAL_SSO_COOKIE_NAME] || req.cookies?.token || req.cookies?.access_token || null;
+  // 2. Fallback to SSO cookie (prefer local token first)
+  const cookieToken = req.cookies?.[LOCAL_SSO_COOKIE_NAME] || req.cookies?.[SHARED_SSO_COOKIE_NAME] || req.cookies?.token || req.cookies?.access_token || null;
 
-  const token = cookieToken || headerToken;
+  // Prefer header token over cookie if both exist, to allow explicit Bearer auth to override stale cookies
+  const token = headerToken || cookieToken;
 
   if (!token) {
     const reason = 'no_token';
@@ -110,6 +111,7 @@ export async function requireAuth(req, res, next) {
     });
     return next();
   } catch (error) {
+    console.error('[AuthMiddleware] requireAuth failed:', error.message, error.stack);
     const reason = classifyJwtFailure(error);
     const message = reason === 'token_expired' ? 'Access token expired' : 'Invalid access token';
     logAuthFailure(req, { reason, message, statusCode: 401 });

@@ -29,6 +29,16 @@ const authApi = axios.create({
   },
 });
 
+export const setApiAuthToken = (token: string | null) => {
+  if (token) {
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    authApi.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+  } else {
+    delete api.defaults.headers.common['Authorization'];
+    delete authApi.defaults.headers.common['Authorization'];
+  }
+};
+
 const createIdempotencyKey = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
 export const projectsService = {

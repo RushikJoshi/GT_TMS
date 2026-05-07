@@ -46,11 +46,15 @@ export const LoginPage: React.FC = () => {
           }
     );
 
+    console.log('Login result:', result);
+
     if (result.success) {
       navigate('/dashboard');
       return;
     }
 
+    console.log('Setting error:', result.error || 'Invalid credentials');
+    alert(`Login Failed: ${result.error || 'Invalid credentials'}\n\nPlease check if your browser autofilled the wrong password for this email.`);
     setError(result.error || 'Invalid credentials');
   };
 

@@ -1169,8 +1169,13 @@ const RequestDetailOverlay: React.FC<{
             </div>
             <div className="space-y-1.5">
               <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-surface-400">Assignees</p>
-              <div className="flex -space-x-2">
-                {assignees.map((a) => <UserAvatar key={a.id} name={a.name} color={a.color} size="sm" className="border-2 border-white dark:border-surface-900" />)}
+              <div className="flex flex-wrap gap-2">
+                {assignees.map((a) => (
+                  <div key={a.id} className="flex items-center gap-2 bg-surface-50 dark:bg-surface-800 px-3 py-1.5 rounded-full border border-surface-100 dark:border-surface-700">
+                    <UserAvatar name={a.name} color={a.color} size="xs" />
+                    <span className="text-xs font-bold text-surface-600 dark:text-surface-300">{a.name}</span>
+                  </div>
+                ))}
                 {!assignees.length && <span className="text-sm text-surface-400">No assignee selected</span>}
               </div>
             </div>

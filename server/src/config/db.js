@@ -1,7 +1,9 @@
 import mongoose from 'mongoose';
 
 function getMongoUri() {
-  return process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/PMS';
+  // Commented out process.env.MONGODB_URI to force local connection and bypass GT ONE
+  // return process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/PMS';
+  return 'mongodb://127.0.0.1:27017/PMS';
 }
 
 const connectDB = async () => {

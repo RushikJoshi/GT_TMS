@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Project, Task, Team, Notification, TaskStatus, QuickTask, QuickTaskStatus, User, Workspace, PersonalTask, Label } from '../app/types';
-import { projectsService, tasksService, teamsService, quickTasksService, notificationsService, usersService, workspacesService, personalTasksService, labelsService } from '../services/api';
+import api, { projectsService, tasksService, teamsService, quickTasksService, notificationsService, usersService, workspacesService, personalTasksService, labelsService } from '../services/api';
+import { isTaskDone } from '../utils/helpers';
 
 function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
@@ -57,6 +58,8 @@ interface AppStore {
   updateQuickTask: (id: string, updates: Partial<QuickTask>) => void;
   deleteQuickTask: (id: string) => void;
   setQuickTaskStatus: (id: string, status: QuickTaskStatus) => void;
+  normalizeId: (obj: any) => any;
+  normalizeTask: (t: any) => any;
 
   addTeam: (team: Team) => void;
   updateTeam: (id: string, updates: Partial<Team>) => void;
@@ -71,6 +74,22 @@ interface AppStore {
   updatePersonalTask: (id: string, updates: Partial<PersonalTask>) => void;
   deletePersonalTask: (id: string) => void;
   mergeTasks: (tasks: Task[]) => void;
+  refreshTasks: () => Promise<void>;
+
+  // Optimized Selectors
+  getTaskStats: (user: User | null, activeTab: 'project' | 'quick') => {
+    active: number;
+    projects: number;
+    quick: number;
+    overdue: number;
+    done: number;
+    totalActive: number;
+    totalOverdue: number;
+    totalCompleted: number;
+    myOpenTasks: number;
+  };
+  getProjectTasks: (user: User | null) => Task[];
+  getQuickTasks: (user: User | null) => (QuickTask | PersonalTask)[];
 }
 
 export const useAppStore = create<AppStore>((set, get) => ({
@@ -124,15 +143,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
       safeList<Label>('labels', labelsService.getAll()),
     ]);
     set({
-      users,
-      workspaces,
-      projects,
-      tasks,
-      teams,
-      quickTasks,
-      notifications,
-      personalTasks,
-      allLabels: labels,
+      users: users.map(u => get().normalizeId(u)),
+      workspaces: workspaces.map(w => get().normalizeId(w)),
+      projects: projects.map(p => get().normalizeId(p)),
+      tasks: tasks.map(t => get().normalizeTask(t)),
+      teams: teams.map(tm => get().normalizeId(tm)),
+      quickTasks: quickTasks.map(qt => get().normalizeId(qt)),
+      notifications: notifications.map(n => get().normalizeId(n)),
+      personalTasks: personalTasks.map(pt => get().normalizeId(pt)),
+      allLabels: labels.map(l => get().normalizeId(l)),
     });
   },
 
@@ -178,9 +197,20 @@ export const useAppStore = create<AppStore>((set, get) => ({
     } : t),
   })),
   deleteTask: (id) => set(s => ({ tasks: s.tasks.filter(t => t.id !== id) })),
-  moveTask: (taskId, newStatus) => set(s => ({
-    tasks: s.tasks.map(t => t.id === taskId ? { ...t, status: newStatus, updatedAt: new Date().toISOString() } : t),
-  })),
+  moveTask: async (taskId, newStatus) => {
+    // 1. Optimistic local update
+    set(s => ({
+      tasks: s.tasks.map(t => t.id === taskId ? { ...t, status: newStatus, updatedAt: new Date().toISOString() } : t),
+    }));
+
+    // 2. Persist to backend
+    try {
+      await api.patch(`/tasks/${taskId}`, { status: newStatus });
+    } catch (err) {
+      console.error('[appStore.moveTask] Failed to persist task move:', err);
+      // Optional: rollback on error if needed
+    }
+  },
   reorderTasks: (projectId, status, tasks) => set(s => {
     const normalizedTasks = tasks.map(t => ({
       ...t,
@@ -222,17 +252,127 @@ export const useAppStore = create<AppStore>((set, get) => ({
   deletePersonalTask: (id) => set(s => ({
     personalTasks: s.personalTasks.filter(t => t.id !== id),
   })),
+  normalizeId: (obj: any) => ({
+    ...obj,
+    id: obj.id || obj._id || ''
+  }),
+  normalizeTask: (t: any) => {
+    const base = get().normalizeId(t);
+    return {
+      ...base,
+      projectId: typeof t.projectId === 'string' ? t.projectId : t.projectId?._id || t.projectId?.id || ''
+    };
+  },
   mergeTasks: (newTasks) => set(s => {
     const taskMap = new Map(s.tasks.map(t => [t.id, t]));
     newTasks.forEach(t => {
-      const normalized = {
-        ...t,
-        id: t.id || (t as any)._id,
-        projectId: typeof t.projectId === 'string' ? t.projectId : (t.projectId as any)?._id || (t.projectId as any)?.id
-      };
-      // Always overwrite — incoming data from server is more up-to-date
+      const normalized = get().normalizeTask(t);
       taskMap.set(normalized.id, normalized);
     });
     return { tasks: Array.from(taskMap.values()) };
   }),
+
+  refreshTasks: async () => {
+    try {
+      const [tasks, quickTasks, personalTasks] = await Promise.all([
+        safeList<Task>('tasks', tasksService.getAll()),
+        safeList<QuickTask>('quick-tasks', quickTasksService.getAll()),
+        safeList<PersonalTask>('personal-tasks', personalTasksService.getAll()),
+      ]);
+      set({ 
+        tasks: tasks.map(t => get().normalizeTask(t)), 
+        quickTasks: quickTasks.map(t => get().normalizeId(t)), 
+        personalTasks: personalTasks.map(t => get().normalizeId(t)) 
+      });
+    } catch (error) {
+      console.warn('[appStore.refreshTasks] fetch failed', error);
+    }
+  },
+
+  getProjectTasks: (user) => {
+    const { tasks, projects } = get();
+    const isStaff = ['super_admin', 'super-admin', 'company_admin', 'admin', 'manager', 'team_leader'].includes(user?.role || '');
+    
+    // 1. Initial base: exclude archived projects
+    let base = tasks.filter(t => {
+      const p = projects.find(proj => proj.id === t.projectId);
+      return p ? p.status !== 'archived' : true;
+    });
+
+    // 2. Visibility filter
+    if (!isStaff && user?.id) {
+      base = base.filter(t => {
+        // User can see the task if:
+        // - They are the reporter
+        // - They are an assignee
+        // - They are a member of the project
+        const project = projects.find(p => p.id === t.projectId);
+        const isMember = project?.members?.includes(user.id) || project?.ownerId === user.id;
+        const isAssigned = (t as any).assigneeIds?.includes(user.id);
+        const isReporter = (t as any).reporterId === user.id;
+        
+        return isMember || isAssigned || isReporter;
+      });
+    }
+    return base;
+  },
+
+  getQuickTasks: (user) => {
+    const { quickTasks, personalTasks } = get();
+    let base = [...quickTasks, ...personalTasks];
+
+    const isStaff = ['super_admin', 'super-admin', 'company_admin', 'admin', 'manager', 'team_leader'].includes(user?.role || '');
+    if (!isStaff && user?.id) {
+      base = base.filter(t => {
+        const reporterId = (t as any).reporterId || (t as any).userId;
+        const assigneeIds = (t as any).assigneeIds || [];
+        return reporterId === user.id || assigneeIds.includes(user.id);
+      });
+    }
+    return base;
+  },
+
+  getTaskStats: (user, activeTab) => {
+    const projectTasks = get().getProjectTasks(user);
+    const quickTasks = get().getQuickTasks(user);
+    
+    const projectTasksOnly = projectTasks.filter(t => t.type === 'project' || t.projectId);
+    const allTasks = [...projectTasks, ...quickTasks];
+
+    const isOverdue = (t: any) => {
+      if (!t.dueDate || isTaskDone(t.status)) return false;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const due = new Date(t.dueDate);
+      due.setHours(0, 0, 0, 0);
+      return due.getTime() < today.getTime();
+    };
+
+    const stats = {
+      active: projectTasks.filter(t => !isTaskDone(t.status)).length,
+      projects: projectTasks.length,
+      quick: quickTasks.length,
+      overdue: projectTasks.filter(isOverdue).length,
+      done: projectTasks.filter(t => isTaskDone(t.status)).length,
+      
+      totalActive: allTasks.filter(t => !isTaskDone(t.status)).length,
+      totalOverdue: allTasks.filter(isOverdue).length,
+      totalCompleted: allTasks.filter(t => isTaskDone(t.status)).length,
+      myOpenTasks: allTasks.filter(t => {
+        const assigneeIds = (t as any).assigneeIds || [];
+        const reporterId = (t as any).reporterId || (t as any).userId;
+        return (assigneeIds.includes(user?.id || '') || reporterId === user?.id) && !isTaskDone(t.status);
+      }).length,
+    };
+
+    console.log('[appStore.getTaskStats] Data Diagnostic:', {
+      projectTasksRaw: projectTasks.length,
+      projectTasksFiltered: projectTasksOnly.length,
+      allTasksCount: allTasks.length,
+      statsResults: stats,
+      activeTab
+    });
+
+    return stats;
+  },
 }));
