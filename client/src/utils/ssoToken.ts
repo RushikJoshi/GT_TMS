@@ -1,4 +1,5 @@
 import { authDebug } from './authDebug';
+import { APP_CONFIG } from './appConfig';
 
 export type ParsedJwtPayload = {
   iss?: string;
@@ -13,7 +14,7 @@ export type ParsedJwtPayload = {
   [key: string]: unknown;
 };
 
-const CURRENT_APP = String(import.meta.env.VITE_SSO_APP || 'pms').trim().toLowerCase();
+const CURRENT_APP = APP_CONFIG.SSO_APP;
 
 function decodeBase64Url(value: string) {
   const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
@@ -46,8 +47,8 @@ export function validateSsoTokenClaims(token: string, options?: { expectedIssuer
     return { valid: false, reason: 'invalid_token_payload', payload: null as ParsedJwtPayload | null };
   }
 
-  const expectedIssuer = String(options?.expectedIssuer || import.meta.env.VITE_SSO_EXPECTED_ISS || '').trim();
-  const expectedAudience = String(options?.expectedAudience || import.meta.env.VITE_SSO_EXPECTED_AUD || '').trim();
+  const expectedIssuer = String(options?.expectedIssuer || APP_CONFIG.SSO_EXPECTED_ISS || '').trim();
+  const expectedAudience = String(options?.expectedAudience || APP_CONFIG.SSO_EXPECTED_AUD || '').trim();
 
   if (expectedIssuer && payload.iss !== expectedIssuer) {
     return { valid: false, reason: 'invalid_issuer', payload };

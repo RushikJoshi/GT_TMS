@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
+import { APP_CONFIG } from '../../utils/appConfig';
 
-const SSO_LOGIN_URL = String(import.meta.env.VITE_SSO_LOGIN_URL || '').trim();
+const SSO_LOGIN_URL = APP_CONFIG.SSO_LOGIN_URL;
 
 const reasonMessageMap: Record<string, string> = {
   token_expired: 'Your SSO link expired. Please sign in again from HRMS.',

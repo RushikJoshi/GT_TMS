@@ -1,7 +1,9 @@
+import { APP_CONFIG } from './appConfig';
+
 type AuthDebugLevel = 'info' | 'warn' | 'error';
 
 function shouldLog() {
-  return String(import.meta.env.VITE_AUTH_DEBUG || 'true').toLowerCase() === 'true';
+  return APP_CONFIG.AUTH_DEBUG;
 }
 
 export function authDebug(level: AuthDebugLevel, event: string, details?: Record<string, unknown>) {
